@@ -77,6 +77,7 @@ interface Filters {
   dateTo: string;
   currency: string;
   status: string;
+  workSiteId: string;
 }
 
 interface Props {
@@ -420,9 +421,9 @@ const StockModal = ({ doc, onClose }: { doc: CompraDoc; onClose: () => void }) =
         const empresaId = user?.empresa_id || user?.company_id;
         const { data, error } = await supabase
           .from('movimentacoes_stock')
-          .select('*, produtos(name), armazens(nome, name)')
+          .select('*, produtos(name), armazens(name)')
           .eq('empresa_id', empresaId)
-          .or(`referencia.eq.${doc.id},reference_id.eq.${doc.id},reference_id.eq.${doc.numero_documento || ''}`);
+          .or(`referencia.eq.${doc.id},reference_id.eq.${doc.id}`);
         
         if (!error && data) {
           setMovements(data);
@@ -480,7 +481,7 @@ const StockModal = ({ doc, onClose }: { doc: CompraDoc; onClose: () => void }) =
                         </span>
                       </td>
                       <td className="p-2 font-bold">{m.produtos?.name || m.description || 'Produto'}</td>
-                      <td className="p-2">{m.armazens?.nome || m.armazens?.name || 'Armazém Geral'}</td>
+                      <td className="p-2">{m.armazens?.name || 'Armazém Geral'}</td>
                       <td className="p-2 text-right font-black">{m.quantidade || m.quantity}</td>
                       <td className="p-2 text-right text-zinc-500">{fmtDate(m.created_at)}</td>
                     </tr>
@@ -530,9 +531,19 @@ export const GestaoComprasList: React.FC<Props> = ({
     dateTo: '',
     currency: '',
     status: '',
+    workSiteId: '',
   });
   const [showFilters, setShowFilters] = useState(false);
   const [selectedDoc, setSelectedDoc] = useState<CompraDoc | null>(null);
+
+  // Inline field edit modal (Hash / Centro Custos / Caixa)
+  const [inlineEdit, setInlineEdit] = useState<{
+    doc: CompraDoc;
+    field: 'hash' | 'work_site' | 'caixa_id';
+    label: string;
+    value: string;
+  } | null>(null);
+  const [inlineSaving, setInlineSaving] = useState(false);
 
   // Modals
   const [certModalDoc, setCertModalDoc] = useState<CompraDoc | null>(null);
@@ -591,6 +602,9 @@ export const GestaoComprasList: React.FC<Props> = ({
           query = query.not('status', 'in', '("anulado","cancelled")').eq('recibo_emitido', false);
         }
       }
+      if (filters.workSiteId) {
+        query = query.eq('work_site', filters.workSiteId);
+      }
       if (filters.dateFrom) {
         query = query.gte('data_compra', filters.dateFrom);
       }
@@ -600,7 +614,7 @@ export const GestaoComprasList: React.FC<Props> = ({
       if (debouncedSearch) {
         const term = debouncedSearch.trim();
         query = query.or(
-          `fornecedor_nome.ilike.%${term}%,supplier_name.ilike.%${term}%,numero_documento.ilike.%${term}%,numero_fatura.ilike.%${term}%,invoice_number.ilike.%${term}%,purchase_number.ilike.%${term}%`
+          `fornecedor_nome.ilike.%${term}%,supplier_name.ilike.%${term}%,numero_documento.ilike.%${term}%,numero_fatura.ilike.%${term}%,invoice_number.ilike.%${term}%,purchase_number.ilike.%${term}%,referencia.ilike.%${term}%`
         );
       }
 
@@ -625,7 +639,7 @@ export const GestaoComprasList: React.FC<Props> = ({
     } finally {
       setLoading(false);
     }
-  }, [user?.empresa_id, user?.company_id, fiscalYear, page, filters.supplierId, filters.docType, filters.currency, filters.status, filters.dateFrom, filters.dateTo, debouncedSearch]);
+  }, [user?.empresa_id, user?.company_id, fiscalYear, page, filters.supplierId, filters.docType, filters.currency, filters.status, filters.dateFrom, filters.dateTo, filters.workSiteId, debouncedSearch]);
 
   useEffect(() => { fetchDocs(); }, [fetchDocs]);
 
@@ -711,6 +725,30 @@ export const GestaoComprasList: React.FC<Props> = ({
       case 'stock':
         setStockModalDoc(doc);
         break;
+    }
+  };
+
+  // Inline field save handler
+  const handleInlineSave = async () => {
+    if (!inlineEdit) return;
+    const empresaId = user?.empresa_id || user?.company_id;
+    if (!empresaId) return;
+    setInlineSaving(true);
+    try {
+      const update: any = { [inlineEdit.field]: inlineEdit.value || null };
+      const { error } = await supabase
+        .from('compras')
+        .update(update)
+        .eq('id', inlineEdit.doc.id)
+        .eq('empresa_id', empresaId);
+      if (error) throw error;
+      toast.success(`${inlineEdit.label} actualizado com sucesso!`);
+      setInlineEdit(null);
+      fetchDocs();
+    } catch (err: any) {
+      toast.error(`Erro ao guardar: ${err.message}`);
+    } finally {
+      setInlineSaving(false);
     }
   };
 
@@ -861,9 +899,23 @@ export const GestaoComprasList: React.FC<Props> = ({
             />
           </div>
 
+          <div className="space-y-0.5">
+            <label className="text-[9px] font-black text-zinc-500 uppercase tracking-wider block">Local de Trabalho</label>
+            <select
+              value={filters.workSiteId}
+              onChange={e => { setFilters(f => ({ ...f, workSiteId: e.target.value })); setPage(0); }}
+              className="bg-zinc-50 border border-zinc-200 px-2 py-1 text-xs font-medium text-zinc-800 focus:outline-none focus:border-[#003366] min-w-[160px]"
+            >
+              <option value="">Todos os Locais</option>
+              {workSites.map(ws => (
+                <option key={ws.id} value={String(ws.id)}>{ws.name || ws.title || String(ws.id)}</option>
+              ))}
+            </select>
+          </div>
+
           <div className="flex items-end">
             <button
-              onClick={() => { setFilters({ search: '', supplierId: '', docType: '', dateFrom: '', dateTo: '', currency: '', status: '' }); setPage(0); }}
+              onClick={() => { setFilters({ search: '', supplierId: '', docType: '', dateFrom: '', dateTo: '', currency: '', status: '', workSiteId: '' }); setPage(0); }}
               className="px-3 py-1 text-[10px] font-black text-zinc-500 border border-zinc-200 hover:text-red-600 hover:border-red-200 transition-all uppercase tracking-wider"
             >
               Limpar
@@ -937,14 +989,15 @@ export const GestaoComprasList: React.FC<Props> = ({
               const rsa = isRSA(doc);
               const { cc, caixa } = getCentroDisplay(doc);
               const isEven = idx % 2 === 0;
+              const hasAttachment = !!(doc.document_url);
 
               return (
                 <tr
                   key={doc.id}
                   className={`
                     border-b border-zinc-200/80 text-[11px] group transition-colors leading-tight
-                    ${isEven ? 'bg-white' : 'bg-zinc-50/50'}
-                    ${anulado ? 'opacity-50 bg-red-50/20' : 'hover:bg-blue-50/40'}
+                    ${isEven ? 'bg-white' : 'bg-zinc-50/40'}
+                    ${anulado ? 'opacity-50 bg-red-50/20' : 'hover:bg-blue-100/60'}
                   `}
                 >
                   {/* 1. MovID */}
@@ -967,10 +1020,36 @@ export const GestaoComprasList: React.FC<Props> = ({
                     {fmtDate(getDocDate(doc))}
                   </td>
 
-                  {/* 4. Centro Custos / Caixa (two lines when both exist) */}
+                  {/* 4. Centro Custos / Caixa — click to open inline edit */}
                   <td className="px-3 py-1.5 border-r border-zinc-100 max-w-[180px]">
-                    <div className="font-bold text-zinc-900 text-[11px] truncate uppercase">{cc || 'Obra Genérica'}</div>
-                    <div className="text-zinc-600 text-[10px] truncate uppercase tracking-tight">{caixa || 'Caixa Central'}</div>
+                    <button
+                      className="block w-full text-left group/cc"
+                      title="Clique para editar Centro de Custos"
+                      onClick={() => setInlineEdit({
+                        doc,
+                        field: 'work_site',
+                        label: 'Centro de Custos',
+                        value: doc.work_site || doc.work_site_name || '',
+                      })}
+                    >
+                      <div className="font-bold text-zinc-900 text-[11px] truncate uppercase group-hover/cc:text-blue-700 transition-colors">
+                        {cc || <span className="text-zinc-400 italic normal-case font-normal">—</span>}
+                      </div>
+                    </button>
+                    <button
+                      className="block w-full text-left group/cx"
+                      title="Clique para editar Caixa"
+                      onClick={() => setInlineEdit({
+                        doc,
+                        field: 'caixa_id',
+                        label: 'Caixa',
+                        value: doc.caixa_id || doc.caixa || '',
+                      })}
+                    >
+                      <div className="text-zinc-600 text-[10px] truncate uppercase tracking-tight group-hover/cx:text-blue-600 transition-colors">
+                        {caixa || <span className="text-zinc-400 italic normal-case font-normal">—</span>}
+                      </div>
+                    </button>
                   </td>
 
                   {/* 5. DOC Nº */}
@@ -1000,21 +1079,29 @@ export const GestaoComprasList: React.FC<Props> = ({
                     </span>
                   </td>
 
-                  {/* 8. Hash (4 chars like image, click to copy full hash) */}
+                  {/* 8. Hash — click to open inline edit */}
                   <td className="px-3 py-1.5 border-r border-zinc-100 text-center">
                     {hashVal ? (
                       <button
-                        title={`Clique para copiar Hash completo: ${hashVal}`}
-                        className="font-mono text-[11px] text-zinc-800 hover:text-indigo-600 font-bold transition-colors cursor-pointer"
-                        onClick={() => {
-                          navigator.clipboard?.writeText(hashVal);
-                          toast.success('Hash copiado com sucesso!', { duration: 1500 });
-                        }}
+                        title={`Hash: ${hashVal} — Clique para editar`}
+                        className="font-mono text-[11px] text-indigo-700 hover:text-indigo-900 font-bold transition-colors cursor-pointer"
+                        onClick={() => setInlineEdit({
+                          doc,
+                          field: 'hash',
+                          label: 'Hash',
+                          value: hashVal,
+                        })}
                       >
                         {hashShort || hashVal.substring(0, 4)}
                       </button>
                     ) : (
-                      <span className="text-zinc-300 text-[10px]">----</span>
+                      <button
+                        title="Clique para definir Hash"
+                        className="text-zinc-300 text-[10px] hover:text-zinc-500 transition-colors"
+                        onClick={() => setInlineEdit({ doc, field: 'hash', label: 'Hash', value: '' })}
+                      >
+                        ----
+                      </button>
                     )}
                   </td>
 
@@ -1030,19 +1117,42 @@ export const GestaoComprasList: React.FC<Props> = ({
                     />
                   </td>
 
-                  {/* 10. Ações: Document preview icon, blue chart icon, ⋮ button */}
+                  {/* 10. Ações: Edit | Document | Chart | ⋮ */}
                   <td className="px-3 py-1.5 text-right whitespace-nowrap">
                     <div className="flex items-center justify-end gap-1.5">
-                      {/* Document icon with badge */}
+                      {/* Edit button */}
+                      {!anulado && (
+                        <button
+                          onClick={() => handleAction('edit', doc)}
+                          className="p-1 text-amber-600 hover:text-amber-800 hover:bg-amber-50 border border-amber-200 rounded-none transition-all"
+                          title="Editar Documento"
+                        >
+                          <Edit2 size={13} />
+                        </button>
+                      )}
+
+                      {/* Document icon — green if has attachment, grey otherwise */}
                       <button
-                        onClick={() => onViewPurchase(doc)}
-                        className="relative p-1 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 border border-zinc-200 rounded-none transition-all"
-                        title="Ver Documento"
+                        onClick={() => {
+                          if (hasAttachment && onOpenAttachments) {
+                            onOpenAttachments(doc);
+                          } else {
+                            onViewPurchase(doc);
+                          }
+                        }}
+                        className={`relative p-1 border rounded-none transition-all ${
+                          hasAttachment
+                            ? 'text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 border-emerald-300'
+                            : 'text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 border-zinc-200'
+                        }`}
+                        title={hasAttachment ? 'Ver Documento Anexado' : 'Ver Documento'}
                       >
                         <FileText size={13} />
-                        <span className="absolute -bottom-1 -right-1 bg-zinc-600 text-white text-[7px] font-black rounded-full px-0.5 leading-none">
-                          0
-                        </span>
+                        {hasAttachment && (
+                          <span className="absolute -bottom-1 -right-1 bg-emerald-500 text-white text-[7px] font-black rounded-full w-3 h-3 flex items-center justify-center leading-none">
+                            ✓
+                          </span>
+                        )}
                       </button>
 
                       {/* Blue bar chart icon (Impactos Contabilísticos) */}
@@ -1157,6 +1267,89 @@ export const GestaoComprasList: React.FC<Props> = ({
           doc={stockModalDoc}
           onClose={() => setStockModalDoc(null)}
         />
+      )}
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Inline Field Edit Modal (Hash / Centro Custos / Caixa)             */}
+      {/* ------------------------------------------------------------------ */}
+      {inlineEdit && (
+        <div className="fixed inset-0 z-[350] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="bg-white border border-zinc-200 shadow-2xl w-full max-w-sm p-5 space-y-4">
+            <div className="flex items-center justify-between border-b border-zinc-100 pb-2">
+              <div className="flex items-center gap-2 text-[#003366]">
+                <Edit2 size={15} />
+                <h3 className="text-sm font-black uppercase tracking-wider">
+                  Editar: {inlineEdit.label}
+                </h3>
+              </div>
+              <button
+                onClick={() => setInlineEdit(null)}
+                className="text-zinc-400 hover:text-zinc-600 transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-zinc-500 uppercase tracking-wider block">
+                {inlineEdit.label}
+              </label>
+              {inlineEdit.field === 'caixa_id' ? (
+                <select
+                  value={inlineEdit.value}
+                  onChange={e => setInlineEdit(ie => ie ? { ...ie, value: e.target.value } : ie)}
+                  className="w-full bg-zinc-50 border border-zinc-300 px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:border-[#003366]"
+                  autoFocus
+                >
+                  <option value="">— Sem Caixa —</option>
+                  {caixas.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              ) : inlineEdit.field === 'work_site' ? (
+                <select
+                  value={inlineEdit.value}
+                  onChange={e => setInlineEdit(ie => ie ? { ...ie, value: e.target.value } : ie)}
+                  className="w-full bg-zinc-50 border border-zinc-300 px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:border-[#003366]"
+                  autoFocus
+                >
+                  <option value="">— Sem Centro de Custos —</option>
+                  {workSites.map(ws => (
+                    <option key={ws.id} value={String(ws.id)}>{ws.name || ws.title || String(ws.id)}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={inlineEdit.value}
+                  onChange={e => setInlineEdit(ie => ie ? { ...ie, value: e.target.value } : ie)}
+                  className="w-full bg-zinc-50 border border-zinc-300 px-3 py-2 text-sm text-zinc-800 font-mono focus:outline-none focus:border-[#003366]"
+                  placeholder={`Introduza ${inlineEdit.label}...`}
+                  autoFocus
+                />
+              )}
+              <div className="text-[10px] text-zinc-400">
+                Documento: <strong>{getDocNum(inlineEdit.doc)}</strong> — {inlineEdit.doc.fornecedor_nome || inlineEdit.doc.supplier_name || '—'}
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                onClick={() => setInlineEdit(null)}
+                className="px-4 py-1.5 text-xs font-bold text-zinc-600 border border-zinc-200 hover:bg-zinc-50 transition-all uppercase tracking-wider"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleInlineSave}
+                disabled={inlineSaving}
+                className="px-5 py-1.5 bg-[#003366] text-white text-xs font-black uppercase tracking-wider hover:bg-[#002244] transition-all disabled:opacity-50"
+              >
+                {inlineSaving ? 'A guardar...' : 'Guardar'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -29196,23 +29196,25 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
             <p className="text-zinc-400 text-sm font-bold uppercase tracking-widest mt-1">Controlo de entrada de mercadorias e fornecedores</p>
           </div>
         </div>
-        <div className="flex flex-wrap gap-3">
-          <button 
-            type="button"
-            onClick={() => setIsMainScannerOpen(true)}
-            className="bg-emerald-700 hover:bg-emerald-800 text-white font-black px-6 py-4 rounded-none flex items-center gap-2.5 transition-all shadow-lg text-sm uppercase tracking-wider border border-emerald-600"
-          >
-            <Camera size={20} />
-            Digitalizar / Scanner / QR
-          </button>
-          <button 
-            onClick={() => handleStartCreate(null, undefined)}
-            className="bg-[#003366] hover:bg-[#002244] text-white font-black px-8 py-4 rounded-none flex items-center gap-3 transition-all shadow-lg text-base uppercase tracking-widest"
-          >
-            <Plus size={22} />
-            Registar Compra
-          </button>
-        </div>
+        {activeSubTab === 'historico' && (
+          <div className="flex flex-wrap gap-3">
+            <button 
+              type="button"
+              onClick={() => setIsMainScannerOpen(true)}
+              className="bg-emerald-700 hover:bg-emerald-800 text-white font-black px-5 py-3 rounded-none flex items-center gap-2.5 transition-all shadow-lg text-sm uppercase tracking-wider border border-emerald-600"
+            >
+              <Camera size={18} />
+              Digitalizar / QR
+            </button>
+            <button 
+              onClick={() => handleStartCreate(null, undefined)}
+              className="bg-[#003366] hover:bg-[#002244] text-white font-black px-6 py-3 rounded-none flex items-center gap-2.5 transition-all shadow-lg text-sm uppercase tracking-widest"
+            >
+              <Plus size={18} />
+              Registar Compra
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="flex gap-8 border-b border-zinc-200">

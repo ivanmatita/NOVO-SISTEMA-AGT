@@ -525,7 +525,7 @@ export const GestaoComprasForm: React.FC<Props> = ({
         valor_contravalor: form.contravalor,
         desconto_global: form.desconto_global,
         global_discount: form.desconto_global,
-        taxa_retencao: form.taxa_retencao,
+        taxa_retencao: parseFloat(form.taxa_retencao as any) || null,
         hash: form.hash_certificacao || null,
         hash_documento: form.hash_certificacao || null,
         caixa_id: form.caixa_id || null,
@@ -600,7 +600,7 @@ export const GestaoComprasForm: React.FC<Props> = ({
       }
 
       payload.document_url = docUrl;
-      payload.document_path = docPath;
+      // NOTE: document_path does NOT exist in the compras table — do not include in payload
 
       let savedDoc: any;
 

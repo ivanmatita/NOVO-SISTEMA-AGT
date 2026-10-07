@@ -29276,6 +29276,37 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
           onOpenAttachments={(doc) => {
             setShowFileModal(doc as any);
           }}
+          onEmitReceipt={(doc) => {
+            const fullPurchase = purchases.find(p => p.id === doc.id) || (doc as any);
+            setShowReceiptModal(fullPurchase);
+          }}
+          onEmitCreditNote={(doc) => {
+            const fullPurchase = purchases.find(p => p.id === doc.id) || (doc as any);
+            const rawItems = fullPurchase.itens || fullPurchase.items || [];
+            const parsedItems = typeof rawItems === 'string' ? JSON.parse(rawItems) : (rawItems || []);
+            const creditNoteData: any = {
+              tipo_documento: 'Nota de Crédito de Fornecedor',
+              document_type: 'Nota de Crédito de Fornecedor',
+              reference_document: fullPurchase.purchase_number || fullPurchase.numero_documento || fullPurchase.invoice_number,
+              numero_fatura: fullPurchase.purchase_number || fullPurchase.numero_documento || fullPurchase.invoice_number,
+              fornecedor_id: fullPurchase.fornecedor_id || fullPurchase.supplier_id,
+              fornecedor_nome: fullPurchase.fornecedor_nome || fullPurchase.supplier_name,
+              supplier_id: fullPurchase.fornecedor_id || fullPurchase.supplier_id,
+              supplier_name: fullPurchase.fornecedor_nome || fullPurchase.supplier_name,
+              nif_fornecedor: fullPurchase.nif || fullPurchase.supplier_nif,
+              items: parsedItems,
+              itens: parsedItems,
+              moeda: fullPurchase.moeda || fullPurchase.currency || 'AOA',
+              currency: fullPurchase.moeda || fullPurchase.currency || 'AOA',
+              taxa_cambio: fullPurchase.taxa_cambio || 1,
+              work_site: fullPurchase.work_site,
+              caixa_id: fullPurchase.caixa_id,
+            };
+            handleStartCreate(creditNoteData, 'Nota de Crédito de Fornecedor');
+          }}
+          onDeletePurchase={(doc) => {
+            handleDeletePurchase(doc.id);
+          }}
           companyData={companyData}
         />
       )}
@@ -29305,52 +29336,57 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
             </button>
           </div>
 
-          <div className="bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm overflow-x-auto">
+          <div className="bg-white border border-[#a8b5c4] shadow-sm overflow-x-auto">
+            <div className="w-full bg-gradient-to-b from-[#e8ecf1] via-[#d5dbe3] to-[#c2cbd6] border-b border-[#a8b5c4] py-2 px-4 text-center">
+              <h2 className="text-xs md:text-sm font-bold text-zinc-900 tracking-wide uppercase">
+                Compras Pendentes de Pagamento
+              </h2>
+            </div>
             <table className="w-full text-left border-collapse whitespace-nowrap">
               <thead>
-                <tr className="bg-[#003366] text-white text-[13px] uppercase tracking-wider font-bold">
-                  <th className="px-6 py-5">Data Emissão /<br/>Vencimento</th>
-                  <th className="px-6 py-5 border-r border-[#004488]">Tipo /<br/>Nº Doc Fornecedor</th>
-                  <th className="px-6 py-5">Nº Interno</th>
-                  <th className="px-6 py-5">Fornecedor</th>
-                  <th className="px-6 py-5 text-center">M</th>
-                  <th className="px-6 py-5 text-right">Valor Pago</th>
-                  <th className="px-6 py-5 text-right">Saldo Pendente</th>
-                  <th className="px-6 py-5 text-right">Valor Total</th>
-                  <th className="px-6 py-5 text-right px-8">Ações</th>
+                <tr className="bg-white text-zinc-900 text-[11px] font-bold border-b border-zinc-200">
+                  <th className="px-4 py-2 border-r border-zinc-200">Emissão / Vencimento</th>
+                  <th className="px-4 py-2 border-r border-zinc-200">Tipo / Nº Fornecedor</th>
+                  <th className="px-4 py-2 border-r border-zinc-200">Nº Interno</th>
+                  <th className="px-4 py-2 border-r border-zinc-200">Fornecedor</th>
+                  <th className="px-4 py-2 border-r border-zinc-200 text-center">Moeda</th>
+                  <th className="px-4 py-2 border-r border-zinc-200 text-right">Valor Pago</th>
+                  <th className="px-4 py-2 border-r border-zinc-200 text-right">Saldo Pendente</th>
+                  <th className="px-4 py-2 border-r border-zinc-200 text-right">Valor Total</th>
+                  <th className="px-4 py-2 text-right">Ações</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-100 italic">
+              <tbody className="divide-y divide-zinc-100">
                 {filteredPendingPurchases
                   .map((p, pIndex) => {
                     const st = getPurchaseStatus(p);
 
                     return (
-                      <tr key={p.id || pIndex} className="hover:bg-amber-50/50 transition-colors text-[13px] border-b border-zinc-50 group">
-                        <td className="px-6 py-4">
+                      <tr key={p.id || pIndex} className="hover:bg-blue-50/50 transition-colors text-[11px] border-b border-zinc-200">
+                        <td className="px-4 py-2 border-r border-zinc-100">
                           <div className="font-bold text-zinc-900">{new Date(p.date).toLocaleDateString('pt-PT')}</div>
-                          <div className="text-red-500 font-bold mt-1">{p.due_date ? new Date(p.due_date).toLocaleDateString('pt-PT') : '-'}</div>
+                          <div className="text-red-500 font-bold text-[10px]">{p.due_date ? new Date(p.due_date).toLocaleDateString('pt-PT') : '-'}</div>
                         </td>
-                        <td className="px-6 py-4 border-r border-zinc-100">
-                          <div className="font-black text-[#003366] uppercase whitespace-nowrap">{p.document_type || 'Compra'}</div>
-                          <div className="text-zinc-500 font-bold mt-1">{p.invoice_number || '-'}</div>
+                        <td className="px-4 py-2 border-r border-zinc-100">
+                          <div className="font-bold text-[#003366] uppercase whitespace-nowrap">{p.document_type || 'Compra'}</div>
+                          <div className="text-zinc-500 font-medium text-[10px]">{p.invoice_number || '-'}</div>
                           {st.isPartial ? (
-                            <span className="inline-block mt-1 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider bg-blue-100 text-blue-800 border border-blue-200">
+                            <span className="inline-block mt-0.5 px-1.5 py-0.2 text-[8px] font-black uppercase tracking-wider bg-blue-100 text-blue-800 border border-blue-200">
                               PARCIAL
                             </span>
                           ) : (
-                            <span className="inline-block mt-1 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-200">
+                            <span className="inline-block mt-0.5 px-1.5 py-0.2 text-[8px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-200">
                               PENDENTE
                             </span>
                           )}
                         </td>
-                        <td className="px-6 py-4 font-mono text-zinc-500">{p.codigo || p.purchase_number}</td>
-                        <td className="px-6 py-4 font-bold text-zinc-900">{p.supplier_name}</td>
-                        <td className="px-6 py-4 text-center text-zinc-600 font-medium">{p.currency || 'AOA'}</td>
-                        <td className="px-6 py-4 text-right font-bold text-emerald-600">{formatCurrency(st.paidDoc)}</td>
-                        <td className="px-6 py-4 text-right font-black text-amber-600 text-sm italic">{formatCurrency(st.pendBalance)}</td>
-                        <td className="px-6 py-4 text-right font-black text-[#003366] text-sm">{formatCurrency(st.totalDoc)}</td>
-                        <td className="px-6 py-4 text-right pr-8">
+                        <td className="px-4 py-2 border-r border-zinc-100 font-mono text-zinc-600 font-bold">{p.codigo || p.purchase_number}</td>
+                        <td className="px-4 py-2 border-r border-zinc-100 font-bold text-zinc-900 uppercase truncate max-w-[200px]" title={p.supplier_name}>{p.supplier_name}</td>
+                        <td className="px-4 py-2 border-r border-zinc-100 text-center text-zinc-600 font-bold">{p.currency || 'AOA'}</td>
+                        <td className="px-4 py-2 border-r border-zinc-100 text-right font-bold text-emerald-600 font-mono">{formatCurrency(st.paidDoc)}</td>
+                        <td className="px-4 py-2 border-r border-zinc-100 text-right font-black text-amber-600 font-mono">{formatCurrency(st.pendBalance)}</td>
+                        <td className="px-4 py-2 border-r border-zinc-100 text-right font-black text-[#003366] font-mono">{formatCurrency(st.totalDoc)}</td>
+                        <td className="px-4 py-2 text-right">
                           <div className="flex items-center justify-end gap-3 font-sans">
                             <UserIssuerButton doc={p} globalUsers={globalUsers} />
                             {(() => {

@@ -12,7 +12,8 @@ import {
   MoreVertical, Eye, Edit2, Copy, Printer, Download,
   Paperclip, Shield, FileText, BarChart2, Package,
   X, CheckCircle2, XCircle, Clock, Check, Hash as HashIcon,
-  RefreshCw, Filter, ChevronDown, ExternalLink, AlertTriangle
+  RefreshCw, Filter, ChevronDown, ExternalLink, AlertTriangle,
+  FileCheck, FileX, Trash2
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -89,6 +90,9 @@ interface Props {
   onEditPurchase: (doc: CompraDoc) => void;
   onViewPurchase: (doc: CompraDoc) => void;
   onOpenAttachments?: (doc: CompraDoc) => void;
+  onEmitReceipt?: (doc: CompraDoc) => void;
+  onEmitCreditNote?: (doc: CompraDoc) => void;
+  onDeletePurchase?: (doc: CompraDoc) => void;
   companyData?: any;
 }
 
@@ -165,8 +169,16 @@ const ActionsSidebar = ({
   const temRecibo = doc.recibo_emitido || doc.tem_recibo;
   const hash = getHash(doc);
 
+  const rawType = String(doc.tipo_documento || doc.document_type || '').toUpperCase();
+  const isReceiptType = rawType.includes('RECIBO') || rawType.includes('PAGAMENTO') || rawType.includes('FATURA RECIBO') || rawType === 'FR';
+  const isCreditNote = rawType.includes('CRÉDITO') || rawType.includes('CREDITO') || rawType === 'NC';
+  const isEligibleForReceipt = !anulado && !temRecibo && !isReceiptType && !isCreditNote;
+  const isEligibleForCreditNote = !anulado && !isCreditNote && !isReceiptType;
+
   const actions = [
     { id: 'view', icon: Eye, label: 'Ver Documento', desc: 'Visualizar detalhes completos', color: 'text-blue-600', enabled: true },
+    { id: 'receipt', icon: FileCheck, label: 'Emitir Recibo', desc: 'Registar pagamento/recibo desta fatura', color: 'text-emerald-600', enabled: isEligibleForReceipt },
+    { id: 'credit_note', icon: FileX, label: 'Emitir Nota de Crédito', desc: 'Emitir nota de crédito retificativa', color: 'text-rose-600', enabled: isEligibleForCreditNote },
     { id: 'edit', icon: Edit2, label: 'Editar', desc: 'Modificar documento', color: 'text-amber-600', enabled: !anulado && !temRecibo },
     { id: 'duplicate', icon: Copy, label: 'Duplicar', desc: 'Criar cópia deste documento', color: 'text-purple-600', enabled: true },
     { id: 'print', icon: Printer, label: 'Imprimir', desc: 'Imprimir documento', color: 'text-zinc-600', enabled: true },
@@ -176,6 +188,7 @@ const ActionsSidebar = ({
     { id: 'support_doc', icon: FileText, label: 'Ver Documento de Suporte', desc: 'Ver documento anexado / digitalizado', color: 'text-orange-600', enabled: true },
     { id: 'accounting', icon: BarChart2, label: 'Ver Impactos Contabilísticos', desc: 'Lançamentos no plano PGC', color: 'text-teal-600', enabled: true },
     { id: 'stock', icon: Package, label: 'Ver Movimento de Stock', desc: 'Entradas de armazém geradas', color: 'text-rose-600', enabled: true },
+    { id: 'delete', icon: Trash2, label: 'Apagar Documento', desc: 'Eliminar permanentemente do sistema', color: 'text-red-600', enabled: !anulado && !temRecibo },
   ];
 
   return (
@@ -515,6 +528,9 @@ export const GestaoComprasList: React.FC<Props> = ({
   onEditPurchase,
   onViewPurchase,
   onOpenAttachments,
+  onEmitReceipt,
+  onEmitCreditNote,
+  onDeletePurchase,
   companyData
 }) => {
   const { user } = useAuth();
@@ -724,6 +740,27 @@ export const GestaoComprasList: React.FC<Props> = ({
         break;
       case 'stock':
         setStockModalDoc(doc);
+        break;
+      case 'receipt':
+        if (onEmitReceipt) {
+          onEmitReceipt(doc);
+        } else {
+          toast('Emissão de recibo não disponível.', { icon: 'ℹ️' });
+        }
+        break;
+      case 'credit_note':
+        if (onEmitCreditNote) {
+          onEmitCreditNote(doc);
+        } else {
+          toast('Emissão de nota de crédito não disponível.', { icon: 'ℹ️' });
+        }
+        break;
+      case 'delete':
+        if (onDeletePurchase) {
+          onDeletePurchase(doc);
+        } else {
+          toast.error('Eliminação não disponível.');
+        }
         break;
     }
   };
@@ -1120,8 +1157,19 @@ export const GestaoComprasList: React.FC<Props> = ({
                   {/* 10. Ações: Edit | Document | Chart | ⋮ */}
                   <td className="px-3 py-1.5 text-right whitespace-nowrap">
                     <div className="flex items-center justify-end gap-1.5">
+                      {/* Emitir Recibo (direct row action for eligible invoices) */}
+                      {!anulado && !temRecibo && !['RECIBO', 'PAGAMENTO', 'FATURA RECIBO', 'FR', 'NC', 'CRÉDITO', 'CREDITO'].some(t => (doc.tipo_documento || doc.document_type || '').toUpperCase().includes(t)) && (
+                        <button
+                          onClick={() => handleAction('receipt', doc)}
+                          className="p-1 text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 border border-emerald-200 rounded-none transition-all"
+                          title="Emitir Recibo desta Fatura"
+                        >
+                          <FileCheck size={13} />
+                        </button>
+                      )}
+
                       {/* Edit button */}
-                      {!anulado && (
+                      {!anulado && !temRecibo && (
                         <button
                           onClick={() => handleAction('edit', doc)}
                           className="p-1 text-amber-600 hover:text-amber-800 hover:bg-amber-50 border border-amber-200 rounded-none transition-all"

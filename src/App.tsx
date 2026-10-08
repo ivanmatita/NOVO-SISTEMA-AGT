@@ -29197,20 +29197,20 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
           </div>
         </div>
         {activeSubTab === 'historico' && (
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap gap-2.5">
             <button 
               type="button"
               onClick={() => setIsMainScannerOpen(true)}
-              className="bg-emerald-700 hover:bg-emerald-800 text-white font-black px-5 py-3 rounded-none flex items-center gap-2.5 transition-all shadow-lg text-sm uppercase tracking-wider border border-emerald-600"
+              className="bg-emerald-700 hover:bg-emerald-800 text-white font-black px-3.5 py-1.5 rounded-none flex items-center gap-1.5 transition-all shadow-sm text-xs uppercase tracking-wider border border-emerald-600"
             >
-              <Camera size={18} />
+              <Camera size={14} />
               Digitalizar / QR
             </button>
             <button 
               onClick={() => handleStartCreate(null, undefined)}
-              className="bg-[#003366] hover:bg-[#002244] text-white font-black px-6 py-3 rounded-none flex items-center gap-2.5 transition-all shadow-lg text-sm uppercase tracking-widest"
+              className="bg-[#003366] hover:bg-[#002244] text-white font-black px-4 py-1.5 rounded-none flex items-center gap-1.5 transition-all shadow-sm text-xs uppercase tracking-wider"
             >
-              <Plus size={18} />
+              <Plus size={14} />
               Registar Compra
             </button>
           </div>

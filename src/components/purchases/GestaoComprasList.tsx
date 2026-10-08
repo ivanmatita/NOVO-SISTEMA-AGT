@@ -791,12 +791,18 @@ export const GestaoComprasList: React.FC<Props> = ({
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
-  // Centro custo / Caixa display — usa colunas reais da tabela
+  // Centro custo / Caixa display — usa colunas reais da tabela e resolve nomes
   const getCentroDisplay = (doc: CompraDoc) => {
-    // work_site e work_site_name existem na tabela; local_obra também
-    const cc = doc.work_site_name || doc.work_site || doc.local_obra || '';
-    const caixa = caixas.find(c => c.id === doc.caixa_id)?.name || doc.caixa || '';
-    return { cc, caixa };
+    const wsMatch = workSites.find(w => String(w.id) === String(doc.work_site))?.name || workSites.find(w => String(w.id) === String(doc.work_site))?.title;
+    const cc = doc.work_site_name || wsMatch || doc.work_site || doc.local_obra || '';
+
+    // Resolve caixa name strictly from caixas array using caixa_id or caixa
+    const caixaObj = caixas.find(c => String(c.id) === String(doc.caixa_id) || String(c.id) === String(doc.caixa));
+    let caixaName = caixaObj?.name || '';
+    if (!caixaName && doc.caixa && !/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(doc.caixa) && isNaN(Number(doc.caixa))) {
+      caixaName = doc.caixa;
+    }
+    return { cc, caixa: caixaName };
   };
 
   // MovID: número sequencial descendente baseado em posição na página

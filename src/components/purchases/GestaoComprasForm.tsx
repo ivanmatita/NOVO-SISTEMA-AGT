@@ -1176,9 +1176,9 @@ export const GestaoComprasForm: React.FC<Props> = ({
             <button
               type="button"
               onClick={addItem}
-              className="flex items-center gap-1 px-2 py-1 bg-[#003366] text-white text-[10px] font-black uppercase tracking-wider hover:bg-[#002244] transition-all"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-[#2563eb] hover:bg-blue-700 text-white text-xs font-bold uppercase tracking-wider transition-all shadow-sm rounded-none"
             >
-              <Plus size={11} /> Adicionar Linha
+              <Plus size={14} /> Adicionar Bem ou Serviço
             </button>
           </div>
 

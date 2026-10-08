@@ -549,7 +549,7 @@ export const GestaoComprasList: React.FC<Props> = ({
     status: '',
     workSiteId: '',
   });
-  const [showFilters, setShowFilters] = useState(false);
+  const [showFilters, setShowFilters] = useState(true);
   const [selectedDoc, setSelectedDoc] = useState<CompraDoc | null>(null);
 
   // Inline field edit modal (Hash / Centro Custos / Caixa)
@@ -1033,7 +1033,7 @@ export const GestaoComprasList: React.FC<Props> = ({
               const rsa = isRSA(doc);
               const { cc, caixa } = getCentroDisplay(doc);
               const isEven = idx % 2 === 0;
-              const hasAttachment = !!(doc.document_url);
+              const hasAttachment = !!(doc.document_url || (doc as any).document_path || (doc as any).comprovativo_url || (doc as any).file_url || (doc as any).anexo_url || (doc as any).anexo);
 
               return (
                 <tr

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * GestaoComprasForm.tsx
  * Formulário completo de registo/edição de documentos de compra.
  * Integração real com: fornecedores, séries, armazéns, métricas, PGC, stock, caixas.
@@ -6,6 +6,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { AgtItemModal, AgtItemData } from '../AgtItemModal';
 import {
   ChevronLeft, Plus, Trash2, Save, AlertCircle,
   Search, Package, RefreshCw, Info, CheckCircle2,
@@ -328,6 +329,9 @@ export const GestaoComprasForm: React.FC<Props> = ({
   const [dupWarning, setDupWarning] = useState('');
   const [supportFile, setSupportFile] = useState<File | null>(null);
   const [currentDocumentUrl, setCurrentDocumentUrl] = useState<string | null>(initialData?.document_url || null);
+  // AgtItemModal integration
+  const [showItemModal, setShowItemModal] = useState(false);
+  const [editingItemIdx, setEditingItemIdx] = useState<number | null>(null);
 
   // ── Totals ──────────────────────────────────────────────────────────────
   const calcTotals = useCallback(() => {
@@ -798,23 +802,104 @@ export const GestaoComprasForm: React.FC<Props> = ({
 
   const needsAmortizacao = form.itens.some(it => it.tipologia_custo === 'Meios Fixos e Investimentos');
 
+  // ── AgtItemModal ↔ LineItem converters ─────────────────────────────────
+  const lineItemToAgtItem = (item: LineItem): AgtItemData => ({
+    id: item.uid,
+    tipo_operacao: item.tipo_artigo || 'Produto',
+    quantity: item.quantidade,
+    description: item.descricao,
+    unidade_medida: item.unidade || 'QUANTIDADE (Qtd)',
+    unit_price: item.valor_unitario,
+    desconto: item.desconto_linha,
+    has_imposto: item.tax_rate > 0,
+    tem_isencao: item.tax_rate === 0,
+    tipo_imposto: item.tax_rate > 0 ? 'IVA' : 'NS',
+    codigo_imposto: item.tax_id || '',
+    taxa_imposto: item.tax_rate,
+    valor_imposto: 0,
+    total: item.total_linha,
+  });
+
+  const agtItemToLineItem = (agtItem: AgtItemData, existingIdx?: number): LineItem => {
+    const existing = existingIdx !== null && existingIdx !== undefined ? form.itens[existingIdx] : null;
+    return {
+      uid: typeof agtItem.id === 'string' && agtItem.id ? agtItem.id : uid(),
+      descricao: agtItem.description,
+      serial_number: existing?.serial_number || '',
+      data_validade: existing?.data_validade || '',
+      quantidade: agtItem.quantity,
+      unidade: agtItem.unidade_medida || 'UN',
+      valor_unitario: agtItem.unit_price,
+      tipo_artigo: agtItem.tipo_operacao || 'Produto',
+      desconto_linha: agtItem.desconto || 0,
+      tipologia_custo: existing?.tipologia_custo || 'Outros Bens de Consumo',
+      armazem_id: existing?.armazem_id || '',
+      local_trabalho_id: existing?.local_trabalho_id || '',
+      centro_custo_id: existing?.centro_custo_id || '',
+      rubrica_id: existing?.rubrica_id || '',
+      rubrica_label: existing?.rubrica_label || '',
+      sujeito_imposto_selo: existing?.sujeito_imposto_selo || 'Não sujeita',
+      tax_id: agtItem.codigo_imposto || '',
+      tax_rate: agtItem.taxa_imposto || 0,
+      subtotal: 0,
+      total_linha: agtItem.total || 0,
+    };
+  };
+
+  const openNewItem = () => {
+    setEditingItemIdx(null);
+    setShowItemModal(true);
+  };
+
+  const openEditItem = (idx: number) => {
+    setEditingItemIdx(idx);
+    setShowItemModal(true);
+  };
+
+  const handleItemSave = (agtItem: AgtItemData) => {
+    const newLine = agtItemToLineItem(agtItem, editingItemIdx ?? undefined);
+    if (editingItemIdx !== null) {
+      setForm(f => {
+        const itens = [...f.itens];
+        itens[editingItemIdx] = newLine;
+        return { ...f, itens };
+      });
+    } else {
+      setForm(f => ({ ...f, itens: [...f.itens, newLine] }));
+    }
+    setShowItemModal(false);
+    setEditingItemIdx(null);
+  };
+
   // ─────────────────────────────────────────────────────────────────────────
   // RENDER
   // ─────────────────────────────────────────────────────────────────────────
 
   return (
     <div className="min-h-screen bg-zinc-50">
-      <form onSubmit={handleSubmit} className="max-w-full mx-auto space-y-2 p-3">
-        {/* ─── Top bar ─────────────────────────────────────────────────── */}
-        <div className="flex items-center gap-2 mb-1">
-          <button type="button" onClick={onBack} className="p-1.5 hover:bg-zinc-200 text-zinc-500 transition-colors">
+      {/* AgtItemModal side panel */}
+      <AgtItemModal
+        isOpen={showItemModal}
+        initialItem={editingItemIdx !== null ? lineItemToAgtItem(form.itens[editingItemIdx]) : null}
+        activeTaxes={activeTaxes}
+        onClose={() => { setShowItemModal(false); setEditingItemIdx(null); }}
+        onSave={handleItemSave}
+      />
+
+      <form onSubmit={handleSubmit} className="max-w-full mx-auto space-y-0">
+        {/* ─── BLUE HEADER ────────────────────────────────────────────── */}
+        <div className="bg-[#0f2a4a] px-6 py-4 flex items-center gap-3">
+          <button type="button" onClick={onBack} className="p-1.5 hover:bg-white/10 text-white/80 transition-colors rounded">
             <ChevronLeft size={20} />
           </button>
-          <h2 className="text-base font-black text-[#003366] uppercase tracking-wider">
-            {isEditing ? 'Editar Documento de Compra' : 'Registar Nova Compra'}
-          </h2>
+          <div>
+            <h2 className="text-base font-bold text-white tracking-tight">
+              {isEditing ? 'Editar Documento de Compra' : 'Registar Nova Compra'}
+            </h2>
+            <p className="text-xs text-blue-200/80">Gestão de Compras — Ano de Exercício: {ano}</p>
+          </div>
           {isEditing && (
-            <span className="ml-2 px-2 py-0.5 bg-amber-100 text-amber-700 text-[9px] font-black uppercase tracking-wider border border-amber-200">
+            <span className="ml-auto px-2 py-0.5 bg-amber-400/20 text-amber-300 text-[9px] font-black uppercase tracking-wider border border-amber-400/30">
               EDIÇÃO
             </span>
           )}
@@ -822,779 +907,356 @@ export const GestaoComprasForm: React.FC<Props> = ({
 
         {/* Amortização alert */}
         {needsAmortizacao && (
-          <div className="flex items-start gap-2 bg-indigo-50 border border-indigo-200 px-3 py-2 text-xs text-indigo-800">
+          <div className="flex items-start gap-2 bg-indigo-50 border-b border-indigo-200 px-6 py-2 text-xs text-indigo-800">
             <Info size={14} className="mt-0.5 flex-shrink-0 text-indigo-500" />
-            <span>
-              <strong>Meios Fixos e Investimentos detectados.</strong> Após guardar, os dados serão integrados no Mapa de Amortização da Contabilidade.
-            </span>
+            <span><strong>Meios Fixos e Investimentos detectados.</strong> Após guardar, os dados serão integrados no Mapa de Amortização da Contabilidade.</span>
           </div>
         )}
 
-        {/* ─── SECÇÃO 1: Informações do documento ────────────────────── */}
-        <div className="bg-white border border-zinc-200 shadow-sm">
-          <div className="px-3 py-1.5 border-b border-zinc-100 bg-zinc-50">
-            <h3 className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">1. Informações do Documento</h3>
-          </div>
-          <div className="p-3 grid grid-cols-2 md:grid-cols-4 gap-2">
-            {/* Tipo Documento */}
-            <div>
-              <Lbl required>Tipo de Documento</Lbl>
-              <select
-                value={form.tipo_documento}
-                onChange={e => setForm(f => ({ ...f, tipo_documento: e.target.value }))}
-                className={selectCls}
-                disabled={!!fixedDocumentType}
-              >
-                {TIPOS_DOCUMENTO.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
-            </div>
+        <div className="px-6 py-5 space-y-6">
 
-            {/* Data Valor */}
-            <div>
-              <Lbl>Data Valor</Lbl>
-              <input
-                type="date"
-                value={form.data_valor}
-                onChange={e => setForm(f => ({ ...f, data_valor: e.target.value }))}
-                className={inputCls}
-              />
+          {/* ─── SECÇÃO 1: Informações do Documento ──────────────────── */}
+          <div className="bg-white border border-zinc-200 shadow-sm">
+            <div className="px-4 py-3 border-b border-zinc-200 bg-gradient-to-r from-[#0f2a4a] to-[#1a3a5c]">
+              <h3 className="text-xs font-bold text-white uppercase tracking-widest">Informações do documento</h3>
             </div>
-
-            {/* Data Documento */}
-            <div>
-              <Lbl required>Data do Documento</Lbl>
-              <input
-                type="date"
-                value={form.data_documento}
-                onChange={e => setForm(f => ({ ...f, data_documento: e.target.value }))}
-                className={`${inputCls} ${errors.data_documento ? 'border-red-400' : ''}`}
-              />
-              {errors.data_documento && <p className="text-[9px] text-red-500 mt-0.5">{errors.data_documento}</p>}
-            </div>
-
-            {/* Data Vencimento */}
-            <div>
-              <Lbl>Data de Vencimento</Lbl>
-              <input
-                type="date"
-                value={form.data_vencimento}
-                onChange={e => setForm(f => ({ ...f, data_vencimento: e.target.value }))}
-                className={inputCls}
-              />
-            </div>
-
-            {/* Série */}
-            <div>
-              <Lbl>Série de Documento</Lbl>
-              <select
-                value={form.serie_id}
-                onChange={e => setForm(f => ({ ...f, serie_id: e.target.value }))}
-                className={selectCls}
-              >
-                <option value="">— Sem Série —</option>
-                {seriesCompras.map(s => (
-                  <option key={s.id} value={String(s.id)}>
-                    {s.nome || s.name || s.reference || String(s.id)}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Nº Documento */}
-            <div>
-              <Lbl required>Nº do Documento</Lbl>
-              <input
-                type="text"
-                placeholder="Ex: FT 123/2026"
-                value={form.numero_documento}
-                onChange={e => setForm(f => ({ ...f, numero_documento: e.target.value }))}
-                className={`${inputCls} ${errors.numero_documento || dupWarning ? 'border-amber-400' : ''}`}
-              />
-              {dupWarning && <p className="text-[9px] text-amber-600 mt-0.5">{dupWarning}</p>}
-              {errors.numero_documento && !dupWarning && <p className="text-[9px] text-red-500 mt-0.5">{errors.numero_documento}</p>}
-            </div>
-
-            {/* Hash / Certificação */}
-            <div>
-              <Lbl>Hash / Certificação</Lbl>
-              <input
-                type="text"
-                placeholder="Hash do documento"
-                value={form.hash_certificacao}
-                onChange={e => setForm(f => ({ ...f, hash_certificacao: e.target.value }))}
-                className={inputCls + ' font-mono'}
-              />
-            </div>
-
-            {/* Desconto Global */}
-            <div>
-              <Lbl>% Desconto Global</Lbl>
-              <input
-                type="number"
-                min={0}
-                max={100}
-                step={0.01}
-                placeholder="0"
-                value={form.desconto_global || ''}
-                onChange={e => setForm(f => ({ ...f, desconto_global: Math.min(100, Math.max(0, Number(e.target.value))) }))}
-                className={`${inputCls} ${errors.desconto_global ? 'border-red-400' : ''}`}
-              />
-              {errors.desconto_global && <p className="text-[9px] text-red-500 mt-0.5">{errors.desconto_global}</p>}
-            </div>
-          </div>
-
-          {/* Cash doc fields */}
-          {isCashDoc && (
-            <div className="px-3 pb-3 grid grid-cols-2 gap-2 border-t border-zinc-100 pt-2">
-              <div>
-                <Lbl required>Caixa</Lbl>
-                <select
-                  value={form.caixa_id}
-                  onChange={e => setForm(f => ({ ...f, caixa_id: e.target.value }))}
-                  className={selectCls}
-                >
-                  <option value="">Seleccione a Caixa</option>
-                  {caixas.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+              {/* Tipo Documento */}
+              <div className="space-y-1">
+                <label className="block text-xs font-semibold text-zinc-600">Tipo de documento <span className="text-red-500">*</span></label>
+                <select value={form.tipo_documento} onChange={e => setForm(f => ({ ...f, tipo_documento: e.target.value }))} className="w-full bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none" disabled={!!fixedDocumentType}>
+                  {TIPOS_DOCUMENTO.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
-              <div>
-                <Lbl>Forma de Pagamento</Lbl>
-                <select
-                  value={form.metodo_pagamento}
-                  onChange={e => setForm(f => ({ ...f, metodo_pagamento: e.target.value }))}
-                  className={selectCls}
-                >
-                  <option value="">Seleccione</option>
-                  <option value="Numerário">Numerário</option>
-                  <option value="Multicaixa">Multicaixa</option>
-                  <option value="Transferência">Transferência</option>
-                  <option value="Depósito">Depósito</option>
-                  <option value="Cheque">Cheque</option>
+
+              {/* Série */}
+              <div className="space-y-1">
+                <label className="block text-xs font-semibold text-zinc-600">Série</label>
+                <select value={form.serie_id} onChange={e => setForm(f => ({ ...f, serie_id: e.target.value }))} className="w-full bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none">
+                  <option value="">— Sem Série —</option>
+                  {seriesCompras.map(s => <option key={s.id} value={String(s.id)}>{s.nome || s.name || s.reference || String(s.id)}</option>)}
                 </select>
               </div>
-            </div>
-          )}
-        </div>
 
-        {/* ─── SECÇÃO 2: Informações do Fornecedor ─────────────────────── */}
-        <div className="bg-white border border-zinc-200 shadow-sm">
-          <div className="px-3 py-1.5 border-b border-zinc-100 bg-zinc-50">
-            <h3 className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">2. Fornecedor</h3>
+              {/* Nº Documento */}
+              <div className="space-y-1">
+                <label className="block text-xs font-semibold text-zinc-600">Nº do Documento <span className="text-red-500">*</span></label>
+                <input type="text" placeholder="Ex: FT 123/2026" value={form.numero_documento} onChange={e => setForm(f => ({ ...f, numero_documento: e.target.value }))} className={`w-full bg-white border px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none ${errors.numero_documento || dupWarning ? 'border-amber-400' : 'border-zinc-300'}`} />
+                {dupWarning && <p className="text-[10px] text-amber-600">{dupWarning}</p>}
+                {errors.numero_documento && !dupWarning && <p className="text-[10px] text-red-500">{errors.numero_documento}</p>}
+              </div>
+
+              {/* Local de Trabalho / Centro de Custos */}
+              <div className="space-y-1">
+                <label className="block text-xs font-semibold text-zinc-600">Local de Trabalho</label>
+                <select value={form.centro_custo_id} onChange={e => setForm(f => ({ ...f, centro_custo_id: e.target.value }))} className="w-full bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none">
+                  <option value="">— Seleccione —</option>
+                  {(workSites || []).map(ws => <option key={ws.id} value={String(ws.id)}>{ws.name || ws.title || String(ws.id)}</option>)}
+                </select>
+              </div>
+
+              {/* Data Emissão */}
+              <div className="space-y-1">
+                <label className="block text-xs font-semibold text-zinc-600">Data de emissão <span className="text-red-500">*</span></label>
+                <input type="date" value={form.data_documento} onChange={e => setForm(f => ({ ...f, data_documento: e.target.value }))} className={`w-full bg-white border px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none ${errors.data_documento ? 'border-red-400' : 'border-zinc-300'}`} />
+                {errors.data_documento && <p className="text-[10px] text-red-500">{errors.data_documento}</p>}
+              </div>
+
+              {/* Data Vencimento */}
+              <div className="space-y-1">
+                <label className="block text-xs font-semibold text-zinc-600">Data de vencimento</label>
+                <input type="date" value={form.data_vencimento} onChange={e => setForm(f => ({ ...f, data_vencimento: e.target.value }))} className="w-full bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none" />
+              </div>
+
+              {/* Câmbio */}
+              <div className="space-y-1">
+                <label className="block text-xs font-semibold text-zinc-600">Câmbio</label>
+                <input type="number" min={0.0001} step={0.0001} value={form.taxa_cambio} readOnly={form.moeda === 'AOA'} onChange={e => setForm(f => ({ ...f, taxa_cambio: Number(e.target.value) }))} className={`w-full bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none ${form.moeda === 'AOA' ? 'bg-zinc-50 text-zinc-400' : ''}`} />
+              </div>
+
+              {/* Moeda */}
+              <div className="space-y-1">
+                <label className="block text-xs font-semibold text-zinc-600">Moeda</label>
+                <select value={form.moeda} onChange={e => { const m = e.target.value; setForm(f => ({ ...f, moeda: m, taxa_cambio: m === 'AOA' ? 1 : f.taxa_cambio })); }} className="w-full bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none">
+                  <option value="AOA">AOA — Kwanza Angolano</option>
+                  <option value="USD">USD — Dólar Americano</option>
+                  <option value="EUR">EUR — Euro</option>
+                </select>
+              </div>
+
+              {/* Contravalor */}
+              <div className="space-y-1">
+                <label className="block text-xs font-semibold text-zinc-600">Contravalor (AOA)</label>
+                <input type="text" readOnly value={fmtCurrency(round2(form.moeda === 'AOA' ? totals.totalFinal : totals.totalFinal * form.taxa_cambio), 'AOA')} className="w-full bg-zinc-50 border border-zinc-200 px-3 py-2 text-sm text-zinc-500 cursor-default rounded-none font-mono" />
+              </div>
+
+              {/* Taxa Retenção */}
+              <div className="space-y-1">
+                <label className="block text-xs font-semibold text-zinc-600">Selecione a Taxa de Retenção</label>
+                <select value={form.taxa_retencao} onChange={e => setForm(f => ({ ...f, taxa_retencao: e.target.value }))} className="w-full bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none">
+                  {TAXAS_RETENCAO.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+
+              {/* Desconto Global */}
+              <div className="space-y-1">
+                <label className="block text-xs font-semibold text-zinc-600">Desconto global (%)</label>
+                <input type="number" min={0} max={100} step={0.01} placeholder="0" value={form.desconto_global || ''} onChange={e => setForm(f => ({ ...f, desconto_global: Math.min(100, Math.max(0, Number(e.target.value))) }))} className={`w-full bg-white border px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none ${errors.desconto_global ? 'border-red-400' : 'border-zinc-300'}`} />
+              </div>
+
+              {/* Hash */}
+              <div className="space-y-1">
+                <label className="block text-xs font-semibold text-zinc-600">Hash / Certificação</label>
+                <input type="text" placeholder="Hash do documento" value={form.hash_certificacao} onChange={e => setForm(f => ({ ...f, hash_certificacao: e.target.value }))} className="w-full bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none font-mono" />
+              </div>
+            </div>
+
+            {/* Cash-doc extra fields */}
+            {isCashDoc && (
+              <div className="px-4 pb-4 grid grid-cols-2 gap-4 border-t border-zinc-100 pt-4">
+                <div className="space-y-1">
+                  <label className="block text-xs font-semibold text-zinc-600">Caixa <span className="text-red-500">*</span></label>
+                  <select value={form.caixa_id} onChange={e => setForm(f => ({ ...f, caixa_id: e.target.value }))} className="w-full bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none">
+                    <option value="">Seleccione a Caixa</option>
+                    {caixas.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="block text-xs font-semibold text-zinc-600">Forma de Pagamento</label>
+                  <select value={form.metodo_pagamento} onChange={e => setForm(f => ({ ...f, metodo_pagamento: e.target.value }))} className="w-full bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none">
+                    <option value="">Seleccione</option>
+                    <option value="Numerário">Numerário</option>
+                    <option value="Multicaixa">Multicaixa</option>
+                    <option value="Transferência">Transferência</option>
+                    <option value="Depósito">Depósito</option>
+                    <option value="Cheque">Cheque</option>
+                  </select>
+                </div>
+              </div>
+            )}
           </div>
-          <div className="p-3 grid grid-cols-2 md:grid-cols-4 gap-2">
-            {/* Fornecedor select */}
-            <div className="md:col-span-2 relative">
-              <Lbl required>Fornecedor</Lbl>
-              <div className="relative">
-                <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-400" />
-                <input
-                  type="text"
-                  placeholder="Pesquisar fornecedor..."
-                  value={supplierSearch || form.fornecedor_nome}
-                  onChange={e => {
-                    setSupplierSearch(e.target.value);
-                    setShowSupplierDropdown(true);
-                    if (!e.target.value) {
-                      setForm(f => ({ ...f, fornecedor_id: '', fornecedor_nome: '', nif_fornecedor: '' }));
-                    }
-                  }}
-                  onFocus={() => setShowSupplierDropdown(true)}
-                  onBlur={() => setTimeout(() => setShowSupplierDropdown(false), 200)}
-                  className={`${inputCls} pl-6 ${errors.fornecedor_id ? 'border-red-400' : ''}`}
-                />
-                {showSupplierDropdown && filteredSuppliers.length > 0 && (
-                  <div className="absolute z-50 top-full left-0 right-0 bg-white border border-zinc-200 shadow-xl max-h-52 overflow-y-auto">
-                    {filteredSuppliers.map(s => (
-                      <button
-                        key={s.id}
-                        type="button"
-                        className="w-full text-left px-3 py-1.5 hover:bg-blue-50 text-xs font-medium text-zinc-800 border-b border-zinc-50 last:border-0"
-                        onMouseDown={() => {
-                          setForm(f => ({
-                            ...f,
-                            fornecedor_id: String(s.id),
-                            fornecedor_nome: s.name,
-                            nif_fornecedor: s.nif || '',
-                          }));
-                          setSupplierSearch('');
-                          setShowSupplierDropdown(false);
-                        }}
-                      >
-                        <div className="font-black text-zinc-800">{s.name}</div>
-                        {s.nif && <div className="text-[9px] text-zinc-400">NIF: {s.nif}</div>}
-                      </button>
-                    ))}
+
+          {/* ─── SECÇÃO 2: Informações do Fornecedor ────────────────── */}
+          <div className="bg-white border border-zinc-200 shadow-sm">
+            <div className="px-4 py-3 border-b border-zinc-200 bg-gradient-to-r from-[#0f2a4a] to-[#1a3a5c]">
+              <h3 className="text-xs font-bold text-white uppercase tracking-widest">Informações do Fornecedor</h3>
+            </div>
+            <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+              {/* Fornecedor search */}
+              <div className="md:col-span-2 space-y-1 relative">
+                <label className="block text-xs font-semibold text-zinc-600">Fornecedor <span className="text-red-500">*</span></label>
+                <div className="relative">
+                  <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+                  <input type="text" placeholder="Pesquisar fornecedor..." value={supplierSearch || form.fornecedor_nome}
+                    onChange={e => { setSupplierSearch(e.target.value); setShowSupplierDropdown(true); if (!e.target.value) { setForm(f => ({ ...f, fornecedor_id: '', fornecedor_nome: '', nif_fornecedor: '' })); } }}
+                    onFocus={() => setShowSupplierDropdown(true)} onBlur={() => setTimeout(() => setShowSupplierDropdown(false), 200)}
+                    className={`w-full bg-white border px-3 pl-8 py-2 text-sm text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none ${errors.fornecedor_id ? 'border-red-400' : 'border-zinc-300'}`} />
+                  {showSupplierDropdown && filteredSuppliers.length > 0 && (
+                    <div className="absolute z-50 top-full left-0 right-0 bg-white border border-zinc-200 shadow-xl max-h-52 overflow-y-auto">
+                      {filteredSuppliers.map(s => (
+                        <button key={s.id} type="button" className="w-full text-left px-3 py-2 hover:bg-blue-50 text-sm font-medium text-zinc-800 border-b border-zinc-50 last:border-0"
+                          onMouseDown={() => { setForm(f => ({ ...f, fornecedor_id: String(s.id), fornecedor_nome: s.name, nif_fornecedor: s.nif || '' })); setSupplierSearch(''); setShowSupplierDropdown(false); }}>
+                          <div className="font-semibold text-zinc-800">{s.name}</div>
+                          {s.nif && <div className="text-[10px] text-zinc-400">NIF: {s.nif}</div>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {errors.fornecedor_id && <p className="text-[10px] text-red-500">{errors.fornecedor_id}</p>}
+              </div>
+
+              {/* NIF auto-fill */}
+              <div className="space-y-1">
+                <label className="block text-xs font-semibold text-zinc-600">NIF do Fornecedor</label>
+                <input type="text" readOnly value={form.nif_fornecedor} className="w-full bg-zinc-50 border border-zinc-200 px-3 py-2 text-sm text-zinc-500 cursor-default rounded-none" placeholder="Preenchido automaticamente" />
+                {form.fornecedor_id && !form.nif_fornecedor && <p className="text-[10px] text-amber-500">⚠️ Fornecedor sem NIF.</p>}
+              </div>
+
+              {/* Data Prestação */}
+              <div className="space-y-1">
+                <label className="block text-xs font-semibold text-zinc-600">Data prestação de bens/serviços</label>
+                <input type="date" value={form.data_valor} onChange={e => setForm(f => ({ ...f, data_valor: e.target.value }))} className="w-full bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none" />
+              </div>
+            </div>
+          </div>
+
+          {/* ─── Documento de Suporte ─────────────────────────────────── */}
+          <div className="bg-white border border-zinc-200 shadow-sm">
+            <div className="px-4 py-3 border-b border-zinc-200 bg-gradient-to-r from-[#0f2a4a] to-[#1a3a5c] flex items-center justify-between">
+              <h3 className="text-xs font-bold text-white uppercase tracking-widest flex items-center gap-1.5">
+                <Paperclip size={12} /> Documento de Suporte
+              </h3>
+              {currentDocumentUrl && (
+                <a href={currentDocumentUrl} target="_blank" rel="noreferrer" className="text-[11px] text-blue-200 hover:text-white font-semibold inline-flex items-center gap-1">
+                  <ExternalLink size={11} /> Ver anexo gravado
+                </a>
+              )}
+            </div>
+            <div className="p-4 flex flex-wrap items-center gap-3">
+              <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-zinc-100 hover:bg-zinc-200 border border-zinc-300 text-sm font-semibold text-zinc-700 transition-colors rounded-none">
+                <Paperclip size={14} />
+                <span>{supportFile ? supportFile.name : 'Seleccionar Ficheiro (PDF ou Imagem)'}</span>
+                <input type="file" accept="application/pdf,image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) setSupportFile(f); }} />
+              </label>
+              {supportFile && <button type="button" onClick={() => setSupportFile(null)} className="text-red-500 hover:text-red-700 text-sm font-semibold">Remover</button>}
+              <span className="text-xs text-zinc-400">Formatos aceites: PDF, JPG, PNG</span>
+            </div>
+          </div>
+
+          {/* ─── BENS E SERVIÇOS ─────────────────────────────────────── */}
+          <div className="bg-white border border-zinc-200 shadow-sm">
+            <div className="px-4 py-3 border-b border-zinc-200 bg-gradient-to-r from-[#0f2a4a] to-[#1a3a5c] flex items-center justify-between">
+              <h3 className="text-xs font-bold text-white uppercase tracking-widest">Bens e Serviços</h3>
+              <button type="button" onClick={openNewItem} className="flex items-center gap-1.5 px-4 py-1.5 bg-[#2563eb] hover:bg-blue-700 text-white text-xs font-bold uppercase tracking-wide transition-all rounded-none">
+                <Plus size={13} /> Adicionar à lista
+              </button>
+            </div>
+
+            {errors.itens && (
+              <div className="flex items-center gap-2 px-4 py-2 bg-red-50 border-b border-red-200">
+                <AlertCircle size={12} className="text-red-500" />
+                <span className="text-xs text-red-600 font-semibold">{errors.itens}</span>
+              </div>
+            )}
+
+            {/* Items table */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-zinc-50 border-b border-zinc-200">
+                    <th className="px-3 py-2 text-left text-xs font-bold text-zinc-500 uppercase tracking-wider w-8">#</th>
+                    <th className="px-3 py-2 text-left text-xs font-bold text-zinc-500 uppercase tracking-wider">Descrição do produto</th>
+                    <th className="px-3 py-2 text-center text-xs font-bold text-zinc-500 uppercase tracking-wider w-24">Quantidade</th>
+                    <th className="px-3 py-2 text-right text-xs font-bold text-zinc-500 uppercase tracking-wider w-28">Preço Unit.</th>
+                    <th className="px-3 py-2 text-center text-xs font-bold text-zinc-500 uppercase tracking-wider w-24">Desconto (%)</th>
+                    <th className="px-3 py-2 text-left text-xs font-bold text-zinc-500 uppercase tracking-wider w-28">Imposto aplicado</th>
+                    <th className="px-3 py-2 text-right text-xs font-bold text-zinc-500 uppercase tracking-wider w-28">Total</th>
+                    <th className="px-3 py-2 text-center text-xs font-bold text-zinc-500 uppercase tracking-wider w-20">Acção</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100">
+                  {form.itens.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="px-4 py-8 text-center text-zinc-400 text-sm">
+                        Nenhum artigo adicionado. Clique em <strong>+ Adicionar à lista</strong> para começar.
+                      </td>
+                    </tr>
+                  ) : (
+                    form.itens.map((item, idx) => {
+                      const base = round2(item.quantidade * item.valor_unitario);
+                      const descLinha = round2(base * (item.desconto_linha / 100));
+                      const subtotal = round2(base - descLinha);
+                      const iva = round2(subtotal * (item.tax_rate / 100));
+                      const totalLinha = round2(subtotal + iva);
+                      return (
+                        <tr key={item.uid} className="hover:bg-zinc-50 transition-colors">
+                          <td className="px-3 py-3">
+                            <span className="w-6 h-6 bg-[#0f2a4a] text-white text-[10px] font-bold flex items-center justify-center">{idx + 1}</span>
+                          </td>
+                          <td className="px-3 py-3">
+                            <div className="font-semibold text-zinc-800">{item.descricao || <span className="text-zinc-400 italic">—</span>}</div>
+                            <div className="text-[10px] text-zinc-400 mt-0.5">{item.tipo_artigo} · {item.unidade || 'UN'} {item.tipologia_custo ? `· ${item.tipologia_custo}` : ''}</div>
+                            {item.armazem_id && (
+                              <div className="text-[10px] text-emerald-600 mt-0.5">
+                                🏭 {armazens.find(a => a.id === item.armazem_id)?.name || item.armazem_id}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-3 py-3 text-center text-zinc-700 font-semibold">{item.quantidade}</td>
+                          <td className="px-3 py-3 text-right text-zinc-700 font-semibold font-mono">{fmtCurrency(item.valor_unitario, form.moeda)}</td>
+                          <td className="px-3 py-3 text-center text-zinc-500">{item.desconto_linha > 0 ? `${item.desconto_linha}%` : '—'}</td>
+                          <td className="px-3 py-3">
+                            <span className={`inline-block px-2 py-0.5 text-[10px] font-bold rounded-none ${item.tax_rate > 0 ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-zinc-100 text-zinc-500 border border-zinc-200'}`}>
+                              {item.tax_rate > 0 ? `IVA ${item.tax_rate}%` : 'Sem imposto'}
+                            </span>
+                          </td>
+                          <td className="px-3 py-3 text-right font-bold text-zinc-800 font-mono">{fmtCurrency(totalLinha, form.moeda)}</td>
+                          <td className="px-3 py-3">
+                            <div className="flex items-center justify-center gap-1">
+                              <button type="button" onClick={() => openEditItem(idx)} className="p-1.5 text-blue-500 hover:bg-blue-50 transition-colors" title="Editar">
+                                <Package size={13} />
+                              </button>
+                              <button type="button" onClick={() => removeItem(idx)} className="p-1.5 text-red-400 hover:bg-red-50 transition-colors" title="Remover">
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Totals footer */}
+            <div className="border-t border-zinc-200 px-4 py-4">
+              <div className="flex flex-col items-end gap-1.5">
+                <div className="flex justify-between w-full max-w-sm">
+                  <span className="text-sm text-zinc-500 font-semibold">SUBTOTAL BRUTO</span>
+                  <span className="text-sm font-bold text-zinc-800 font-mono">{fmtCurrency(totals.subtotalBruto, form.moeda)}</span>
+                </div>
+                {form.desconto_global > 0 && (
+                  <div className="flex justify-between w-full max-w-sm text-red-600">
+                    <span className="text-sm font-semibold">DESCONTO GLOBAL ({form.desconto_global}%)</span>
+                    <span className="text-sm font-bold font-mono">-{fmtCurrency(totals.descGlobal, form.moeda)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between w-full max-w-sm">
+                  <span className="text-sm text-zinc-500 font-semibold">RETENÇÕES</span>
+                  <span className="text-sm font-bold text-zinc-800 font-mono">
+                    {form.taxa_retencao && form.taxa_retencao !== 'Não Sujeito'
+                      ? fmtCurrency(round2(totals.totalFinal * (parseFloat(form.taxa_retencao as any) / 100)), form.moeda)
+                      : fmtCurrency(0, form.moeda)}
+                  </span>
+                </div>
+                <div className="flex justify-between w-full max-w-sm border-t border-zinc-300 pt-2 mt-1">
+                  <span className="text-base font-black text-[#0f2a4a] uppercase">TOTAL DOCUMENTO</span>
+                  <span className="text-base font-black text-[#0f2a4a] font-mono">{fmtCurrency(totals.totalFinal, form.moeda)}</span>
+                </div>
+                {form.moeda !== 'AOA' && (
+                  <div className="flex justify-between w-full max-w-sm text-zinc-400">
+                    <span className="text-xs font-semibold">Contravalor (AOA)</span>
+                    <span className="text-xs font-bold font-mono">{fmtCurrency(round2(totals.totalFinal * form.taxa_cambio), 'AOA')}</span>
                   </div>
                 )}
               </div>
-              {errors.fornecedor_id && <p className="text-[9px] text-red-500 mt-0.5">{errors.fornecedor_id}</p>}
-            </div>
-
-            {/* NIF auto-fill */}
-            <div>
-              <Lbl>NIF do Fornecedor</Lbl>
-              <input
-                type="text"
-                readOnly
-                value={form.nif_fornecedor}
-                className={inputCls + ' bg-zinc-50 text-zinc-500 cursor-default'}
-                placeholder="Preenchido automaticamente"
-              />
-              {form.fornecedor_id && !form.nif_fornecedor && (
-                <p className="text-[9px] text-amber-500 mt-0.5">⚠️ Fornecedor sem NIF registado.</p>
-              )}
-            </div>
-
-            {/* Retenção */}
-            <div>
-              <Lbl>Taxa de Retenção</Lbl>
-              <select
-                value={form.taxa_retencao}
-                onChange={e => setForm(f => ({ ...f, taxa_retencao: e.target.value }))}
-                className={selectCls}
-              >
-                {TAXAS_RETENCAO.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
             </div>
           </div>
-        </div>
 
-        {/* ─── SECÇÃO 3: Moeda / Câmbio / Contravalor ──────────────────── */}
-        <div className="bg-white border border-zinc-200 shadow-sm">
-          <div className="px-3 py-1.5 border-b border-zinc-100 bg-zinc-50">
-            <h3 className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">3. Moeda e Câmbio</h3>
-          </div>
-          <div className="p-3 grid grid-cols-2 md:grid-cols-4 gap-2">
-            <div>
-              <Lbl required>Moeda</Lbl>
-              <select
-                value={form.moeda}
-                onChange={e => {
-                  const m = e.target.value;
-                  setForm(f => ({ ...f, moeda: m, taxa_cambio: m === 'AOA' ? 1 : f.taxa_cambio }));
-                }}
-                className={selectCls}
-              >
-                <option value="AOA">AOA — Kwanza Angolano</option>
-                <option value="USD">USD — Dólar Americano</option>
-                <option value="EUR">EUR — Euro</option>
-              </select>
+          {/* ─── Observações ─────────────────────────────────────────── */}
+          <div className="bg-white border border-zinc-200 shadow-sm">
+            <div className="px-4 py-3 border-b border-zinc-200 bg-gradient-to-r from-[#0f2a4a] to-[#1a3a5c]">
+              <h3 className="text-xs font-bold text-white uppercase tracking-widest">Observações</h3>
             </div>
-            <div>
-              <Lbl>Câmbio</Lbl>
-              <input
-                type="number"
-                min={0.0001}
-                step={0.0001}
-                value={form.taxa_cambio}
-                readOnly={form.moeda === 'AOA'}
-                onChange={e => setForm(f => ({ ...f, taxa_cambio: Number(e.target.value) }))}
-                className={`${inputCls} ${form.moeda === 'AOA' ? 'bg-zinc-50 text-zinc-400' : ''}`}
-              />
-              {errors.taxa_cambio && <p className="text-[9px] text-red-500 mt-0.5">{errors.taxa_cambio}</p>}
-            </div>
-            <div>
-              <Lbl>Contravalor (AOA)</Lbl>
-              <input
-                type="text"
-                readOnly
-                value={fmtCurrency(round2(form.moeda === 'AOA' ? totals.totalFinal : totals.totalFinal * form.taxa_cambio), 'AOA')}
-                className={inputCls + ' bg-zinc-50 text-zinc-500 font-mono cursor-default'}
-              />
-            </div>
-            {/* Centro de Custo global */}
-            <div>
-              <Lbl required>Centro de Custos</Lbl>
-              <select
-                value={form.centro_custo_id}
-                onChange={e => setForm(f => ({ ...f, centro_custo_id: e.target.value }))}
-                className={selectCls}
-              >
-                <option value="">— Seleccione —</option>
-                {(workSites || []).map(ws => (
-                  <option key={ws.id} value={String(ws.id)}>
-                    {ws.name || ws.title || String(ws.id)}
-                  </option>
-                ))}
-              </select>
+            <div className="p-4">
+              <textarea rows={2} placeholder="Observações adicionais..." value={form.observacoes} onChange={e => setForm(f => ({ ...f, observacoes: e.target.value }))} className="w-full bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none resize-none" />
             </div>
           </div>
-        </div>
 
-        {/* ─── SECÇÃO: Documento de Suporte ──────────────────────────── */}
-        <div className="bg-white border border-zinc-200 shadow-sm">
-          <div className="px-3 py-1.5 border-b border-zinc-100 bg-zinc-50 flex items-center justify-between">
-            <h3 className="text-[9px] font-black text-zinc-500 uppercase tracking-widest flex items-center gap-1.5">
-              <Paperclip size={12} /> Documento de Suporte (Fatura / Comprovativo)
-            </h3>
-            {currentDocumentUrl && (
-              <a
-                href={currentDocumentUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="text-[10px] text-[#003366] hover:underline font-bold inline-flex items-center gap-1"
-              >
-                <ExternalLink size={10} /> Ver anexo gravado
-              </a>
-            )}
-          </div>
-          <div className="p-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <label className="cursor-pointer inline-flex items-center gap-2 px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 border border-zinc-300 text-xs font-bold text-zinc-700 transition-colors">
-                <Paperclip size={14} />
-                <span>{supportFile ? supportFile.name : 'Seleccionar Ficheiro (PDF ou Imagem)'}</span>
-                <input
-                  type="file"
-                  accept="application/pdf,image/*"
-                  className="hidden"
-                  onChange={e => {
-                    const f = e.target.files?.[0];
-                    if (f) setSupportFile(f);
-                  }}
-                />
-              </label>
-              {supportFile && (
-                <button
-                  type="button"
-                  onClick={() => setSupportFile(null)}
-                  className="text-red-500 hover:text-red-700 text-xs font-bold"
-                >
-                  Remover
-                </button>
-              )}
-              <span className="text-[10px] text-zinc-400 font-medium">
-                Formatos aceites: PDF, JPG, PNG. Armazenamento seguro no Supabase.
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* ─── SECÇÃO 4: Linhas de Artigos / Serviços ──────────────────── */}
-        <div className="bg-white border border-zinc-200 shadow-sm">
-          <div className="px-3 py-1.5 border-b border-zinc-100 bg-zinc-50 flex items-center justify-between">
-            <h3 className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">4. Artigos / Serviços</h3>
-            <button
-              type="button"
-              onClick={addItem}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-[#2563eb] hover:bg-blue-700 text-white text-xs font-bold uppercase tracking-wider transition-all shadow-sm rounded-none"
-            >
-              <Plus size={14} /> Adicionar Bem ou Serviço
+          {/* ─── Action Buttons ──────────────────────────────────────── */}
+          <div className="flex items-center justify-between gap-3 py-2">
+            <button type="button" onClick={onBack} className="flex items-center gap-2 px-6 py-2.5 border-2 border-[#0f2a4a] text-[#0f2a4a] text-sm font-bold uppercase tracking-wider hover:bg-zinc-50 transition-all rounded-none">
+              <ChevronLeft size={15} /> CANCELAR EMISSÃO
             </button>
-          </div>
 
-          {errors.itens && (
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-red-50 border-b border-red-200">
-              <AlertCircle size={12} className="text-red-500" />
-              <span className="text-[10px] text-red-600 font-bold">{errors.itens}</span>
-            </div>
-          )}
-
-          <div className="overflow-x-auto">
-            {form.itens.map((item, idx) => (
-              <div
-                key={item.uid}
-                className="border-b border-zinc-100 last:border-0 p-3 hover:bg-zinc-50/50 transition-colors"
-              >
-                {/* Row header */}
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="w-5 h-5 bg-[#003366] text-white text-[9px] font-black flex items-center justify-center flex-shrink-0">
-                    {idx + 1}
-                  </span>
-                  <span className="text-[10px] font-black text-zinc-500 uppercase tracking-wider flex-1">
-                    {item.tipo_artigo || 'Linha'}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => removeItem(idx)}
-                    className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                    title="Remover linha"
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                </div>
-
-                {/* Grid de campos */}
-                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
-                  {/* Descrição */}
-                  <div className="md:col-span-2">
-                    <Lbl>Descrição do Artigo</Lbl>
-                    <input
-                      type="text"
-                      placeholder="Descrição ou produto"
-                      value={item.descricao}
-                      onChange={e => {
-                        const desc = e.target.value;
-                        updateItem(idx, { descricao: desc });
-                        // Try auto-fill from products
-                        if (products.length > 0) {
-                          const found = products.find(p => p.name.toLowerCase().includes(desc.toLowerCase()) && desc.length > 2);
-                          if (found) {
-                            updateItem(idx, {
-                              descricao: found.name,
-                              valor_unitario: Number(found.preco_compra || found.cost_price || found.price || 0),
-                              unidade: found.unit || 'UN',
-                            });
-                          }
-                        }
-                      }}
-                      className={inputCls}
-                      list={`prod-list-${idx}`}
-                    />
-                    <datalist id={`prod-list-${idx}`}>
-                      {products.slice(0, 30).map(p => <option key={p.id} value={p.name} />)}
-                    </datalist>
-                  </div>
-
-                  {/* Serial Number */}
-                  <div>
-                    <Lbl>Serial Number</Lbl>
-                    <input
-                      type="text"
-                      placeholder="S/N"
-                      value={item.serial_number}
-                      onChange={e => updateItem(idx, { serial_number: e.target.value })}
-                      className={inputCls}
-                    />
-                  </div>
-
-                  {/* Data Validade */}
-                  <div>
-                    <Lbl>Data Validade</Lbl>
-                    <input
-                      type="date"
-                      value={item.data_validade}
-                      onChange={e => updateItem(idx, { data_validade: e.target.value })}
-                      className={inputCls}
-                    />
-                  </div>
-
-                  {/* Quantidade */}
-                  <div>
-                    <Lbl required>Quantidade</Lbl>
-                    <input
-                      type="number"
-                      min={0.001}
-                      step={0.001}
-                      value={item.quantidade || ''}
-                      onChange={e => updateItem(idx, { quantidade: Number(e.target.value) })}
-                      className={inputCls}
-                    />
-                  </div>
-
-                  {/* Unidade */}
-                  <div>
-                    <Lbl>Unidade</Lbl>
-                    <select
-                      value={item.unidade}
-                      onChange={e => updateItem(idx, { unidade: e.target.value })}
-                      className={selectCls}
-                    >
-                      <option value="">— Selec. —</option>
-                      {metrics.map(m => (
-                        <option key={m.id} value={m.sigla || m.id}>
-                          {m.sigla} {m.descricao ? `— ${m.descricao}` : ''}
-                        </option>
-                      ))}
-                      {/* Fallback common units */}
-                      {['UN', 'KG', 'MT', 'LT', 'CX', 'PC', 'HR', 'DIA'].map(u => (
-                        <option key={u} value={u}>{u}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Valor Unitário */}
-                  <div>
-                    <Lbl>Valor Unitário</Lbl>
-                    <input
-                      type="number"
-                      min={0}
-                      step={0.01}
-                      value={item.valor_unitario || ''}
-                      onChange={e => updateItem(idx, { valor_unitario: Number(e.target.value) })}
-                      className={inputCls}
-                    />
-                  </div>
-
-                  {/* Tipo de Artigo */}
-                  <div>
-                    <Lbl required>Tipo de Artigo</Lbl>
-                    <select
-                      value={item.tipo_artigo}
-                      onChange={e => updateItem(idx, { tipo_artigo: e.target.value })}
-                      className={selectCls}
-                    >
-                      {TIPOS_ARTIGO.map(t => <option key={t} value={t}>{t}</option>)}
-                    </select>
-                  </div>
-
-                  {/* Desconto Linha */}
-                  <div>
-                    <Lbl>Desconto Linha %</Lbl>
-                    <input
-                      type="number"
-                      min={0}
-                      max={100}
-                      step={0.01}
-                      value={item.desconto_linha || ''}
-                      onChange={e => updateItem(idx, { desconto_linha: Number(e.target.value) })}
-                      className={inputCls}
-                    />
-                  </div>
-
-                  {/* Tipologia do Custo */}
-                  <div>
-                    <Lbl required>Tipologia do Custo</Lbl>
-                    <select
-                      value={item.tipologia_custo}
-                      onChange={e => updateItem(idx, { tipologia_custo: e.target.value })}
-                      className={`${selectCls} ${item.tipologia_custo === 'Meios Fixos e Investimentos' ? 'border-indigo-400 bg-indigo-50' : ''}`}
-                    >
-                      {TIPOLOGIAS.map(t => <option key={t} value={t}>{t}</option>)}
-                    </select>
-                    {item.tipologia_custo === 'Meios Fixos e Investimentos' && (
-                      <p className="text-[9px] text-indigo-600 mt-0.5 font-bold">→ Integração com Mapa de Amortização</p>
-                    )}
-                  </div>
-
-                  {/* Armazém de Entrada */}
-                  <div>
-                    <Lbl>Armazém de Entrada</Lbl>
-                    <select
-                      value={item.armazem_id}
-                      onChange={e => updateItem(idx, { armazem_id: e.target.value })}
-                      className={selectCls}
-                    >
-                      <option value="">— Sem Armazém —</option>
-                      {armazens.map(a => (
-                        <option key={a.id} value={a.id}>
-                          {a.nome || a.name || a.id}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Local de Trabalho */}
-                  <div>
-                    <Lbl>Local de Trabalho</Lbl>
-                    <select
-                      value={item.local_trabalho_id}
-                      onChange={e => updateItem(idx, { local_trabalho_id: e.target.value })}
-                      className={selectCls}
-                    >
-                      <option value="">— Seleccione —</option>
-                      {locais.map(l => (
-                        <option key={l.id} value={l.id}>
-                          {l.nome || l.name || l.id}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Centro de Custos da linha */}
-                  <div>
-                    <Lbl>Centro de Custos</Lbl>
-                    <select
-                      value={item.centro_custo_id}
-                      onChange={e => updateItem(idx, { centro_custo_id: e.target.value })}
-                      className={selectCls}
-                    >
-                      <option value="">— Seleccione —</option>
-                      {(workSites || []).map(ws => (
-                        <option key={ws.id} value={String(ws.id)}>
-                          {ws.name || ws.title || String(ws.id)}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Rubrica PGC */}
-                  <div className="md:col-span-2">
-                    <Lbl required>Rubrica / Conta PGC</Lbl>
-                    <div className="flex gap-1">
-                      <input
-                        type="text"
-                        placeholder="Pesquisar código ou descrição..."
-                        value={item.rubrica_label || pgcSearch}
-                        onChange={e => setPgcSearch(e.target.value)}
-                        onFocus={() => setPgcSearch('')}
-                        className={`${inputCls} flex-1 ${!item.rubrica_id ? 'border-amber-300' : 'border-emerald-300'}`}
-                      />
-                    </div>
-                    {pgcSearch && (
-                      <div className="relative">
-                        <div className="absolute z-50 top-0 left-0 right-0 bg-white border border-zinc-200 shadow-xl max-h-40 overflow-y-auto">
-                          {filteredPgc.length === 0 && (
-                            <div className="px-3 py-2 text-[10px] text-zinc-400">Sem resultados para "{pgcSearch}"</div>
-                          )}
-                          {filteredPgc.map(c => (
-                            <button
-                              key={c.id}
-                              type="button"
-                              className="w-full text-left px-3 py-1.5 hover:bg-blue-50 text-xs border-b border-zinc-50"
-                              onMouseDown={() => {
-                                const label = `${c.codigo || c.conta || ''} — ${c.descricao || ''}`;
-                                updateItem(idx, { rubrica_id: c.id, rubrica_label: label });
-                                setPgcSearch('');
-                              }}
-                            >
-                              <span className="font-black text-[#003366]">{c.codigo || c.conta}</span>
-                              <span className="text-zinc-500 ml-2">{c.descricao}</span>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {item.rubrica_label && (
-                      <p className="text-[9px] text-emerald-600 mt-0.5 font-bold truncate">{item.rubrica_label}</p>
-                    )}
-                  </div>
-
-                  {/* Imposto do Selo */}
-                  <div>
-                    <Lbl>Imposto do Selo</Lbl>
-                    <select
-                      value={item.sujeito_imposto_selo}
-                      onChange={e => updateItem(idx, { sujeito_imposto_selo: e.target.value })}
-                      className={selectCls}
-                    >
-                      {IMPOSTO_SELO_OPTS.map(o => <option key={o} value={o}>{o}</option>)}
-                    </select>
-                  </div>
-
-                  {/* IVA */}
-                  <div>
-                    <Lbl>IVA %</Lbl>
-                    <select
-                      value={item.tax_id}
-                      onChange={e => {
-                        const tax = activeTaxes.find(t => String(t.id) === e.target.value);
-                        updateItem(idx, {
-                          tax_id: e.target.value,
-                          tax_rate: tax ? Number(tax.taxa) : 0,
-                        });
-                      }}
-                      className={selectCls}
-                    >
-                      <option value="">0%</option>
-                      {activeTaxes.map(t => (
-                        <option key={t.id} value={String(t.id)}>
-                          {t.nome || t.codigo_imposto} ({t.taxa}%)
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                {/* Line totals */}
-                <div className="mt-2 flex items-center justify-end gap-4 text-[10px] text-zinc-500 font-bold border-t border-zinc-100 pt-1.5">
-                  <span>Subtotal: <span className="text-zinc-800">{fmtCurrency(round2(item.quantidade * item.valor_unitario * (1 - item.desconto_linha / 100)), form.moeda)}</span></span>
-                  <span>IVA ({item.tax_rate}%): <span className="text-zinc-800">{fmtCurrency(round2(item.quantidade * item.valor_unitario * (1 - item.desconto_linha / 100) * (item.tax_rate / 100)), form.moeda)}</span></span>
-                  <span className="text-[#003366] font-black">Total Linha: <span>{fmtCurrency(round2(item.quantidade * item.valor_unitario * (1 - item.desconto_linha / 100) * (1 + item.tax_rate / 100)), form.moeda)}</span></span>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="px-3 py-2 border-t border-zinc-200">
-            <button
-              type="button"
-              onClick={addItem}
-              className="flex items-center gap-1.5 text-[10px] font-black text-zinc-500 hover:text-[#003366] transition-colors uppercase tracking-wider"
-            >
-              <Plus size={12} /> Adicionar outra linha
-            </button>
-          </div>
-        </div>
-
-        {/* ─── SECÇÃO 5: Totais ─────────────────────────────────────────── */}
-        <div className="bg-white border border-zinc-200 shadow-sm">
-          <div className="px-3 py-1.5 border-b border-zinc-100 bg-zinc-50">
-            <h3 className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">5. Resumo de Valores</h3>
-          </div>
-          <div className="p-3">
-            <div className="flex flex-col items-end gap-1 text-xs">
-              <div className="flex justify-between w-full max-w-xs">
-                <span className="text-zinc-500 font-bold">Subtotal Bruto:</span>
-                <span className="font-black text-zinc-800">{fmtCurrency(totals.subtotalBruto, form.moeda)}</span>
-              </div>
-              {form.desconto_global > 0 && (
-                <div className="flex justify-between w-full max-w-xs text-red-600">
-                  <span className="font-bold">Desconto Global ({form.desconto_global}%):</span>
-                  <span className="font-black">-{fmtCurrency(totals.descGlobal, form.moeda)}</span>
+            <div className="flex items-center gap-2">
+              {dupWarning && (
+                <div className="flex items-center gap-1 px-2 py-1.5 bg-amber-50 border border-amber-200 text-amber-700 text-xs font-bold">
+                  <AlertCircle size={12} /> Número duplicado
                 </div>
               )}
-              <div className="flex justify-between w-full max-w-xs">
-                <span className="text-zinc-500 font-bold">Base Tributável:</span>
-                <span className="font-black text-zinc-800">{fmtCurrency(totals.baseAposDesconto, form.moeda)}</span>
-              </div>
-              <div className="flex justify-between w-full max-w-xs">
-                <span className="text-zinc-500 font-bold">IVA Total:</span>
-                <span className="font-black text-zinc-800">{fmtCurrency(totals.totalIva, form.moeda)}</span>
-              </div>
-              <div className="flex justify-between w-full max-w-xs border-t border-zinc-200 pt-1 mt-1">
-                <span className="font-black text-[#003366] uppercase">TOTAL A PAGAR:</span>
-                <span className="font-black text-[#003366] text-base">{fmtCurrency(totals.totalFinal, form.moeda)}</span>
-              </div>
-              {form.moeda !== 'AOA' && (
-                <div className="flex justify-between w-full max-w-xs text-zinc-400">
-                  <span className="font-bold">Contravalor (AOA):</span>
-                  <span className="font-black">{fmtCurrency(round2(totals.totalFinal * form.taxa_cambio), 'AOA')}</span>
-                </div>
-              )}
+              <button type="submit" disabled={saving || !!dupWarning} className="flex items-center gap-2 px-6 py-2.5 bg-[#0f2a4a] hover:bg-[#001f3f] disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold uppercase tracking-wider transition-all shadow-md rounded-none">
+                {saving ? (
+                  <><RefreshCw size={14} className="animate-spin" /> A guardar...</>
+                ) : (
+                  <><Save size={14} /> {isEditing ? 'ACTUALIZAR DOCUMENTO' : 'CONFIRMAR E EMITIR DOCUMENTO'}</>
+                )}
+              </button>
             </div>
           </div>
-        </div>
 
-        {/* ─── SECÇÃO 6: Observações ────────────────────────────────────── */}
-        <div className="bg-white border border-zinc-200 shadow-sm">
-          <div className="px-3 py-1.5 border-b border-zinc-100 bg-zinc-50">
-            <h3 className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">6. Observações</h3>
-          </div>
-          <div className="p-3">
-            <textarea
-              rows={2}
-              placeholder="Observações adicionais..."
-              value={form.observacoes}
-              onChange={e => setForm(f => ({ ...f, observacoes: e.target.value }))}
-              className={inputCls + ' resize-none'}
-            />
-          </div>
-        </div>
-
-        {/* ─── Actions ─────────────────────────────────────────────────── */}
-        <div className="flex items-center justify-between gap-3 py-2">
-          <button
-            type="button"
-            onClick={onBack}
-            className="flex items-center gap-2 px-4 py-2 border border-zinc-300 text-zinc-600 text-xs font-black uppercase tracking-wider hover:bg-zinc-100 transition-all"
-          >
-            <ChevronLeft size={14} /> Voltar
-          </button>
-
-          <div className="flex items-center gap-2">
-            {dupWarning && (
-              <div className="flex items-center gap-1 px-2 py-1 bg-amber-50 border border-amber-200 text-amber-700 text-[10px] font-bold">
-                <AlertCircle size={11} /> Número duplicado
-              </div>
-            )}
-            <button
-              type="submit"
-              disabled={saving || !!dupWarning}
-              className="flex items-center gap-2 px-6 py-2 bg-[#003366] hover:bg-[#002244] disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-black uppercase tracking-wider transition-all shadow-md"
-            >
-              {saving ? (
-                <>
-                  <RefreshCw size={14} className="animate-spin" />
-                  A guardar...
-                </>
-              ) : (
-                <>
-                  <Save size={14} />
-                  {isEditing ? 'Actualizar Documento' : 'Guardar Documento'}
-                </>
-              )}
-            </button>
-          </div>
         </div>
       </form>
     </div>
@@ -1602,3 +1264,4 @@ export const GestaoComprasForm: React.FC<Props> = ({
 };
 
 export default GestaoComprasForm;
+

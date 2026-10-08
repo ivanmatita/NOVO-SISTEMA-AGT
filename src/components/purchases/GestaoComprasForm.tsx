@@ -1,4 +1,4 @@
-﻿/**
+/**
  * GestaoComprasForm.tsx
  * Formulário completo de registo/edição de documentos de compra.
  * Integração real com: fornecedores, séries, armazéns, métricas, PGC, stock, caixas.
@@ -108,6 +108,9 @@ interface FormData {
   // Cabeçalho
   data_valor: string;
   data_documento: string;
+  codigo_pais: string;
+  cativacao_iva: string;
+  local_prestacao: string;
   fornecedor_id: string;
   fornecedor_nome: string;
   nif_fornecedor: string;
@@ -208,12 +211,16 @@ const IMPOSTO_SELO_OPTS = [
 ];
 
 const TIPOS_DOCUMENTO = [
+  'Fatura (FT)',
+  'Fatura/Recibo (FR)',
+  'Nota de Crédito (NC)',
+  'Nota de Débito (ND)',
+  'Guia de Entrada (GE)',
+  'Guia de Transporte (GT)',
+  'Guia de Remessa (GR)',
+  'Fatura Proforma (FP)',
   'Fatura de Compra',
   'Fatura Recibo de Compra',
-  'Nota de Crédito de Fornecedor',
-  'Nota de Débito de Fornecedor',
-  'Guia de Entrada',
-  'Guia de Devolução',
 ];
 
 const fmtCurrency = (v: number, m = 'AOA') => {
@@ -298,6 +305,9 @@ export const GestaoComprasForm: React.FC<Props> = ({
   const [form, setForm] = useState<FormData>({
     data_valor: initialData?.data_valor || initialData?.data_servico || today,
     data_documento: initialData?.data_compra || initialData?.data || initialData?.date || today,
+    codigo_pais: initialData?.codigo_pais || 'AO - Angola',
+    cativacao_iva: initialData?.cativacao_iva || 'Sem cativação',
+    local_prestacao: initialData?.local_prestacao || '',
     fornecedor_id: String(initialData?.fornecedor_id || initialData?.supplier_id || ''),
     fornecedor_nome: initialData?.fornecedor_nome || initialData?.supplier_name || '',
     nif_fornecedor: initialData?.supplier_nif || initialData?.nif || '',
@@ -316,7 +326,7 @@ export const GestaoComprasForm: React.FC<Props> = ({
     taxa_retencao: initialData?.taxa_retencao ? String(initialData.taxa_retencao) : 'Não Sujeito',
     caixa_id: initialData?.caixa_id || initialData?.caixa || '',
     metodo_pagamento: initialData?.metodo_pagamento || initialData?.payment_method || '',
-    tipo_documento: fixedDocumentType || initialData?.tipo_documento || initialData?.document_type || 'Fatura de Compra',
+    tipo_documento: fixedDocumentType || initialData?.tipo_documento || initialData?.document_type || 'Fatura (FT)',
     data_vencimento: initialData?.data_vencimento || initialData?.due_date || '',
     observacoes: initialData?.observacoes || initialData?.observacao || '',
     itens: initLine(),
@@ -516,6 +526,9 @@ export const GestaoComprasForm: React.FC<Props> = ({
         supplier_name: form.fornecedor_nome,
         supplier_nif: form.nif_fornecedor,
         nif: form.nif_fornecedor,
+        codigo_pais: form.codigo_pais || 'AO - Angola',
+        cativacao_iva: form.cativacao_iva || 'Sem cativação',
+        local_prestacao: form.local_prestacao || null,
         data_compra: form.data_documento,
         data_emissao: form.data_documento,
         date: form.data_documento,
@@ -876,7 +889,7 @@ export const GestaoComprasForm: React.FC<Props> = ({
   // ─────────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-zinc-50">
+    <div className="min-h-screen bg-[#f4f6f8] p-4 md:p-6 font-sans">
       {/* AgtItemModal side panel */}
       <AgtItemModal
         isOpen={showItemModal}
@@ -886,178 +899,391 @@ export const GestaoComprasForm: React.FC<Props> = ({
         onSave={handleItemSave}
       />
 
-      <form onSubmit={handleSubmit} className="max-w-full mx-auto space-y-0">
-        {/* ─── BLUE HEADER ────────────────────────────────────────────── */}
-        <div className="bg-[#0f2a4a] px-6 py-4 flex items-center gap-3">
-          <button type="button" onClick={onBack} className="p-1.5 hover:bg-white/10 text-white/80 transition-colors rounded">
-            <ChevronLeft size={20} />
-          </button>
-          <div>
-            <h2 className="text-base font-bold text-white tracking-tight">
-              {isEditing ? 'Editar Documento de Compra' : 'Registar Nova Compra'}
-            </h2>
-            <p className="text-xs text-blue-200/80">Gestão de Compras — Ano de Exercício: {ano}</p>
-          </div>
-          {isEditing && (
-            <span className="ml-auto px-2 py-0.5 bg-amber-400/20 text-amber-300 text-[9px] font-black uppercase tracking-wider border border-amber-400/30">
-              EDIÇÃO
-            </span>
-          )}
-        </div>
-
+      <form onSubmit={handleSubmit} className="max-w-7xl mx-auto space-y-4">
         {/* Amortização alert */}
         {needsAmortizacao && (
-          <div className="flex items-start gap-2 bg-indigo-50 border-b border-indigo-200 px-6 py-2 text-xs text-indigo-800">
+          <div className="flex items-start gap-2 bg-indigo-50 border border-indigo-200 p-3 text-xs text-indigo-800">
             <Info size={14} className="mt-0.5 flex-shrink-0 text-indigo-500" />
-            <span><strong>Meios Fixos e Investimentos detectados.</strong> Após guardar, os dados serão integrados no Mapa de Amortização da Contabilidade.</span>
+            <span><strong>Meios Fixos e Investimentos detectados.</strong> Os dados serão integrados no Mapa de Amortização.</span>
           </div>
         )}
 
-        <div className="px-6 py-5 space-y-6">
+        {/* ─── CARD 1: Informações do documento ──────────────────────── */}
+        <div className="bg-white border border-[#d1d5db] shadow-xs rounded-none">
+          {/* Header da Barra de Título branca/azul */}
+          <div className="px-5 py-3.5 border-b border-[#e5e7eb] flex items-center gap-2.5">
+            <button
+              type="button"
+              onClick={onBack}
+              className="text-[#6b7280] hover:text-[#111827] transition-colors p-0.5"
+              title="Voltar"
+            >
+              <ChevronLeft size={18} />
+            </button>
+            <FileText size={17} className="text-[#6b7280]" />
+            <h2 className="text-[15px] font-bold text-[#0f2a4a] tracking-tight">
+              Informações do documento
+            </h2>
+            {isEditing && (
+              <span className="ml-2 px-2 py-0.5 bg-amber-100 text-amber-800 text-[10px] font-bold border border-amber-300">
+                EDIÇÃO
+              </span>
+            )}
+          </div>
 
-          {/* ─── SECÇÃO 1: Informações do Documento ──────────────────── */}
-          <div className="bg-white border border-zinc-200 shadow-sm">
-            <div className="px-4 py-3 border-b border-zinc-200 bg-gradient-to-r from-[#0f2a4a] to-[#1a3a5c]">
-              <h3 className="text-xs font-bold text-white uppercase tracking-widest">Informações do documento</h3>
-            </div>
-            <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-4">
-              {/* Tipo Documento */}
+          <div className="p-5 space-y-4">
+            {/* Linha 1: 4 colunas */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              {/* Tipo de documento */}
               <div className="space-y-1">
-                <label className="block text-xs font-semibold text-zinc-600">Tipo de documento <span className="text-red-500">*</span></label>
-                <select value={form.tipo_documento} onChange={e => setForm(f => ({ ...f, tipo_documento: e.target.value }))} className="w-full bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none" disabled={!!fixedDocumentType}>
-                  {TIPOS_DOCUMENTO.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
+                <label className="block text-[11px] font-bold text-[#374151]">
+                  Tipo de documento <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <select
+                    value={form.tipo_documento}
+                    onChange={e => setForm(f => ({ ...f, tipo_documento: e.target.value }))}
+                    disabled={!!fixedDocumentType}
+                    className="w-full bg-white border border-[#d1d5db] px-3 py-2 text-xs text-[#111827] focus:outline-none focus:border-[#0f2a4a] rounded-none appearance-none cursor-pointer"
+                  >
+                    {TIPOS_DOCUMENTO.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                  <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
+                </div>
               </div>
 
               {/* Série */}
               <div className="space-y-1">
-                <label className="block text-xs font-semibold text-zinc-600">Série</label>
-                <select value={form.serie_id} onChange={e => setForm(f => ({ ...f, serie_id: e.target.value }))} className="w-full bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none">
-                  <option value="">— Sem Série —</option>
-                  {seriesCompras.map(s => <option key={s.id} value={String(s.id)}>{s.nome || s.name || s.reference || String(s.id)}</option>)}
-                </select>
+                <label className="block text-[11px] font-bold text-[#374151]">Série</label>
+                <div className="relative">
+                  <select
+                    value={form.serie_id}
+                    onChange={e => setForm(f => ({ ...f, serie_id: e.target.value }))}
+                    className="w-full bg-white border border-[#d1d5db] px-3 py-2 text-xs text-[#111827] focus:outline-none focus:border-[#0f2a4a] rounded-none appearance-none cursor-pointer"
+                  >
+                    <option value="">— Selecione a série —</option>
+                    {seriesCompras.map(s => (
+                      <option key={s.id} value={String(s.id)}>
+                        {s.nome || s.name || s.reference || String(s.id)}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
+                </div>
               </div>
 
-              {/* Nº Documento */}
+              {/* Local de trabalho */}
               <div className="space-y-1">
-                <label className="block text-xs font-semibold text-zinc-600">Nº do Documento <span className="text-red-500">*</span></label>
-                <input type="text" placeholder="Ex: FT 123/2026" value={form.numero_documento} onChange={e => setForm(f => ({ ...f, numero_documento: e.target.value }))} className={`w-full bg-white border px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none ${errors.numero_documento || dupWarning ? 'border-amber-400' : 'border-zinc-300'}`} />
-                {dupWarning && <p className="text-[10px] text-amber-600">{dupWarning}</p>}
-                {errors.numero_documento && !dupWarning && <p className="text-[10px] text-red-500">{errors.numero_documento}</p>}
+                <label className="block text-[11px] font-bold text-[#374151]">Local de trabalho</label>
+                <div className="relative">
+                  <select
+                    value={form.centro_custo_id}
+                    onChange={e => setForm(f => ({ ...f, centro_custo_id: e.target.value }))}
+                    className="w-full bg-white border border-[#d1d5db] px-3 py-2 text-xs text-[#111827] focus:outline-none focus:border-[#0f2a4a] rounded-none appearance-none cursor-pointer"
+                  >
+                    <option value="">Selecione o local</option>
+                    {(workSites || []).map(ws => (
+                      <option key={ws.id} value={String(ws.id)}>
+                        {ws.name || ws.title || String(ws.id)}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
+                </div>
               </div>
 
-              {/* Local de Trabalho / Centro de Custos */}
+              {/* Data de emissão */}
               <div className="space-y-1">
-                <label className="block text-xs font-semibold text-zinc-600">Local de Trabalho</label>
-                <select value={form.centro_custo_id} onChange={e => setForm(f => ({ ...f, centro_custo_id: e.target.value }))} className="w-full bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none">
-                  <option value="">— Seleccione —</option>
-                  {(workSites || []).map(ws => <option key={ws.id} value={String(ws.id)}>{ws.name || ws.title || String(ws.id)}</option>)}
-                </select>
-              </div>
-
-              {/* Data Emissão */}
-              <div className="space-y-1">
-                <label className="block text-xs font-semibold text-zinc-600">Data de emissão <span className="text-red-500">*</span></label>
-                <input type="date" value={form.data_documento} onChange={e => setForm(f => ({ ...f, data_documento: e.target.value }))} className={`w-full bg-white border px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none ${errors.data_documento ? 'border-red-400' : 'border-zinc-300'}`} />
+                <label className="block text-[11px] font-bold text-[#374151]">Data de emissão</label>
+                <input
+                  type="date"
+                  value={form.data_documento}
+                  onChange={e => setForm(f => ({ ...f, data_documento: e.target.value }))}
+                  className={`w-full bg-white border px-3 py-2 text-xs text-[#111827] focus:outline-none focus:border-[#0f2a4a] rounded-none ${errors.data_documento ? 'border-red-400' : 'border-[#d1d5db]'}`}
+                />
                 {errors.data_documento && <p className="text-[10px] text-red-500">{errors.data_documento}</p>}
               </div>
+            </div>
 
-              {/* Data Vencimento */}
+            {/* Linha 2: 4 colunas */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              {/* Data de vencimento */}
               <div className="space-y-1">
-                <label className="block text-xs font-semibold text-zinc-600">Data de vencimento</label>
-                <input type="date" value={form.data_vencimento} onChange={e => setForm(f => ({ ...f, data_vencimento: e.target.value }))} className="w-full bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none" />
+                <label className="block text-[11px] font-bold text-[#374151]">Data de vencimento</label>
+                <input
+                  type="date"
+                  value={form.data_vencimento}
+                  onChange={e => setForm(f => ({ ...f, data_vencimento: e.target.value }))}
+                  className="w-full bg-white border border-[#d1d5db] px-3 py-2 text-xs text-[#111827] focus:outline-none focus:border-[#0f2a4a] rounded-none"
+                />
+              </div>
+
+              {/* Cativação de IVA */}
+              <div className="space-y-1">
+                <label className="block text-[11px] font-bold text-[#374151]">Cativação de IVA</label>
+                <div className="relative">
+                  <select
+                    value={form.cativacao_iva}
+                    onChange={e => setForm(f => ({ ...f, cativacao_iva: e.target.value }))}
+                    className="w-full bg-white border border-[#d1d5db] px-3 py-2 text-xs text-[#111827] focus:outline-none focus:border-[#0f2a4a] rounded-none appearance-none cursor-pointer"
+                  >
+                    <option value="Sem cativação">Sem cativação</option>
+                    <option value="Total (100%)">Total (100%)</option>
+                    <option value="Parcial (50%)">Parcial (50%)</option>
+                  </select>
+                  <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
+                </div>
               </div>
 
               {/* Câmbio */}
               <div className="space-y-1">
-                <label className="block text-xs font-semibold text-zinc-600">Câmbio</label>
-                <input type="number" min={0.0001} step={0.0001} value={form.taxa_cambio} readOnly={form.moeda === 'AOA'} onChange={e => setForm(f => ({ ...f, taxa_cambio: Number(e.target.value) }))} className={`w-full bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none ${form.moeda === 'AOA' ? 'bg-zinc-50 text-zinc-400' : ''}`} />
+                <label className="block text-[11px] font-bold text-[#374151]">Câmbio</label>
+                <input
+                  type="number"
+                  min={0.0001}
+                  step={0.0001}
+                  value={form.taxa_cambio}
+                  readOnly={form.moeda === 'AOA'}
+                  onChange={e => setForm(f => ({ ...f, taxa_cambio: Number(e.target.value) }))}
+                  className={`w-full bg-white border border-[#d1d5db] px-3 py-2 text-xs text-[#111827] focus:outline-none focus:border-[#0f2a4a] rounded-none ${form.moeda === 'AOA' ? 'bg-[#f9fafb] text-zinc-500' : ''}`}
+                />
               </div>
 
               {/* Moeda */}
               <div className="space-y-1">
-                <label className="block text-xs font-semibold text-zinc-600">Moeda</label>
-                <select value={form.moeda} onChange={e => { const m = e.target.value; setForm(f => ({ ...f, moeda: m, taxa_cambio: m === 'AOA' ? 1 : f.taxa_cambio })); }} className="w-full bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none">
-                  <option value="AOA">AOA — Kwanza Angolano</option>
-                  <option value="USD">USD — Dólar Americano</option>
-                  <option value="EUR">EUR — Euro</option>
-                </select>
+                <label className="block text-[11px] font-bold text-[#374151]">Moeda</label>
+                <div className="relative">
+                  <select
+                    value={form.moeda}
+                    onChange={e => {
+                      const m = e.target.value;
+                      setForm(f => ({ ...f, moeda: m, taxa_cambio: m === 'AOA' ? 1 : f.taxa_cambio }));
+                    }}
+                    className="w-full bg-white border border-[#d1d5db] px-3 py-2 text-xs text-[#111827] focus:outline-none focus:border-[#0f2a4a] rounded-none appearance-none cursor-pointer"
+                  >
+                    <option value="AOA">Kwanza</option>
+                    <option value="USD">Dólar (USD)</option>
+                    <option value="EUR">Euro (EUR)</option>
+                  </select>
+                  <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
+                </div>
               </div>
+            </div>
 
+            {/* Linha 3: Contravalor, Taxa Retenção, Desconto Global, Nº Doc */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               {/* Contravalor */}
               <div className="space-y-1">
-                <label className="block text-xs font-semibold text-zinc-600">Contravalor (AOA)</label>
-                <input type="text" readOnly value={fmtCurrency(round2(form.moeda === 'AOA' ? totals.totalFinal : totals.totalFinal * form.taxa_cambio), 'AOA')} className="w-full bg-zinc-50 border border-zinc-200 px-3 py-2 text-sm text-zinc-500 cursor-default rounded-none font-mono" />
+                <label className="block text-[11px] font-bold text-[#374151]">Contravalor</label>
+                <input
+                  type="text"
+                  readOnly
+                  value={fmtCurrency(round2(form.moeda === 'AOA' ? totals.totalFinal : totals.totalFinal * form.taxa_cambio), 'AOA')}
+                  className="w-full bg-[#f9fafb] border border-[#d1d5db] px-3 py-2 text-xs text-zinc-600 rounded-none font-mono cursor-default"
+                />
               </div>
 
-              {/* Taxa Retenção */}
+              {/* Selecione a Taxa de Retenção */}
               <div className="space-y-1">
-                <label className="block text-xs font-semibold text-zinc-600">Selecione a Taxa de Retenção</label>
-                <select value={form.taxa_retencao} onChange={e => setForm(f => ({ ...f, taxa_retencao: e.target.value }))} className="w-full bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none">
-                  {TAXAS_RETENCAO.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </div>
-
-              {/* Desconto Global */}
-              <div className="space-y-1">
-                <label className="block text-xs font-semibold text-zinc-600">Desconto global (%)</label>
-                <input type="number" min={0} max={100} step={0.01} placeholder="0" value={form.desconto_global || ''} onChange={e => setForm(f => ({ ...f, desconto_global: Math.min(100, Math.max(0, Number(e.target.value))) }))} className={`w-full bg-white border px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none ${errors.desconto_global ? 'border-red-400' : 'border-zinc-300'}`} />
-              </div>
-
-              {/* Hash */}
-              <div className="space-y-1">
-                <label className="block text-xs font-semibold text-zinc-600">Hash / Certificação</label>
-                <input type="text" placeholder="Hash do documento" value={form.hash_certificacao} onChange={e => setForm(f => ({ ...f, hash_certificacao: e.target.value }))} className="w-full bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none font-mono" />
-              </div>
-            </div>
-
-            {/* Cash-doc extra fields */}
-            {isCashDoc && (
-              <div className="px-4 pb-4 grid grid-cols-2 gap-4 border-t border-zinc-100 pt-4">
-                <div className="space-y-1">
-                  <label className="block text-xs font-semibold text-zinc-600">Caixa <span className="text-red-500">*</span></label>
-                  <select value={form.caixa_id} onChange={e => setForm(f => ({ ...f, caixa_id: e.target.value }))} className="w-full bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none">
-                    <option value="">Seleccione a Caixa</option>
-                    {caixas.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                </div>
-                <div className="space-y-1">
-                  <label className="block text-xs font-semibold text-zinc-600">Forma de Pagamento</label>
-                  <select value={form.metodo_pagamento} onChange={e => setForm(f => ({ ...f, metodo_pagamento: e.target.value }))} className="w-full bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none">
-                    <option value="">Seleccione</option>
-                    <option value="Numerário">Numerário</option>
-                    <option value="Multicaixa">Multicaixa</option>
-                    <option value="Transferência">Transferência</option>
-                    <option value="Depósito">Depósito</option>
-                    <option value="Cheque">Cheque</option>
-                  </select>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* ─── SECÇÃO 2: Informações do Fornecedor ────────────────── */}
-          <div className="bg-white border border-zinc-200 shadow-sm">
-            <div className="px-4 py-3 border-b border-zinc-200 bg-gradient-to-r from-[#0f2a4a] to-[#1a3a5c]">
-              <h3 className="text-xs font-bold text-white uppercase tracking-widest">Informações do Fornecedor</h3>
-            </div>
-            <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-4">
-              {/* Fornecedor search */}
-              <div className="md:col-span-2 space-y-1 relative">
-                <label className="block text-xs font-semibold text-zinc-600">Fornecedor <span className="text-red-500">*</span></label>
+                <label className="block text-[11px] font-bold text-[#374151]">Selecione a Taxa de Retenção</label>
                 <div className="relative">
-                  <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
-                  <input type="text" placeholder="Pesquisar fornecedor..." value={supplierSearch || form.fornecedor_nome}
-                    onChange={e => { setSupplierSearch(e.target.value); setShowSupplierDropdown(true); if (!e.target.value) { setForm(f => ({ ...f, fornecedor_id: '', fornecedor_nome: '', nif_fornecedor: '' })); } }}
-                    onFocus={() => setShowSupplierDropdown(true)} onBlur={() => setTimeout(() => setShowSupplierDropdown(false), 200)}
-                    className={`w-full bg-white border px-3 pl-8 py-2 text-sm text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none ${errors.fornecedor_id ? 'border-red-400' : 'border-zinc-300'}`} />
+                  <select
+                    value={form.taxa_retencao}
+                    onChange={e => setForm(f => ({ ...f, taxa_retencao: e.target.value }))}
+                    className="w-full bg-white border border-[#d1d5db] px-3 py-2 text-xs text-[#111827] focus:outline-none focus:border-[#0f2a4a] rounded-none appearance-none cursor-pointer"
+                  >
+                    <option value="Não Sujeito">Selecione...</option>
+                    {TAXAS_RETENCAO.filter(t => t !== 'Não Sujeito').map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                  <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
+                </div>
+              </div>
+
+              {/* Desconto global */}
+              <div className="space-y-1">
+                <label className="block text-[11px] font-bold text-[#374151]">Desconto global</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={0.01}
+                  placeholder="0"
+                  value={form.desconto_global || ''}
+                  onChange={e => setForm(f => ({ ...f, desconto_global: Math.min(100, Math.max(0, Number(e.target.value))) }))}
+                  className={`w-full bg-white border px-3 py-2 text-xs text-[#111827] focus:outline-none focus:border-[#0f2a4a] rounded-none ${errors.desconto_global ? 'border-red-400' : 'border-[#d1d5db]'}`}
+                />
+              </div>
+
+              {/* Nº do Documento de Compra */}
+              <div className="space-y-1">
+                <label className="block text-[11px] font-bold text-[#374151]">
+                  Nº do Documento <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ex: FT 123/2026"
+                  value={form.numero_documento}
+                  onChange={e => setForm(f => ({ ...f, numero_documento: e.target.value }))}
+                  className={`w-full bg-white border px-3 py-2 text-xs text-[#111827] focus:outline-none focus:border-[#0f2a4a] rounded-none ${errors.numero_documento || dupWarning ? 'border-amber-400' : 'border-[#d1d5db]'}`}
+                />
+                {dupWarning && <p className="text-[10px] text-amber-600">{dupWarning}</p>}
+                {errors.numero_documento && !dupWarning && <p className="text-[10px] text-red-500">{errors.numero_documento}</p>}
+              </div>
+            </div>
+
+            {/* Linha 4 (Opcional): Hash / Certificação & Caixa se documento a pronto pagamento */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-1 border-t border-[#f3f4f6]">
+              <div className="space-y-1">
+                <label className="block text-[11px] font-bold text-[#374151]">Hash / Certificação</label>
+                <input
+                  type="text"
+                  placeholder="Hash do documento"
+                  value={form.hash_certificacao}
+                  onChange={e => setForm(f => ({ ...f, hash_certificacao: e.target.value }))}
+                  className="w-full bg-white border border-[#d1d5db] px-3 py-2 text-xs text-[#111827] focus:outline-none focus:border-[#0f2a4a] rounded-none font-mono"
+                />
+              </div>
+
+              {isCashDoc && (
+                <>
+                  <div className="space-y-1">
+                    <label className="block text-[11px] font-bold text-[#374151]">Caixa <span className="text-red-500">*</span></label>
+                    <select
+                      value={form.caixa_id}
+                      onChange={e => setForm(f => ({ ...f, caixa_id: e.target.value }))}
+                      className="w-full bg-white border border-[#d1d5db] px-3 py-2 text-xs text-[#111827] focus:outline-none focus:border-[#0f2a4a] rounded-none"
+                    >
+                      <option value="">Seleccione a Caixa</option>
+                      {caixas.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="block text-[11px] font-bold text-[#374151]">Forma de Pagamento</label>
+                    <select
+                      value={form.metodo_pagamento}
+                      onChange={e => setForm(f => ({ ...f, metodo_pagamento: e.target.value }))}
+                      className="w-full bg-white border border-[#d1d5db] px-3 py-2 text-xs text-[#111827] focus:outline-none focus:border-[#0f2a4a] rounded-none"
+                    >
+                      <option value="">Seleccione</option>
+                      <option value="Numerário">Numerário</option>
+                      <option value="Multicaixa">Multicaixa</option>
+                      <option value="Transferência">Transferência</option>
+                      <option value="Depósito">Depósito</option>
+                      <option value="Cheque">Cheque</option>
+                    </select>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* ─── CARD 2: INFORMAÇÕES DO ADQUIRENTE / FORNECEDOR ─────────── */}
+        <div className="bg-white border border-[#d1d5db] shadow-xs rounded-none">
+          <div className="px-5 py-3 border-b border-[#e5e7eb]">
+            <h3 className="text-xs font-bold text-[#0f2a4a] uppercase tracking-wider">
+              INFORMAÇÕES DO ADQUIRENTE
+            </h3>
+          </div>
+          <div className="p-5 space-y-4">
+            {/* Linha 1: Código do país, Nº de identificação fiscal, Nome, Data prestação */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+              {/* Código do país */}
+              <div className="space-y-1">
+                <label className="block text-[11px] font-bold text-[#374151]">
+                  Código do país <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <select
+                    value={form.codigo_pais}
+                    onChange={e => setForm(f => ({ ...f, codigo_pais: e.target.value }))}
+                    className="w-full bg-white border border-[#d1d5db] px-3 py-2 text-xs text-[#111827] focus:outline-none focus:border-[#0f2a4a] rounded-none appearance-none cursor-pointer"
+                  >
+                    <option value="AO - Angola">AO - Angola</option>
+                    <option value="PT - Portugal">PT - Portugal</option>
+                    <option value="BR - Brasil">BR - Brasil</option>
+                    <option value="ZA - África do Sul">ZA - África do Sul</option>
+                    <option value="CN - China">CN - China</option>
+                  </select>
+                  <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
+                </div>
+              </div>
+
+              {/* Nº de identificação fiscal + lupa */}
+              <div className="space-y-1">
+                <label className="block text-[11px] font-bold text-[#374151]">
+                  Nº de identificação fiscal <span className="text-red-500">*</span>
+                </label>
+                <div className="flex">
+                  <input
+                    type="text"
+                    placeholder="Ex: 5000000001"
+                    value={form.nif_fornecedor}
+                    onChange={e => setForm(f => ({ ...f, nif_fornecedor: e.target.value }))}
+                    className="w-full bg-white border border-[#d1d5db] border-r-0 px-3 py-2 text-xs text-[#111827] focus:outline-none focus:border-[#0f2a4a] rounded-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!form.nif_fornecedor) return;
+                      const sup = suppliers.find(s => (s.nif || '').includes(form.nif_fornecedor));
+                      if (sup) {
+                        setForm(f => ({ ...f, fornecedor_id: String(sup.id), fornecedor_nome: sup.name }));
+                        toast.success(`Fornecedor encontrado: ${sup.name}`);
+                      } else {
+                        toast('Nenhum fornecedor com este NIF cadastrado.', { icon: 'ℹ️' });
+                      }
+                    }}
+                    className="bg-[#0f2a4a] hover:bg-[#001f3f] text-white px-3 flex items-center justify-center transition-colors rounded-none"
+                    title="Pesquisar por NIF"
+                  >
+                    <Search size={14} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Nome (Selecione o adquirente/fornecedor) */}
+              <div className="space-y-1 relative">
+                <label className="block text-[11px] font-bold text-[#374151]">
+                  Nome <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="Selecione o adquirente..."
+                    value={supplierSearch || form.fornecedor_nome}
+                    onChange={e => {
+                      setSupplierSearch(e.target.value);
+                      setShowSupplierDropdown(true);
+                      if (!e.target.value) {
+                        setForm(f => ({ ...f, fornecedor_id: '', fornecedor_nome: '', nif_fornecedor: '' }));
+                      }
+                    }}
+                    onFocus={() => setShowSupplierDropdown(true)}
+                    onBlur={() => setTimeout(() => setShowSupplierDropdown(false), 200)}
+                    className={`w-full bg-white border px-3 py-2 pr-7 text-xs text-[#111827] focus:outline-none focus:border-[#0f2a4a] rounded-none ${errors.fornecedor_id ? 'border-red-400' : 'border-[#d1d5db]'}`}
+                  />
+                  <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
                   {showSupplierDropdown && filteredSuppliers.length > 0 && (
-                    <div className="absolute z-50 top-full left-0 right-0 bg-white border border-zinc-200 shadow-xl max-h-52 overflow-y-auto">
+                    <div className="absolute z-50 top-full left-0 right-0 bg-white border border-[#d1d5db] shadow-xl max-h-52 overflow-y-auto">
                       {filteredSuppliers.map(s => (
-                        <button key={s.id} type="button" className="w-full text-left px-3 py-2 hover:bg-blue-50 text-sm font-medium text-zinc-800 border-b border-zinc-50 last:border-0"
-                          onMouseDown={() => { setForm(f => ({ ...f, fornecedor_id: String(s.id), fornecedor_nome: s.name, nif_fornecedor: s.nif || '' })); setSupplierSearch(''); setShowSupplierDropdown(false); }}>
-                          <div className="font-semibold text-zinc-800">{s.name}</div>
-                          {s.nif && <div className="text-[10px] text-zinc-400">NIF: {s.nif}</div>}
+                        <button
+                          key={s.id}
+                          type="button"
+                          className="w-full text-left px-3 py-2 hover:bg-blue-50 text-xs font-medium text-[#111827] border-b border-zinc-100 last:border-0"
+                          onMouseDown={() => {
+                            setForm(f => ({
+                              ...f,
+                              fornecedor_id: String(s.id),
+                              fornecedor_nome: s.name,
+                              nif_fornecedor: s.nif || '',
+                            }));
+                            setSupplierSearch('');
+                            setShowSupplierDropdown(false);
+                          }}
+                        >
+                          <div className="font-bold text-[#111827]">{s.name}</div>
+                          {s.nif && <div className="text-[10px] text-[#6b7280]">NIF: {s.nif}</div>}
                         </button>
                       ))}
                     </div>
@@ -1066,197 +1292,226 @@ export const GestaoComprasForm: React.FC<Props> = ({
                 {errors.fornecedor_id && <p className="text-[10px] text-red-500">{errors.fornecedor_id}</p>}
               </div>
 
-              {/* NIF auto-fill */}
+              {/* Data prestação de bens/serviços */}
               <div className="space-y-1">
-                <label className="block text-xs font-semibold text-zinc-600">NIF do Fornecedor</label>
-                <input type="text" readOnly value={form.nif_fornecedor} className="w-full bg-zinc-50 border border-zinc-200 px-3 py-2 text-sm text-zinc-500 cursor-default rounded-none" placeholder="Preenchido automaticamente" />
-                {form.fornecedor_id && !form.nif_fornecedor && <p className="text-[10px] text-amber-500">⚠️ Fornecedor sem NIF.</p>}
-              </div>
-
-              {/* Data Prestação */}
-              <div className="space-y-1">
-                <label className="block text-xs font-semibold text-zinc-600">Data prestação de bens/serviços</label>
-                <input type="date" value={form.data_valor} onChange={e => setForm(f => ({ ...f, data_valor: e.target.value }))} className="w-full bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none" />
+                <label className="block text-[11px] font-bold text-[#374151]">
+                  Data prestação de bens/serviços <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  value={form.data_valor}
+                  onChange={e => setForm(f => ({ ...f, data_valor: e.target.value }))}
+                  className="w-full bg-white border border-[#d1d5db] px-3 py-2 text-xs text-[#111827] focus:outline-none focus:border-[#0f2a4a] rounded-none"
+                />
               </div>
             </div>
-          </div>
 
-          {/* ─── Documento de Suporte ─────────────────────────────────── */}
-          <div className="bg-white border border-zinc-200 shadow-sm">
-            <div className="px-4 py-3 border-b border-zinc-200 bg-gradient-to-r from-[#0f2a4a] to-[#1a3a5c] flex items-center justify-between">
-              <h3 className="text-xs font-bold text-white uppercase tracking-widest flex items-center gap-1.5">
-                <Paperclip size={12} /> Documento de Suporte
-              </h3>
+            {/* Linha 2: Local de prestação de bens/serviços (largura total) */}
+            <div className="space-y-1">
+              <label className="block text-[11px] font-bold text-[#374151]">
+                Local de prestação de bens/serviços <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                placeholder="Ex: Luanda, Angola"
+                value={form.local_prestacao}
+                onChange={e => setForm(f => ({ ...f, local_prestacao: e.target.value }))}
+                className="w-full bg-white border border-[#d1d5db] px-3 py-2 text-xs text-[#111827] focus:outline-none focus:border-[#0f2a4a] rounded-none"
+              />
+            </div>
+
+            {/* Documento de Suporte anexo (opcional integrado) */}
+            <div className="pt-2 border-t border-[#f3f4f6] flex flex-wrap items-center gap-3">
+              <label className="cursor-pointer inline-flex items-center gap-2 px-3 py-1.5 bg-[#f9fafb] hover:bg-zinc-100 border border-[#d1d5db] text-xs font-semibold text-zinc-700 transition-colors rounded-none">
+                <Paperclip size={13} />
+                <span>{supportFile ? supportFile.name : 'Anexar Ficheiro de Suporte (PDF ou Imagem)'}</span>
+                <input
+                  type="file"
+                  accept="application/pdf,image/*"
+                  className="hidden"
+                  onChange={e => {
+                    const f = e.target.files?.[0];
+                    if (f) setSupportFile(f);
+                  }}
+                />
+              </label>
+              {supportFile && (
+                <button
+                  type="button"
+                  onClick={() => setSupportFile(null)}
+                  className="text-red-600 hover:text-red-800 text-xs font-bold"
+                >
+                  Remover
+                </button>
+              )}
               {currentDocumentUrl && (
-                <a href={currentDocumentUrl} target="_blank" rel="noreferrer" className="text-[11px] text-blue-200 hover:text-white font-semibold inline-flex items-center gap-1">
-                  <ExternalLink size={11} /> Ver anexo gravado
+                <a
+                  href={currentDocumentUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs text-[#0f2a4a] hover:underline font-bold inline-flex items-center gap-1"
+                >
+                  <ExternalLink size={12} /> Ver documento gravado
                 </a>
               )}
             </div>
-            <div className="p-4 flex flex-wrap items-center gap-3">
-              <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-zinc-100 hover:bg-zinc-200 border border-zinc-300 text-sm font-semibold text-zinc-700 transition-colors rounded-none">
-                <Paperclip size={14} />
-                <span>{supportFile ? supportFile.name : 'Seleccionar Ficheiro (PDF ou Imagem)'}</span>
-                <input type="file" accept="application/pdf,image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) setSupportFile(f); }} />
-              </label>
-              {supportFile && <button type="button" onClick={() => setSupportFile(null)} className="text-red-500 hover:text-red-700 text-sm font-semibold">Remover</button>}
-              <span className="text-xs text-zinc-400">Formatos aceites: PDF, JPG, PNG</span>
-            </div>
           </div>
+        </div>
 
-          {/* ─── BENS E SERVIÇOS ─────────────────────────────────────── */}
-          <div className="bg-white border border-zinc-200 shadow-sm">
-            <div className="px-4 py-3 border-b border-zinc-200 bg-gradient-to-r from-[#0f2a4a] to-[#1a3a5c] flex items-center justify-between">
-              <h3 className="text-xs font-bold text-white uppercase tracking-widest">Bens e Serviços</h3>
-              <button type="button" onClick={openNewItem} className="flex items-center gap-1.5 px-4 py-1.5 bg-[#2563eb] hover:bg-blue-700 text-white text-xs font-bold uppercase tracking-wide transition-all rounded-none">
-                <Plus size={13} /> Adicionar à lista
-              </button>
-            </div>
-
-            {errors.itens && (
-              <div className="flex items-center gap-2 px-4 py-2 bg-red-50 border-b border-red-200">
-                <AlertCircle size={12} className="text-red-500" />
-                <span className="text-xs text-red-600 font-semibold">{errors.itens}</span>
-              </div>
-            )}
-
-            {/* Items table */}
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-zinc-50 border-b border-zinc-200">
-                    <th className="px-3 py-2 text-left text-xs font-bold text-zinc-500 uppercase tracking-wider w-8">#</th>
-                    <th className="px-3 py-2 text-left text-xs font-bold text-zinc-500 uppercase tracking-wider">Descrição do produto</th>
-                    <th className="px-3 py-2 text-center text-xs font-bold text-zinc-500 uppercase tracking-wider w-24">Quantidade</th>
-                    <th className="px-3 py-2 text-right text-xs font-bold text-zinc-500 uppercase tracking-wider w-28">Preço Unit.</th>
-                    <th className="px-3 py-2 text-center text-xs font-bold text-zinc-500 uppercase tracking-wider w-24">Desconto (%)</th>
-                    <th className="px-3 py-2 text-left text-xs font-bold text-zinc-500 uppercase tracking-wider w-28">Imposto aplicado</th>
-                    <th className="px-3 py-2 text-right text-xs font-bold text-zinc-500 uppercase tracking-wider w-28">Total</th>
-                    <th className="px-3 py-2 text-center text-xs font-bold text-zinc-500 uppercase tracking-wider w-20">Acção</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-100">
-                  {form.itens.length === 0 ? (
-                    <tr>
-                      <td colSpan={8} className="px-4 py-8 text-center text-zinc-400 text-sm">
-                        Nenhum artigo adicionado. Clique em <strong>+ Adicionar à lista</strong> para começar.
-                      </td>
-                    </tr>
-                  ) : (
-                    form.itens.map((item, idx) => {
-                      const base = round2(item.quantidade * item.valor_unitario);
-                      const descLinha = round2(base * (item.desconto_linha / 100));
-                      const subtotal = round2(base - descLinha);
-                      const iva = round2(subtotal * (item.tax_rate / 100));
-                      const totalLinha = round2(subtotal + iva);
-                      return (
-                        <tr key={item.uid} className="hover:bg-zinc-50 transition-colors">
-                          <td className="px-3 py-3">
-                            <span className="w-6 h-6 bg-[#0f2a4a] text-white text-[10px] font-bold flex items-center justify-center">{idx + 1}</span>
-                          </td>
-                          <td className="px-3 py-3">
-                            <div className="font-semibold text-zinc-800">{item.descricao || <span className="text-zinc-400 italic">—</span>}</div>
-                            <div className="text-[10px] text-zinc-400 mt-0.5">{item.tipo_artigo} · {item.unidade || 'UN'} {item.tipologia_custo ? `· ${item.tipologia_custo}` : ''}</div>
-                            {item.armazem_id && (
-                              <div className="text-[10px] text-emerald-600 mt-0.5">
-                                🏭 {armazens.find(a => a.id === item.armazem_id)?.name || item.armazem_id}
-                              </div>
-                            )}
-                          </td>
-                          <td className="px-3 py-3 text-center text-zinc-700 font-semibold">{item.quantidade}</td>
-                          <td className="px-3 py-3 text-right text-zinc-700 font-semibold font-mono">{fmtCurrency(item.valor_unitario, form.moeda)}</td>
-                          <td className="px-3 py-3 text-center text-zinc-500">{item.desconto_linha > 0 ? `${item.desconto_linha}%` : '—'}</td>
-                          <td className="px-3 py-3">
-                            <span className={`inline-block px-2 py-0.5 text-[10px] font-bold rounded-none ${item.tax_rate > 0 ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-zinc-100 text-zinc-500 border border-zinc-200'}`}>
-                              {item.tax_rate > 0 ? `IVA ${item.tax_rate}%` : 'Sem imposto'}
-                            </span>
-                          </td>
-                          <td className="px-3 py-3 text-right font-bold text-zinc-800 font-mono">{fmtCurrency(totalLinha, form.moeda)}</td>
-                          <td className="px-3 py-3">
-                            <div className="flex items-center justify-center gap-1">
-                              <button type="button" onClick={() => openEditItem(idx)} className="p-1.5 text-blue-500 hover:bg-blue-50 transition-colors" title="Editar">
-                                <Package size={13} />
-                              </button>
-                              <button type="button" onClick={() => removeItem(idx)} className="p-1.5 text-red-400 hover:bg-red-50 transition-colors" title="Remover">
-                                <Trash2 size={13} />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Totals footer */}
-            <div className="border-t border-zinc-200 px-4 py-4">
-              <div className="flex flex-col items-end gap-1.5">
-                <div className="flex justify-between w-full max-w-sm">
-                  <span className="text-sm text-zinc-500 font-semibold">SUBTOTAL BRUTO</span>
-                  <span className="text-sm font-bold text-zinc-800 font-mono">{fmtCurrency(totals.subtotalBruto, form.moeda)}</span>
-                </div>
-                {form.desconto_global > 0 && (
-                  <div className="flex justify-between w-full max-w-sm text-red-600">
-                    <span className="text-sm font-semibold">DESCONTO GLOBAL ({form.desconto_global}%)</span>
-                    <span className="text-sm font-bold font-mono">-{fmtCurrency(totals.descGlobal, form.moeda)}</span>
-                  </div>
-                )}
-                <div className="flex justify-between w-full max-w-sm">
-                  <span className="text-sm text-zinc-500 font-semibold">RETENÇÕES</span>
-                  <span className="text-sm font-bold text-zinc-800 font-mono">
-                    {form.taxa_retencao && form.taxa_retencao !== 'Não Sujeito'
-                      ? fmtCurrency(round2(totals.totalFinal * (parseFloat(form.taxa_retencao as any) / 100)), form.moeda)
-                      : fmtCurrency(0, form.moeda)}
-                  </span>
-                </div>
-                <div className="flex justify-between w-full max-w-sm border-t border-zinc-300 pt-2 mt-1">
-                  <span className="text-base font-black text-[#0f2a4a] uppercase">TOTAL DOCUMENTO</span>
-                  <span className="text-base font-black text-[#0f2a4a] font-mono">{fmtCurrency(totals.totalFinal, form.moeda)}</span>
-                </div>
-                {form.moeda !== 'AOA' && (
-                  <div className="flex justify-between w-full max-w-sm text-zinc-400">
-                    <span className="text-xs font-semibold">Contravalor (AOA)</span>
-                    <span className="text-xs font-bold font-mono">{fmtCurrency(round2(totals.totalFinal * form.taxa_cambio), 'AOA')}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* ─── Observações ─────────────────────────────────────────── */}
-          <div className="bg-white border border-zinc-200 shadow-sm">
-            <div className="px-4 py-3 border-b border-zinc-200 bg-gradient-to-r from-[#0f2a4a] to-[#1a3a5c]">
-              <h3 className="text-xs font-bold text-white uppercase tracking-widest">Observações</h3>
-            </div>
-            <div className="p-4">
-              <textarea rows={2} placeholder="Observações adicionais..." value={form.observacoes} onChange={e => setForm(f => ({ ...f, observacoes: e.target.value }))} className="w-full bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none resize-none" />
-            </div>
-          </div>
-
-          {/* ─── Action Buttons ──────────────────────────────────────── */}
-          <div className="flex items-center justify-between gap-3 py-2">
-            <button type="button" onClick={onBack} className="flex items-center gap-2 px-6 py-2.5 border-2 border-[#0f2a4a] text-[#0f2a4a] text-sm font-bold uppercase tracking-wider hover:bg-zinc-50 transition-all rounded-none">
-              <ChevronLeft size={15} /> CANCELAR EMISSÃO
+        {/* ─── CARD 3: BENS E SERVIÇOS ────────────────────────────────── */}
+        <div className="bg-white border border-[#d1d5db] shadow-xs rounded-none">
+          <div className="px-5 py-3 border-b border-[#e5e7eb] flex items-center justify-between">
+            <h3 className="text-xs font-bold text-[#0f2a4a] uppercase tracking-wider">
+              BENS E SERVIÇOS
+            </h3>
+            <button
+              type="button"
+              onClick={openNewItem}
+              className="flex items-center gap-1.5 px-4 py-1.5 bg-[#0f2a4a] hover:bg-[#001f3f] text-white text-xs font-bold tracking-wider transition-all rounded-none shadow-xs"
+            >
+              <Plus size={13} /> + Adicionar à lista
             </button>
-
-            <div className="flex items-center gap-2">
-              {dupWarning && (
-                <div className="flex items-center gap-1 px-2 py-1.5 bg-amber-50 border border-amber-200 text-amber-700 text-xs font-bold">
-                  <AlertCircle size={12} /> Número duplicado
-                </div>
-              )}
-              <button type="submit" disabled={saving || !!dupWarning} className="flex items-center gap-2 px-6 py-2.5 bg-[#0f2a4a] hover:bg-[#001f3f] disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold uppercase tracking-wider transition-all shadow-md rounded-none">
-                {saving ? (
-                  <><RefreshCw size={14} className="animate-spin" /> A guardar...</>
-                ) : (
-                  <><Save size={14} /> {isEditing ? 'ACTUALIZAR DOCUMENTO' : 'CONFIRMAR E EMITIR DOCUMENTO'}</>
-                )}
-              </button>
-            </div>
           </div>
 
+          {errors.itens && (
+            <div className="flex items-center gap-2 px-5 py-2 bg-red-50 border-b border-red-200">
+              <AlertCircle size={13} className="text-red-500" />
+              <span className="text-xs text-red-600 font-semibold">{errors.itens}</span>
+            </div>
+          )}
+
+          {/* Table BENS E SERVIÇOS */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-[#0f2a4a] text-white font-bold">
+                  <th className="px-3 py-2.5 text-left w-10">#</th>
+                  <th className="px-4 py-2.5 text-left">Descrição do produto</th>
+                  <th className="px-4 py-2.5 text-right w-28">Quantidade</th>
+                  <th className="px-4 py-2.5 text-right w-28">Preço Unit</th>
+                  <th className="px-4 py-2.5 text-right w-28">Desconto (%)</th>
+                  <th className="px-4 py-2.5 text-center w-32">Imposto aplicado</th>
+                  <th className="px-4 py-2.5 text-center w-20">Acção</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {form.itens.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={7}
+                      className="px-6 py-16 text-center text-[#9ca3af] font-semibold italic uppercase tracking-wider text-xs border-dashed border-2 border-[#e5e7eb] m-4"
+                    >
+                      NENHUM BEM OU SERVIÇO ADICIONADO
+                    </td>
+                  </tr>
+                ) : (
+                  form.itens.map((item, idx) => {
+                    const base = round2(item.quantidade * item.valor_unitario);
+                    const descLinha = round2(base * (item.desconto_linha / 100));
+                    const subtotal = round2(base - descLinha);
+                    const iva = round2(subtotal * (item.tax_rate / 100));
+                    const totalLinha = round2(subtotal + iva);
+                    return (
+                      <tr key={item.uid} className="hover:bg-zinc-50 transition-colors">
+                        <td className="px-3 py-3 font-bold text-center text-[#0f2a4a]">{idx + 1}</td>
+                        <td className="px-4 py-3">
+                          <div className="font-bold text-[#111827]">
+                            {item.descricao || <span className="text-zinc-400 italic">—</span>}
+                          </div>
+                          <div className="text-[10px] text-[#6b7280] mt-0.5">
+                            {item.tipo_artigo} · {item.unidade || 'UN'} {item.tipologia_custo ? `· ${item.tipologia_custo}` : ''}
+                          </div>
+                          {item.armazem_id && (
+                            <div className="text-[10px] text-emerald-600 font-semibold mt-0.5">
+                              🏭 {armazens.find(a => a.id === item.armazem_id)?.name || item.armazem_id}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right font-semibold text-[#111827]">{item.quantidade}</td>
+                        <td className="px-4 py-3 text-right font-semibold text-[#111827] font-mono">
+                          {fmtNum(item.valor_unitario)}
+                        </td>
+                        <td className="px-4 py-3 text-right text-zinc-600">
+                          {item.desconto_linha > 0 ? `${item.desconto_linha}%` : '0'}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <span className={`inline-block px-2 py-0.5 text-[10px] font-bold ${item.tax_rate > 0 ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-zinc-100 text-zinc-500'}`}>
+                            {item.tax_rate > 0 ? `IVA (${item.tax_rate}%)` : 'IS (1%)'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => openEditItem(idx)}
+                              className="p-1 text-blue-600 hover:bg-blue-50 transition-colors"
+                              title="Editar item"
+                            >
+                              <Package size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removeItem(idx)}
+                              className="p-1 text-red-500 hover:bg-red-50 transition-colors"
+                              title="Remover item"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Subtotais e Totais do Rodapé exatamente iguais a imagem */}
+          <div className="border-t border-[#e5e7eb] px-6 py-5 bg-[#fafafa]">
+            <div className="flex flex-col items-end space-y-1.5">
+              <div className="flex justify-between w-72 text-xs font-bold text-[#4b5563]">
+                <span className="uppercase">SUBTOTAL BRUTO</span>
+                <span className="font-mono text-[#111827]">{fmtNum(totals.subtotalBruto)} Kz</span>
+              </div>
+              <div className="flex justify-between w-72 text-xs font-bold text-[#4b5563]">
+                <span className="uppercase">RETENÇÕES</span>
+                <span className="font-mono text-[#111827]">
+                  - {fmtNum(form.taxa_retencao && form.taxa_retencao !== 'Não Sujeito' ? totals.totalFinal * (parseFloat(form.taxa_retencao as any) / 100) : 0)} Kz
+                </span>
+              </div>
+              <div className="flex justify-between w-72 text-sm font-black text-[#0f2a4a] border-t border-[#d1d5db] pt-2 mt-1">
+                <span className="uppercase">TOTAL DOCUMENTO</span>
+                <span className="font-mono text-[15px]">{fmtNum(totals.totalFinal)} Kz</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ─── Botões de Acção Inferiores ────────────────────────────── */}
+        <div className="flex items-center justify-end gap-4 pt-2 pb-6">
+          <button
+            type="button"
+            onClick={onBack}
+            className="text-xs font-bold text-[#6b7280] hover:text-[#111827] uppercase tracking-wider px-4 py-2.5 transition-colors"
+          >
+            CANCELAR EMISSÃO
+          </button>
+
+          <button
+            type="submit"
+            disabled={saving || !!dupWarning}
+            className="px-8 py-2.5 bg-[#0f2a4a] hover:bg-[#001f3f] disabled:opacity-50 text-white text-xs font-bold uppercase tracking-wider rounded-none shadow-md transition-colors flex items-center gap-2"
+          >
+            {saving ? (
+              <>
+                <RefreshCw size={14} className="animate-spin" />
+                A GUARDAR...
+              </>
+            ) : (
+              'CONFIRMAR E EMITIR DOCUMENTO'
+            )}
+          </button>
         </div>
       </form>
     </div>

@@ -177,9 +177,9 @@ const ActionsSidebar = ({
 
   const actions = [
     { id: 'view', icon: Eye, label: 'Ver Documento', desc: 'Visualizar detalhes completos', color: 'text-blue-600', enabled: true },
-    { id: 'receipt', icon: FileCheck, label: 'Emitir Recibo', desc: 'Registar pagamento/recibo desta fatura', color: 'text-emerald-600', enabled: isEligibleForReceipt },
-    { id: 'credit_note', icon: FileX, label: 'Emitir Nota de Crédito', desc: 'Emitir nota de crédito retificativa', color: 'text-rose-600', enabled: isEligibleForCreditNote },
-    { id: 'edit', icon: Edit2, label: 'Editar', desc: 'Modificar documento', color: 'text-amber-600', enabled: !anulado && !temRecibo },
+    { id: 'edit', icon: Edit2, label: 'Editar', desc: 'Modificar documento', color: 'text-amber-600', enabled: true },
+    { id: 'receipt', icon: FileCheck, label: 'Emitir Recibo', desc: 'Registar pagamento/recibo desta fatura', color: 'text-emerald-600', enabled: true },
+    { id: 'credit_note', icon: FileX, label: 'Emitir Nota de Crédito', desc: 'Emitir nota de crédito retificativa', color: 'text-rose-600', enabled: true },
     { id: 'duplicate', icon: Copy, label: 'Duplicar', desc: 'Criar cópia deste documento', color: 'text-purple-600', enabled: true },
     { id: 'print', icon: Printer, label: 'Imprimir', desc: 'Imprimir documento', color: 'text-zinc-600', enabled: true },
     { id: 'pdf', icon: Download, label: 'Exportar PDF', desc: 'Descarregar documento em PDF', color: 'text-zinc-600', enabled: true },
@@ -188,7 +188,7 @@ const ActionsSidebar = ({
     { id: 'support_doc', icon: FileText, label: 'Ver Documento de Suporte', desc: 'Ver documento anexado / digitalizado', color: 'text-orange-600', enabled: true },
     { id: 'accounting', icon: BarChart2, label: 'Ver Impactos Contabilísticos', desc: 'Lançamentos no plano PGC', color: 'text-teal-600', enabled: true },
     { id: 'stock', icon: Package, label: 'Ver Movimento de Stock', desc: 'Entradas de armazém geradas', color: 'text-rose-600', enabled: true },
-    { id: 'delete', icon: Trash2, label: 'Apagar Documento', desc: 'Eliminar permanentemente do sistema', color: 'text-red-600', enabled: !anulado && !temRecibo },
+    { id: 'delete', icon: Trash2, label: 'Apagar Documento', desc: 'Eliminar permanentemente do sistema', color: 'text-red-600', enabled: true },
   ];
 
   return (
@@ -671,12 +671,9 @@ export const GestaoComprasList: React.FC<Props> = ({
         break;
       case 'edit':
         if (isAnulado(doc)) {
-          toast.error('Documentos anulados não podem ser editados.');
-          return;
-        }
-        if (doc.recibo_emitido || doc.tem_recibo) {
-          toast.error('Documentos com recibo emitido não podem ser alterados.');
-          return;
+          toast('Documento anulado — aberto em modo de consulta/retificação.', { icon: 'ℹ️' });
+        } else if (doc.recibo_emitido || doc.tem_recibo) {
+          toast('Documento com recibo emitido — certifique-se das alterações.', { icon: '⚠️' });
         }
         onEditPurchase(doc);
         break;
@@ -1175,16 +1172,14 @@ export const GestaoComprasList: React.FC<Props> = ({
                         </button>
                       )}
 
-                      {/* Edit button */}
-                      {!anulado && !temRecibo && (
-                        <button
-                          onClick={() => handleAction('edit', doc)}
-                          className="p-1 text-amber-600 hover:text-amber-800 hover:bg-amber-50 border border-amber-200 rounded-none transition-all"
-                          title="Editar Documento"
-                        >
-                          <Edit2 size={13} />
-                        </button>
-                      )}
+                      {/* Edit button — presente em todos os documentos */}
+                      <button
+                        onClick={() => handleAction('edit', doc)}
+                        className="p-1 text-amber-600 hover:text-amber-800 hover:bg-amber-50 border border-amber-200 rounded-none transition-all"
+                        title="Editar Documento"
+                      >
+                        <Edit2 size={13} />
+                      </button>
 
                       {/* Document icon — green if has attachment, grey otherwise */}
                       <button

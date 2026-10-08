@@ -227,6 +227,12 @@ const fmtCurrency = (v: number, m = 'AOA') => {
   return v.toLocaleString('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + m;
 };
 
+const fmtNum = (v?: number | string | null): string => {
+  const n = typeof v === 'string' ? parseFloat(v) : (v ?? 0);
+  if (isNaN(n)) return '0,00';
+  return n.toLocaleString('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Label obrigatório
 // ─────────────────────────────────────────────────────────────────────────────

@@ -8,7 +8,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { AgtItemModal, AgtItemData } from '../AgtItemModal';
 import {
-  ChevronLeft, Plus, Trash2, Save, AlertCircle,
+  ChevronLeft, ChevronDown, Plus, Trash2, Save, AlertCircle,
   Search, Package, RefreshCw, Info, CheckCircle2,
   Paperclip, ExternalLink, FileText
 } from 'lucide-react';

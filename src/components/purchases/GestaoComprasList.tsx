@@ -158,10 +158,12 @@ const PAGE_SIZE = 25;
 
 const ActionsSidebar = ({
   doc,
+  hasAttachment = false,
   onClose,
   onAction
 }: {
   doc: CompraDoc;
+  hasAttachment?: boolean;
   onClose: () => void;
   onAction: (action: string, d: CompraDoc) => void;
 }) => {
@@ -176,16 +178,40 @@ const ActionsSidebar = ({
   const isEligibleForCreditNote = !anulado && !isCreditNote && !isReceiptType;
 
   const actions = [
-    { id: 'view', icon: Eye, label: 'Ver Documento', desc: 'Visualizar detalhes completos', color: 'text-blue-600', enabled: true },
+    {
+      id: 'view',
+      icon: Eye,
+      label: 'Ver Documento',
+      desc: hasAttachment ? 'Documento / Anexo carregado' : 'Visualizar detalhes completos',
+      color: hasAttachment ? 'text-emerald-600' : 'text-blue-600',
+      badge: hasAttachment,
+      enabled: true
+    },
     { id: 'edit', icon: Edit2, label: 'Editar', desc: 'Modificar documento', color: 'text-amber-600', enabled: true },
     { id: 'receipt', icon: FileCheck, label: 'Emitir Recibo', desc: 'Registar pagamento/recibo desta fatura', color: 'text-emerald-600', enabled: true },
     { id: 'credit_note', icon: FileX, label: 'Emitir Nota de Crédito', desc: 'Emitir nota de crédito retificativa', color: 'text-rose-600', enabled: true },
     { id: 'duplicate', icon: Copy, label: 'Duplicar', desc: 'Criar cópia deste documento', color: 'text-purple-600', enabled: true },
     { id: 'print', icon: Printer, label: 'Imprimir', desc: 'Imprimir documento', color: 'text-zinc-600', enabled: true },
     { id: 'pdf', icon: Download, label: 'Exportar PDF', desc: 'Descarregar documento em PDF', color: 'text-zinc-600', enabled: true },
-    { id: 'attachments', icon: Paperclip, label: 'Anexos', desc: 'Gerir documentos de suporte', color: 'text-emerald-600', enabled: true },
+    {
+      id: 'attachments',
+      icon: Paperclip,
+      label: 'Anexos',
+      desc: hasAttachment ? 'Ficheiros anexados disponíveis' : 'Gerir documentos de suporte',
+      color: hasAttachment ? 'text-emerald-600' : 'text-zinc-600',
+      badge: hasAttachment,
+      enabled: true
+    },
     { id: 'certification', icon: Shield, label: 'Ver Certificação', desc: 'Verificar assinatura RSA e hash', color: 'text-indigo-600', enabled: true },
-    { id: 'support_doc', icon: FileText, label: 'Ver Documento de Suporte', desc: 'Ver documento anexado / digitalizado', color: 'text-orange-600', enabled: true },
+    {
+      id: 'support_doc',
+      icon: FileText,
+      label: 'Ver Documento de Suporte',
+      desc: hasAttachment ? 'Anexo / ficheiro carregado' : 'Ver documento anexado / digitalizado',
+      color: hasAttachment ? 'text-emerald-600' : 'text-orange-600',
+      badge: hasAttachment,
+      enabled: true
+    },
     { id: 'accounting', icon: BarChart2, label: 'Ver Impactos Contabilísticos', desc: 'Lançamentos no plano PGC', color: 'text-teal-600', enabled: true },
     { id: 'stock', icon: Package, label: 'Ver Movimento de Stock', desc: 'Entradas de armazém geradas', color: 'text-rose-600', enabled: true },
     { id: 'delete', icon: Trash2, label: 'Apagar Documento', desc: 'Eliminar permanentemente do sistema', color: 'text-red-600', enabled: true },
@@ -561,10 +587,10 @@ export const GestaoComprasList: React.FC<Props> = ({
   } | null>(null);
   const [inlineSaving, setInlineSaving] = useState(false);
 
-  // Modals
   const [certModalDoc, setCertModalDoc] = useState<CompraDoc | null>(null);
   const [accountingModalDoc, setAccountingModalDoc] = useState<CompraDoc | null>(null);
   const [stockModalDoc, setStockModalDoc] = useState<CompraDoc | null>(null);
+  const [docsWithAttachments, setDocsWithAttachments] = useState<Set<string>>(new Set());
 
   // Debounce search
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -647,8 +673,38 @@ export const GestaoComprasList: React.FC<Props> = ({
         return;
       }
 
-      setDocs(data || []);
+      const loadedDocs: CompraDoc[] = data || [];
+      setDocs(loadedDocs);
       setTotalCount(count ?? 0);
+
+      // Identificar quais documentos têm anexos em media_arquivos ou document_url
+      const idsWithDirectUrl = new Set<string>(
+        loadedDocs
+          .filter(d => !!(d.document_url || (d as any).comprovativo_url || (d as any).file_url || (d as any).anexo_url || (d as any).anexo))
+          .map(d => d.id)
+      );
+
+      const docIds = loadedDocs.map(d => String(d.id)).filter(Boolean);
+      if (docIds.length > 0) {
+        try {
+          const { data: mediaFiles } = await supabase
+            .from('media_arquivos')
+            .select('entidade_id')
+            .eq('entidade', 'compras')
+            .eq('empresa_id', empresaId)
+            .in('entidade_id', docIds);
+
+          if (mediaFiles && mediaFiles.length > 0) {
+            mediaFiles.forEach(mf => {
+              if (mf.entidade_id) idsWithDirectUrl.add(String(mf.entidade_id));
+            });
+          }
+        } catch (mErr) {
+          console.warn('[GestaoComprasList] media_arquivos check warning:', mErr);
+        }
+      }
+
+      setDocsWithAttachments(idsWithDirectUrl);
     } catch (err: any) {
       console.error('[GestaoComprasList] exception:', err);
       toast.error(`Falha ao carregar compras: ${err.message}`);
@@ -1030,7 +1086,15 @@ export const GestaoComprasList: React.FC<Props> = ({
               const rsa = isRSA(doc);
               const { cc, caixa } = getCentroDisplay(doc);
               const isEven = idx % 2 === 0;
-              const hasAttachment = !!(doc.document_url || (doc as any).document_path || (doc as any).comprovativo_url || (doc as any).file_url || (doc as any).anexo_url || (doc as any).anexo);
+              const hasAttachment = !!(
+                doc.document_url ||
+                (doc as any).document_path ||
+                (doc as any).comprovativo_url ||
+                (doc as any).file_url ||
+                (doc as any).anexo_url ||
+                (doc as any).anexo ||
+                docsWithAttachments.has(String(doc.id))
+              );
 
               return (
                 <tr
@@ -1290,6 +1354,15 @@ export const GestaoComprasList: React.FC<Props> = ({
       {selectedDoc && (
         <ActionsSidebar
           doc={selectedDoc}
+          hasAttachment={!!(
+            selectedDoc.document_url ||
+            (selectedDoc as any).document_path ||
+            (selectedDoc as any).comprovativo_url ||
+            (selectedDoc as any).file_url ||
+            (selectedDoc as any).anexo_url ||
+            (selectedDoc as any).anexo ||
+            docsWithAttachments.has(String(selectedDoc.id))
+          )}
           onClose={() => setSelectedDoc(null)}
           onAction={handleAction}
         />

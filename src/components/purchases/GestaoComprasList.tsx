@@ -13,7 +13,7 @@ import {
   Paperclip, Shield, FileText, BarChart2, Package,
   X, CheckCircle2, XCircle, Clock, Check, Hash as HashIcon,
   RefreshCw, Filter, ChevronDown, ExternalLink, AlertTriangle,
-  FileCheck, FileX, Trash2
+  FileCheck, FileX, Trash2, Camera
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -93,6 +93,7 @@ interface Props {
   onEmitReceipt?: (doc: CompraDoc) => void;
   onEmitCreditNote?: (doc: CompraDoc) => void;
   onDeletePurchase?: (doc: CompraDoc) => void;
+  onScanQr?: () => void;
   companyData?: any;
 }
 
@@ -124,13 +125,43 @@ const getDocDate = (d: CompraDoc) =>
 const getDocValorDate = (d: CompraDoc) =>
   d.data_servico || d.data_compra || d.date || '';
 
-const getDocNum = (d: CompraDoc) => {
-  const tipo = d.tipo_documento || d.document_type || 'FC';
-  const serie = d.numero_documento || d.purchase_number || '';
-  const fatura = d.numero_fatura || d.invoice_number || '';
-  if (fatura && serie && fatura !== serie) return `${tipo.substring(0, 2).toUpperCase()} ${serie} / ${fatura}`;
-  if (fatura) return fatura;
-  if (serie) return `${tipo.substring(0, 2).toUpperCase()} ${serie}`;
+export const getDocAbbr = (tipoRaw?: string | null): string => {
+  if (!tipoRaw) return 'DOC';
+  const t = tipoRaw.trim();
+  const matchParen = t.match(/\(([A-Z]{2,3})\)/i);
+  if (matchParen) return matchParen[1].toUpperCase();
+
+  const lower = t.toLowerCase();
+  if (lower.includes('fatura/recibo') || lower.includes('fatura recibo') || lower.includes('fr')) return 'FR';
+  if (lower.includes('recibo') || lower.includes('rc')) return 'RC';
+  if (lower.includes('fatura') || lower.includes('ft') || lower.includes('fc')) return 'FT';
+  if (lower.includes('crédito') || lower.includes('credito') || lower.includes('nc')) return 'NC';
+  if (lower.includes('débito') || lower.includes('debito') || lower.includes('nd')) return 'ND';
+  if (lower.includes('guia') || lower.includes('ge')) return 'GE';
+  return t.substring(0, 2).toUpperCase();
+};
+
+const getDocNum = (d: CompraDoc): string => {
+  const tipo = d.tipo_documento || d.document_type || 'Compra';
+  const abbr = getDocAbbr(tipo);
+  const docNum = (d.numero_documento || d.purchase_number || '').trim();
+  const fatura = (d.numero_fatura || d.invoice_number || '').trim();
+
+  // Se docNum já contém barra, ex: "7026S44853N/754"
+  if (docNum.includes('/')) {
+    return `${abbr} ${docNum}`;
+  }
+
+  // Se serie e numero estao separados
+  if (docNum && fatura && docNum !== fatura) {
+    return `${abbr} ${docNum}/${fatura}`;
+  }
+
+  const num = docNum || fatura;
+  if (num) {
+    return `${abbr} ${num}`;
+  }
+
   return '—';
 };
 
@@ -557,6 +588,7 @@ export const GestaoComprasList: React.FC<Props> = ({
   onEmitReceipt,
   onEmitCreditNote,
   onDeletePurchase,
+  onScanQr,
   companyData
 }) => {
   const { user } = useAuth();
@@ -565,6 +597,7 @@ export const GestaoComprasList: React.FC<Props> = ({
   const [loading, setLoading] = useState(true);
   const [totalCount, setTotalCount] = useState(0);
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState<number>(25);
   const [filters, setFilters] = useState<Filters>({
     search: '',
     supplierId: '',
@@ -656,12 +689,12 @@ export const GestaoComprasList: React.FC<Props> = ({
       if (debouncedSearch) {
         const term = debouncedSearch.trim();
         query = query.or(
-          `fornecedor_nome.ilike.%${term}%,supplier_name.ilike.%${term}%,numero_documento.ilike.%${term}%,numero_fatura.ilike.%${term}%,invoice_number.ilike.%${term}%,purchase_number.ilike.%${term}%,referencia.ilike.%${term}%`
+          `fornecedor_nome.ilike.%${term}%,supplier_name.ilike.%${term}%,numero_documento.ilike.%${term}%,numero_fatura.ilike.%${term}%,invoice_number.ilike.%${term}%,purchase_number.ilike.%${term}%,referencia.ilike.%${term}%,tipo_documento.ilike.%${term}%,document_type.ilike.%${term}%`
         );
       }
 
-      const from = page * PAGE_SIZE;
-      const to = from + PAGE_SIZE - 1;
+      const from = page * pageSize;
+      const to = from + pageSize - 1;
 
       const { data, error, count } = await query
         .order('created_at', { ascending: false })
@@ -711,7 +744,7 @@ export const GestaoComprasList: React.FC<Props> = ({
     } finally {
       setLoading(false);
     }
-  }, [user?.empresa_id, user?.company_id, fiscalYear, page, filters.supplierId, filters.docType, filters.currency, filters.status, filters.dateFrom, filters.dateTo, filters.workSiteId, debouncedSearch]);
+  }, [user?.empresa_id, user?.company_id, fiscalYear, page, pageSize, filters.supplierId, filters.docType, filters.currency, filters.status, filters.dateFrom, filters.dateTo, filters.workSiteId, debouncedSearch]);
 
   useEffect(() => { fetchDocs(); }, [fetchDocs]);
 
@@ -842,7 +875,7 @@ export const GestaoComprasList: React.FC<Props> = ({
     }
   };
 
-  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+  const totalPages = Math.ceil(totalCount / pageSize);
 
   // Centro custo / Caixa display — usa colunas reais da tabela e resolve nomes
   const getCentroDisplay = (doc: CompraDoc) => {
@@ -860,7 +893,7 @@ export const GestaoComprasList: React.FC<Props> = ({
 
   // MovID: número sequencial descendente baseado em posição na página
   const getMovId = (doc: CompraDoc, idx: number) => {
-    const globalIdx = page * PAGE_SIZE + idx;
+    const globalIdx = page * pageSize + idx;
     const seqNum = totalCount - globalIdx;
     if (seqNum > 0) return String(seqNum);
     return doc.numero_compra || doc.numero || (doc.id ? String(doc.id).substring(0, 6).toUpperCase() : '—');
@@ -877,7 +910,7 @@ export const GestaoComprasList: React.FC<Props> = ({
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400" size={14} />
           <input
             type="text"
-            placeholder="Fornecedor, Nº Doc, Referência..."
+            placeholder="Fornecedor, Nº Doc, Tipo Doc, Referência..."
             value={filters.search}
             onChange={e => setFilters(f => ({ ...f, search: e.target.value }))}
             className="w-full pl-8 pr-3 py-1.5 bg-white border border-zinc-200 text-xs font-medium text-zinc-800 focus:outline-none focus:border-[#003366] rounded-none shadow-sm"
@@ -885,6 +918,18 @@ export const GestaoComprasList: React.FC<Props> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {onScanQr && (
+            <button
+              type="button"
+              onClick={onScanQr}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-black uppercase tracking-wider transition-all shadow-sm border border-emerald-600"
+              title="Digitalizar documento de compra ou ler QR Code"
+            >
+              <Camera size={13} />
+              Digitalizar / QR
+            </button>
+          )}
+
           <button
             onClick={() => setShowFilters(s => !s)}
             className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold border transition-all ${showFilters ? 'bg-[#003366] text-white border-[#003366]' : 'bg-white text-zinc-600 border-zinc-200 hover:border-[#003366]'}`}
@@ -925,11 +970,12 @@ export const GestaoComprasList: React.FC<Props> = ({
               className="bg-zinc-50 border border-zinc-200 px-2 py-1 text-xs font-medium text-zinc-800 focus:outline-none focus:border-[#003366] min-w-[160px]"
             >
               <option value="">Todos</option>
-              <option value="Fatura de Compra">Fatura de Compra</option>
-              <option value="Fatura Recibo de Compra">Fatura Recibo de Compra</option>
-              <option value="Nota de Crédito de Fornecedor">Nota de Crédito</option>
-              <option value="Nota de Débito de Fornecedor">Nota de Débito</option>
-              <option value="Guia de Entrada">Guia de Entrada</option>
+              <option value="Fatura">Fatura (FT)</option>
+              <option value="Fatura Recibo">Fatura / Recibo (FR)</option>
+              <option value="Recibo">Recibo (RC)</option>
+              <option value="Nota de Crédito">Nota de Crédito (NC)</option>
+              <option value="Nota de Débito">Nota de Débito (ND)</option>
+              <option value="Guia de Entrada">Guia de Entrada (GE)</option>
             </select>
           </div>
 
@@ -1159,9 +1205,14 @@ export const GestaoComprasList: React.FC<Props> = ({
 
                   {/* 5. DOC Nº */}
                   <td className="px-3 py-1.5 border-r border-zinc-100">
-                    <span className={`font-bold ${anulado ? 'text-red-500' : 'text-zinc-900'}`}>
-                      {getDocNum(doc)}
-                    </span>
+                    <div className="flex flex-col">
+                      <span className={`font-bold font-mono text-[11px] ${anulado ? 'text-red-500' : 'text-zinc-900'}`}>
+                        {getDocNum(doc)}
+                      </span>
+                      <span className="text-[9px] text-zinc-500 uppercase font-semibold tracking-tight">
+                        {doc.tipo_documento || doc.document_type || 'Compra'}
+                      </span>
+                    </div>
                     {anulado && (
                       <span className="ml-1 text-[8px] font-black text-red-500 uppercase">(ANULADO)</span>
                     )}
@@ -1310,28 +1361,47 @@ export const GestaoComprasList: React.FC<Props> = ({
       </div>
 
       {/* ------------------------------------------------------------------ */}
-      {/* Pagination */}
+      {/* Pagination & Page Size */}
       {/* ------------------------------------------------------------------ */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <span className="text-[10px] text-zinc-400 font-bold">
-            A mostrar {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, totalCount)} de {totalCount} compras
-          </span>
+      {totalCount > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-2 border border-zinc-200 shadow-xs">
+          <div className="flex items-center gap-3">
+            <span className="text-[11px] text-zinc-500 font-bold">
+              A mostrar {page * pageSize + 1}–{Math.min((page + 1) * pageSize, totalCount)} de {totalCount} compras
+            </span>
+            <div className="flex items-center gap-1.5 border-l border-zinc-200 pl-3">
+              <span className="text-[10px] text-zinc-400 font-bold uppercase">Mostrar:</span>
+              <select
+                value={pageSize}
+                onChange={e => { setPageSize(Number(e.target.value)); setPage(0); }}
+                className="bg-zinc-50 border border-zinc-200 text-xs px-2 py-1 font-bold text-zinc-800 focus:outline-none focus:border-[#003366]"
+              >
+                <option value={25}>25 por página</option>
+                <option value={50}>50 por página</option>
+                <option value={100}>100 por página</option>
+                <option value={200}>200 por página</option>
+              </select>
+            </div>
+          </div>
+
           <div className="flex items-center gap-1">
             <button
               disabled={page === 0}
               onClick={() => setPage(p => Math.max(0, p - 1))}
               className="p-1.5 border border-zinc-200 text-zinc-500 disabled:opacity-30 hover:bg-zinc-50 transition-all"
+              title="Página anterior"
             >
               <ChevronLeft size={14} />
             </button>
-            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-              const pageNum = Math.max(0, Math.min(totalPages - 5, page - 2)) + i;
+            {Array.from({ length: Math.min(7, totalPages) }, (_, i) => {
+              const startPage = Math.max(0, Math.min(totalPages - 7, page - 3));
+              const pageNum = startPage + i;
+              if (pageNum >= totalPages) return null;
               return (
                 <button
                   key={pageNum}
                   onClick={() => setPage(pageNum)}
-                  className={`w-7 h-7 text-[11px] font-black border transition-all ${pageNum === page ? 'bg-[#003366] text-white border-[#003366]' : 'border-zinc-200 text-zinc-600 hover:bg-zinc-50'}`}
+                  className={`min-w-[28px] h-7 px-1.5 text-[11px] font-black border transition-all ${pageNum === page ? 'bg-[#003366] text-white border-[#003366]' : 'border-zinc-200 text-zinc-600 hover:bg-zinc-50'}`}
                 >
                   {pageNum + 1}
                 </button>
@@ -1341,6 +1411,7 @@ export const GestaoComprasList: React.FC<Props> = ({
               disabled={page >= totalPages - 1}
               onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
               className="p-1.5 border border-zinc-200 text-zinc-500 disabled:opacity-30 hover:bg-zinc-50 transition-all"
+              title="Próxima página"
             >
               <ChevronRight size={14} />
             </button>

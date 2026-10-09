@@ -12,7 +12,7 @@ import { PurchaseItemModal, PurchaseLineItem } from './PurchaseItemModal';
 import {
   ChevronLeft, ChevronRight, ChevronDown, Plus, Trash2,
   Search, Package, RefreshCw, Info, CheckCircle2,
-  Paperclip, ExternalLink, FileText, Check
+  Paperclip, ExternalLink, FileText, Check, User, Building, Layers, ShoppingBag
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -126,8 +126,8 @@ interface Props {
   workSites?: Array<{ id: string | number; name?: string; title?: string }>;
   activeTaxes?: any[];
   addMovement?: (m: any) => Promise<void>;
-  companyData?: any;
   fiscalYear?: string | number;
+  initialStep?: 1 | 2 | 3;
   onBack: () => void;
   onSuccess: (savedData?: any) => void;
 }
@@ -142,6 +142,8 @@ const uid = () => Math.random().toString(36).substring(2, 10);
 const TIPOS_DOCUMENTO = [
   'Fatura (FT)',
   'Fatura/Recibo (FR)',
+  'Recibo (RC)',
+  'Recibo',
   'Nota de Crédito (NC)',
   'Nota de Débito (ND)',
   'Guia de Entrada (GE)',
@@ -185,6 +187,7 @@ export const GestaoComprasForm: React.FC<Props> = ({
   activeTaxes = [],
   addMovement,
   fiscalYear,
+  initialStep,
   onBack,
   onSuccess,
 }) => {
@@ -192,7 +195,10 @@ export const GestaoComprasForm: React.FC<Props> = ({
   const isEditing = !!(initialData?.id);
 
   // ── Step State (Wizard: 1 | 2 | 3) ──────────────────────────────────────────
-  const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
+  // Se for edição, abre diretamente no Passo 3 (Bens e Serviços) conforme solicitado
+  const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(
+    initialStep || (isEditing ? 3 : 1)
+  );
 
   // ── Lookup data loaded from DB ──────────────────────────────────────────
   const [metrics, setMetrics] = useState<Metric[]>([]);
@@ -553,21 +559,24 @@ export const GestaoComprasForm: React.FC<Props> = ({
   const processStockMovements = async (doc: any, itens: LineItem[], empresaId: string, isUpdate: boolean) => {
     for (const item of itens) {
       if (!item.armazem_id) continue;
-      const isProduct = item.tipo_artigo === 'Produto' || item.tipologia_custo === 'Existência de Inventário' || item.tipologia_custo === 'Existências/Inventário';
-      if (!isProduct) continue;
+      const desc = (item.descricao || '').trim();
+      if (!desc) continue;
 
       try {
         let prodId: string | null = null;
         let prevStock = 0;
         let newStock = 0;
 
-        // Verificar se produto existe no catálogo da empresa
+        // Verificar se produto existe no catálogo da empresa por name ou nome
         const { data: prods } = await supabase
           .from('produtos')
-          .select('id, name, nome, stock_quantity, stock, stock_atual, preco_compra, cost_price')
+          .select('id, name, nome, stock_quantity, stock, stock_atual, preco_compra, cost_price, warehouse_id, armazem_id')
           .eq('empresa_id', empresaId)
-          .ilike('name', item.descricao.trim())
+          .or(`name.ilike.${desc},nome.ilike.${desc}`)
           .limit(1);
+
+        const wNum = Number(item.armazem_id);
+        const hasNumericWarehouse = !isNaN(wNum) && wNum > 0;
 
         if (prods && prods.length > 0) {
           const prod = prods[0];
@@ -576,49 +585,55 @@ export const GestaoComprasForm: React.FC<Props> = ({
           newStock = round2(prevStock + item.quantidade);
 
           // Atualizar o stock e preços do produto no catálogo
+          const updateData: any = {
+            stock_quantity: newStock,
+            stock: newStock,
+            stock_atual: newStock,
+            estoque_atual: newStock,
+            cost_price: item.valor_unitario,
+            preco_compra: item.valor_unitario,
+            preco_custo: item.valor_unitario,
+            armazem_id: item.armazem_id,
+            unit: item.unidade || 'UN',
+            unidade: item.unidade || 'UN',
+            updated_at: new Date().toISOString(),
+          };
+          if (hasNumericWarehouse) updateData.warehouse_id = wNum;
+
           await supabase
             .from('produtos')
-            .update({
-              stock_quantity: newStock,
-              stock: newStock,
-              stock_atual: newStock,
-              estoque_atual: newStock,
-              cost_price: item.valor_unitario,
-              preco_compra: item.valor_unitario,
-              preco_custo: item.valor_unitario,
-              armazem_id: item.armazem_id,
-              unit: item.unidade || 'UN',
-              unidade: item.unidade || 'UN',
-              updated_at: new Date().toISOString(),
-            })
+            .update(updateData)
             .eq('id', prod.id)
             .eq('empresa_id', empresaId);
         } else {
           // Criar o produto diretamente no catálogo com as informações preenchidas
+          const insertData: any = {
+            empresa_id: empresaId,
+            name: desc,
+            nome: desc,
+            stock_quantity: item.quantidade,
+            stock: item.quantidade,
+            stock_atual: item.quantidade,
+            estoque_atual: item.quantidade,
+            cost_price: item.valor_unitario,
+            preco_compra: item.valor_unitario,
+            preco_custo: item.valor_unitario,
+            price: round2(item.valor_unitario * 1.3),
+            preco_venda: round2(item.valor_unitario * 1.3),
+            unit: item.unidade || 'UN',
+            unidade: item.unidade || 'UN',
+            armazem_id: item.armazem_id,
+            tipo: 'Produto',
+            tipologia: item.tipologia_custo || 'Existência de Inventário',
+            is_active: true,
+            ativo: true,
+            created_at: new Date().toISOString(),
+          };
+          if (hasNumericWarehouse) insertData.warehouse_id = wNum;
+
           const { data: newProd, error: newProdErr } = await supabase
             .from('produtos')
-            .insert([{
-              empresa_id: empresaId,
-              name: item.descricao.trim(),
-              nome: item.descricao.trim(),
-              stock_quantity: item.quantidade,
-              stock: item.quantidade,
-              stock_atual: item.quantidade,
-              estoque_atual: item.quantidade,
-              cost_price: item.valor_unitario,
-              preco_compra: item.valor_unitario,
-              preco_custo: item.valor_unitario,
-              price: round2(item.valor_unitario * 1.3),
-              preco_venda: round2(item.valor_unitario * 1.3),
-              unit: item.unidade || 'UN',
-              unidade: item.unidade || 'UN',
-              armazem_id: item.armazem_id,
-              tipo: 'Produto',
-              tipologia: item.tipologia_custo || 'Existência de Inventário',
-              is_active: true,
-              ativo: true,
-              created_at: new Date().toISOString(),
-            }])
+            .insert([insertData])
             .select('id, stock_quantity')
             .single();
 
@@ -631,27 +646,52 @@ export const GestaoComprasForm: React.FC<Props> = ({
 
         // Registar movimentação de entrada no stock
         if (prodId) {
-          await supabase
+          const movPayload: any = {
+            empresa_id: empresaId,
+            product_id: prodId,
+            produto_id: prodId,
+            tipo: 'entrada',
+            type: 'entry',
+            quantidade: item.quantidade,
+            quantity: item.quantidade,
+            unit_price: item.valor_unitario,
+            previous_stock: prevStock,
+            current_stock: newStock,
+            armazem_id: item.armazem_id,
+            referencia: String(doc?.id || form.numero_documento),
+            reference_id: String(doc?.id || form.numero_documento),
+            description: `Compra: ${form.numero_documento} - ${form.fornecedor_nome}`,
+            ano,
+            created_at: new Date().toISOString(),
+            created_by: user?.id || null,
+            created_by_nome: user?.nome || user?.username || 'Operador',
+            created_by_username: user?.username || 'operador'
+          };
+          if (hasNumericWarehouse) movPayload.warehouse_id = wNum;
+
+          const { error: movErr } = await supabase
             .from('movimentacoes_stock')
-            .insert([{
-              empresa_id: empresaId,
-              produto_id: prodId,
-              product_id: prodId,
-              armazem_id: item.armazem_id,
-              tipo: 'entrada',
-              type: 'entry',
-              quantidade: item.quantidade,
-              quantity: item.quantidade,
-              unit_price: item.valor_unitario,
-              previous_stock: prevStock,
-              current_stock: newStock,
-              referencia: String(doc?.id || form.numero_documento),
-              reference_id: String(doc?.id || form.numero_documento),
-              description: `Compra: ${form.numero_documento} - ${form.fornecedor_nome}`,
-              ano,
-              created_at: new Date().toISOString(),
-              created_by: user?.id || null,
-            }]);
+            .insert([movPayload]);
+
+          if (movErr) {
+            console.warn('[GestaoComprasForm] mov insert fallback:', movErr);
+            // Fallback com colunas essenciais
+            await supabase
+              .from('movimentacoes_stock')
+              .insert([{
+                empresa_id: empresaId,
+                product_id: prodId,
+                type: 'entry',
+                quantity: item.quantidade,
+                unit_price: item.valor_unitario,
+                previous_stock: prevStock,
+                current_stock: newStock,
+                description: `Compra: ${form.numero_documento} - ${form.fornecedor_nome}`,
+                reference_id: String(doc?.id || form.numero_documento),
+                created_at: new Date().toISOString(),
+                created_by: user?.id || null,
+              }]);
+          }
         }
       } catch (stockErr) {
         console.warn('[GestaoComprasForm] stock movement warning:', stockErr);
@@ -716,16 +756,21 @@ export const GestaoComprasForm: React.FC<Props> = ({
       const primaryPgc = itensCalc.find(it => it.conta_pgc || it.rubrica_id)?.conta_pgc ||
                          itensCalc.find(it => it.rubrica_label)?.rubrica_label?.split('—')[0]?.trim() || null;
 
+      // Composição do número de documento com série se informada (ex: 7026S44853N/754)
+      const rawDocNum = form.numero_documento.trim();
+      const rawSerie = (form.serie_id || '').trim();
+      const fullDocNum = rawSerie && !rawDocNum.includes('/') ? `${rawSerie}/${rawDocNum}` : rawDocNum;
+
       const payload: any = {
         empresa_id: empresaId,
         ano,
         tipo_documento: form.tipo_documento,
         document_type: form.tipo_documento,
-        numero_documento: form.numero_documento,
-        purchase_number: form.numero_documento,
-        numero_fatura: form.numero_documento,
-        invoice_number: form.numero_documento,
-        numero_compra: form.numero_documento,
+        numero_documento: fullDocNum,
+        purchase_number: fullDocNum,
+        numero_fatura: rawDocNum,
+        invoice_number: rawDocNum,
+        numero_compra: fullDocNum,
         fornecedor_id: form.fornecedor_id || null,
         supplier_id: form.fornecedor_id || null,
         fornecedor_nome: form.fornecedor_nome,
@@ -930,22 +975,20 @@ export const GestaoComprasForm: React.FC<Props> = ({
             )}
           </div>
 
-          {/* Indicador dos 3 Passos */}
+          {/* Indicador dos 3 Passos com ícones bonitos e simples */}
           <div className="flex items-center gap-1 sm:gap-2">
             {/* Passo 1 */}
             <button
               type="button"
               onClick={() => setCurrentStep(1)}
-              className={`flex items-center gap-2 px-3 py-1.5 text-xs font-bold transition-all border ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold transition-all border ${
                 currentStep === 1
                   ? 'bg-[#0f2a4a] text-white border-[#0f2a4a] shadow-xs'
                   : 'bg-zinc-50 text-zinc-600 border-zinc-200 hover:bg-zinc-100'
               }`}
             >
-              <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-black ${
-                currentStep === 1 ? 'bg-white text-[#0f2a4a]' : 'bg-zinc-200 text-zinc-700'
-              }`}>1</span>
-              <span>Informações do Documento</span>
+              <FileText size={13} className={currentStep === 1 ? 'text-blue-200' : 'text-zinc-500'} />
+              <span>1. Informações do Documento</span>
             </button>
 
             <span className="text-zinc-300 font-bold">›</span>
@@ -956,16 +999,14 @@ export const GestaoComprasForm: React.FC<Props> = ({
               onClick={() => {
                 if (validateStep1()) setCurrentStep(2);
               }}
-              className={`flex items-center gap-2 px-3 py-1.5 text-xs font-bold transition-all border ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold transition-all border ${
                 currentStep === 2
                   ? 'bg-[#0f2a4a] text-white border-[#0f2a4a] shadow-xs'
                   : 'bg-zinc-50 text-zinc-600 border-zinc-200 hover:bg-zinc-100'
               }`}
             >
-              <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-black ${
-                currentStep === 2 ? 'bg-white text-[#0f2a4a]' : 'bg-zinc-200 text-zinc-700'
-              }`}>2</span>
-              <span>Informações do Adquirente</span>
+              <Building size={13} className={currentStep === 2 ? 'text-blue-200' : 'text-zinc-500'} />
+              <span>2. Informações do Adquirente</span>
             </button>
 
             <span className="text-zinc-300 font-bold">›</span>
@@ -976,16 +1017,14 @@ export const GestaoComprasForm: React.FC<Props> = ({
               onClick={() => {
                 if (validateStep1() && validateStep2()) setCurrentStep(3);
               }}
-              className={`flex items-center gap-2 px-3 py-1.5 text-xs font-bold transition-all border ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold transition-all border ${
                 currentStep === 3
                   ? 'bg-[#0f2a4a] text-white border-[#0f2a4a] shadow-xs'
                   : 'bg-zinc-50 text-zinc-600 border-zinc-200 hover:bg-zinc-100'
               }`}
             >
-              <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-black ${
-                currentStep === 3 ? 'bg-white text-[#0f2a4a]' : 'bg-zinc-200 text-zinc-700'
-              }`}>3</span>
-              <span>Bens e Serviços</span>
+              <Package size={13} className={currentStep === 3 ? 'text-blue-200' : 'text-zinc-500'} />
+              <span>3. Bens e Serviços</span>
             </button>
           </div>
         </div>
@@ -1023,26 +1062,6 @@ export const GestaoComprasForm: React.FC<Props> = ({
                     <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
                   </div>
                   {errors.tipo_documento && <p className="text-[10px] text-red-500">{errors.tipo_documento}</p>}
-                </div>
-
-                {/* Série */}
-                <div className="space-y-1">
-                  <label className="block text-[11px] font-bold text-[#374151]">Série</label>
-                  <div className="relative">
-                    <select
-                      value={form.serie_id}
-                      onChange={e => setForm(f => ({ ...f, serie_id: e.target.value }))}
-                      className="w-full bg-white border border-[#d1d5db] px-3 py-2 text-xs text-[#111827] focus:outline-none focus:border-[#0f2a4a] rounded-none appearance-none cursor-pointer"
-                    >
-                      <option value="">— Selecione a série —</option>
-                      {seriesCompras.map(s => (
-                        <option key={s.id} value={String(s.id)}>
-                          {s.nome || s.name || s.reference || String(s.id)}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
-                  </div>
                 </div>
 
                 {/* Local de trabalho */}
@@ -1145,8 +1164,8 @@ export const GestaoComprasForm: React.FC<Props> = ({
                 </div>
               </div>
 
-              {/* Linha 3: Contravalor, Taxa Retenção, Desconto Global, Nº Doc */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              {/* Linha 3: Contravalor, Taxa Retenção, Desconto Global, Série e Nº Doc */}
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
                 {/* Contravalor */}
                 <div className="space-y-1">
                   <label className="block text-[11px] font-bold text-[#374151]">Contravalor</label>
@@ -1189,6 +1208,18 @@ export const GestaoComprasForm: React.FC<Props> = ({
                   />
                 </div>
 
+                {/* Série do Documento (ao lado esquerdo do Nº do Documento) */}
+                <div className="space-y-1">
+                  <label className="block text-[11px] font-bold text-[#374151]">Série do Documento</label>
+                  <input
+                    type="text"
+                    placeholder="Ex: 7026S44853N"
+                    value={form.serie_id}
+                    onChange={e => setForm(f => ({ ...f, serie_id: e.target.value }))}
+                    className="w-full bg-white border border-[#d1d5db] px-3 py-2 text-xs text-[#111827] focus:outline-none focus:border-[#0f2a4a] rounded-none uppercase font-mono"
+                  />
+                </div>
+
                 {/* Nº do Documento de Compra */}
                 <div className="space-y-1">
                   <label className="block text-[11px] font-bold text-[#374151]">
@@ -1196,7 +1227,7 @@ export const GestaoComprasForm: React.FC<Props> = ({
                   </label>
                   <input
                     type="text"
-                    placeholder="Ex: FT 123/2026"
+                    placeholder="Ex: 754"
                     value={form.numero_documento}
                     onChange={e => setForm(f => ({ ...f, numero_documento: e.target.value }))}
                     className={`w-full bg-white border px-3 py-2 text-xs text-[#111827] focus:outline-none focus:border-[#0f2a4a] rounded-none ${errors.numero_documento || dupWarning ? 'border-amber-400' : 'border-[#d1d5db]'}`}

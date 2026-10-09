@@ -1,18 +1,19 @@
 /**
  * PurchaseItemModal.tsx
  * Painel lateral deslizante da direita para adicionar/editar bens e serviços
- * em documentos de compra — estilo idêntico à imagem de referência.
- * Inclui: Tipo de artigo, Tipologia, Armazém, Local, Validade, Taxa Imposto,
- * Quantidade, Unidade (métricas), Preço, Desconto, Calculadora IVA, Rubrica PGC,
- * Retenção 6,5% automática para Serviços.
+ * em documentos de compra — ajustado para visualização limpa e compacta sem rolagem.
+ * Inclui:
+ *  - Modal com largura expandida (max-w-[620px]);
+ *  - Espaçamentos verticais compactos e confortáveis;
+ *  - Seleção de Local de Trabalho com todas as descrições da BD;
+ *  - Pesquisa completa de Rubrica PGC (todas as contas do PGC) com vínculo à contabilidade;
+ *  - Calculadora de IVA flutuante e elegante na frente do formulário com botão de aplicação;
+ *  - Remoção dos campos redundantes "Subtotal (sem IVA)" e "Valor IVA (0%)";
+ *  - Retenção na Fonte 6,5% automática para Serviços.
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { ArrowLeft, Plus, Calculator, X, AlertCircle } from 'lucide-react';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Types
-// ─────────────────────────────────────────────────────────────────────────────
+import { ArrowLeft, Plus, Calculator, X, AlertCircle, Check } from 'lucide-react';
 
 export interface PurchaseLineItem {
   uid: string;
@@ -30,6 +31,7 @@ export interface PurchaseLineItem {
   centro_custo_id: string;
   rubrica_id: string;
   rubrica_label: string;
+  conta_pgc?: string;
   sujeito_imposto_selo: string;
   tax_id: string;
   tax_rate: number;
@@ -86,10 +88,6 @@ interface PurchaseItemModalProps {
   onSave: (item: PurchaseLineItem) => void;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Constantes
-// ─────────────────────────────────────────────────────────────────────────────
-
 const TIPOS_ARTIGO = ['Produto', 'Serviço', 'Outros'];
 
 const TIPOLOGIAS = [
@@ -127,10 +125,6 @@ const fmtNum = (v?: number | string | null): string => {
   return n.toLocaleString('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Component
-// ─────────────────────────────────────────────────────────────────────────────
-
 export const PurchaseItemModal: React.FC<PurchaseItemModalProps> = ({
   isOpen,
   initialItem,
@@ -142,7 +136,6 @@ export const PurchaseItemModal: React.FC<PurchaseItemModalProps> = ({
   onClose,
   onSave,
 }) => {
-  // ── State ──────────────────────────────────────────────────────────────────
   const [descricao, setDescricao] = useState('');
   const [tipoArtigo, setTipoArtigo] = useState('Produto');
   const [tipologiaCusto, setTipologiaCusto] = useState('Outros Bens de Consumo');
@@ -165,18 +158,17 @@ export const PurchaseItemModal: React.FC<PurchaseItemModalProps> = ({
   // Rubrica PGC
   const [rubricaId, setRubricaId] = useState('');
   const [rubricaLabel, setRubricaLabel] = useState('');
+  const [contaPgc, setContaPgc] = useState('');
   const [pgcSearch, setPgcSearch] = useState('');
   const [showPgcDropdown, setShowPgcDropdown] = useState(false);
 
-  // Calculadora IVA
+  // Calculadora de IVA elegante
   const [showCalculadora, setShowCalculadora] = useState(false);
   const [calcComIva, setCalcComIva] = useState<string>('');
   const [calcSemIva, setCalcSemIva] = useState<string>('');
 
-  // Erro de validação
   const [error, setError] = useState('');
 
-  // ── Sincronizar ao abrir ────────────────────────────────────────────────────
   useEffect(() => {
     if (!isOpen) return;
 
@@ -197,16 +189,15 @@ export const PurchaseItemModal: React.FC<PurchaseItemModalProps> = ({
       setDescontoLinha(initialItem.desconto_linha || 0);
       setRubricaId(initialItem.rubrica_id || '');
       setRubricaLabel(initialItem.rubrica_label || '');
+      setContaPgc(initialItem.conta_pgc || (initialItem.rubrica_label?.split('—')[0]?.trim() || ''));
       setPgcSearch(initialItem.rubrica_label || '');
     } else {
-      // Novo item — reset
       setDescricao('');
       setTipoArtigo('Produto');
       setTipologiaCusto('Outros Bens de Consumo');
       setArmazemId(armazens.length > 0 ? armazens[0].id : '');
       setLocalTrabalhoId(locais.length > 0 ? locais[0].id : '');
       setDataValidade('');
-      // Taxa padrão: primeiro imposto disponível ou IVA 14%
       const defTax = activeTaxes.length > 0 ? activeTaxes[0] : null;
       setTaxId(defTax ? String(defTax.id) : '');
       setTaxRate(defTax ? Number(defTax.taxa) : 14);
@@ -218,6 +209,7 @@ export const PurchaseItemModal: React.FC<PurchaseItemModalProps> = ({
       setDescontoLinha(0);
       setRubricaId('');
       setRubricaLabel('');
+      setContaPgc('');
       setPgcSearch('');
     }
     setError('');
@@ -227,7 +219,6 @@ export const PurchaseItemModal: React.FC<PurchaseItemModalProps> = ({
     setCalcSemIva('');
   }, [isOpen, initialItem]);
 
-  // ── Mudar tipo artigo ───────────────────────────────────────────────────────
   const handleTipoArtigoChange = (tipo: string) => {
     setTipoArtigo(tipo);
     if (tipo === 'Serviço') {
@@ -238,7 +229,6 @@ export const PurchaseItemModal: React.FC<PurchaseItemModalProps> = ({
     }
   };
 
-  // ── Selecionar Imposto da lista de Taxas e Impostos ────────────────────────
   const handleSelectTax = (tax: ActiveTax) => {
     const taxa = Number(tax.taxa ?? 0);
     setTaxId(String(tax.id));
@@ -247,7 +237,6 @@ export const PurchaseItemModal: React.FC<PurchaseItemModalProps> = ({
     setTemIsencao(taxa === 0);
   };
 
-  // ── Calculos em tempo real ─────────────────────────────────────────────────
   const calcs = useMemo(() => {
     const q = Math.max(0, Number(quantidade) || 0);
     const vu = Math.max(0, Number(valorUnitario) || 0);
@@ -267,32 +256,31 @@ export const PurchaseItemModal: React.FC<PurchaseItemModalProps> = ({
     return { base, descVal, subtotal, iva, totalLinha, retencaoTaxa, retencaoValor, taxaPct };
   }, [quantidade, valorUnitario, descontoLinha, taxRate, temIsencao, tipoArtigo]);
 
-  // ── Calculadora IVA ────────────────────────────────────────────────────────
+  // Calculadora
   const handleCalcComIva = (val: string) => {
     setCalcComIva(val);
-    const vComIva = parseFloat(val.replace(',', '.')) || 0;
-    const vSemIva = calcs.taxaPct > 0 ? round2(vComIva / (1 + calcs.taxaPct / 100)) : vComIva;
-    setCalcSemIva(fmtNum(vSemIva));
+    const vCom = parseFloat(val.replace(/\./g, '').replace(',', '.')) || 0;
+    const vSem = calcs.taxaPct > 0 ? round2(vCom / (1 + calcs.taxaPct / 100)) : vCom;
+    setCalcSemIva(vSem > 0 ? fmtNum(vSem) : '');
   };
 
   const handleCalcSemIva = (val: string) => {
     setCalcSemIva(val);
-    const vSemIva = parseFloat(val.replace(',', '.')) || 0;
-    const vComIva = round2(vSemIva * (1 + calcs.taxaPct / 100));
-    setCalcComIva(fmtNum(vComIva));
+    const vSem = parseFloat(val.replace(/\./g, '').replace(',', '.')) || 0;
+    const vCom = round2(vSem * (1 + calcs.taxaPct / 100));
+    setCalcComIva(vCom > 0 ? fmtNum(vCom) : '');
   };
 
   const handleAplicarCalc = () => {
-    const vSemIva = parseFloat(calcSemIva.replace(/\./g, '').replace(',', '.')) || 0;
-    if (vSemIva > 0) {
-      setValorUnitario(vSemIva);
+    const vSem = parseFloat(calcSemIva.replace(/\./g, '').replace(',', '.')) || 0;
+    if (vSem > 0) {
+      setValorUnitario(vSem);
       setShowCalculadora(false);
       setCalcComIva('');
       setCalcSemIva('');
     }
   };
 
-  // ── PGC filtrado ──────────────────────────────────────────────────────────
   const filteredPgc = useMemo(() => {
     const t = pgcSearch.trim().toLowerCase();
     if (!t) return pgcContas.slice(0, 50);
@@ -305,7 +293,6 @@ export const PurchaseItemModal: React.FC<PurchaseItemModalProps> = ({
       .slice(0, 50);
   }, [pgcContas, pgcSearch]);
 
-  // ── Unidades combinadas (padrão + métricas da base de dados) ──────────────
   const unidadesDisponiveis = useMemo(() => {
     const dbUnidades = metrics.map(m => {
       const sigla = m.sigla || '';
@@ -319,7 +306,6 @@ export const PurchaseItemModal: React.FC<PurchaseItemModalProps> = ({
     return combined;
   }, [metrics]);
 
-  // ── Guardar ────────────────────────────────────────────────────────────────
   const handleSave = () => {
     if (!descricao.trim()) {
       setError('A descrição do bem ou serviço é obrigatória.');
@@ -354,6 +340,7 @@ export const PurchaseItemModal: React.FC<PurchaseItemModalProps> = ({
       centro_custo_id: localTrabalhoId,
       rubrica_id: rubricaId,
       rubrica_label: rubricaLabel,
+      conta_pgc: contaPgc || (rubricaLabel.split('—')[0]?.trim() || ''),
       sujeito_imposto_selo: 'Não sujeita',
       tax_id: taxId,
       tax_rate: calcs.taxaPct,
@@ -381,6 +368,7 @@ export const PurchaseItemModal: React.FC<PurchaseItemModalProps> = ({
     setDescontoLinha(0);
     setRubricaId('');
     setRubricaLabel('');
+    setContaPgc('');
     setPgcSearch('');
     setError('');
     setShowCalculadora(false);
@@ -390,32 +378,29 @@ export const PurchaseItemModal: React.FC<PurchaseItemModalProps> = ({
 
   if (!isOpen) return null;
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // RENDER — Painel Lateral Direito (igual à imagem de referência)
-  // ─────────────────────────────────────────────────────────────────────────
   return (
     <div className="fixed inset-0 z-[300] flex justify-end items-stretch">
       {/* Overlay */}
       <div
-        className="absolute inset-0 bg-zinc-900/50 backdrop-blur-sm"
+        className="absolute inset-0 bg-zinc-900/50 backdrop-blur-xs"
         onClick={onClose}
       />
 
-      {/* Painel deslizante da direita */}
-      <div className="relative bg-white w-full max-w-[520px] h-full shadow-2xl flex flex-col border-l border-zinc-200">
+      {/* Painel lateral com largura aumentada para acomodar todos os campos de forma equilibrada */}
+      <div className="relative bg-white w-full max-w-[620px] h-full shadow-2xl flex flex-col border-l border-zinc-200">
 
         {/* ── CABEÇALHO ── */}
-        <div className="px-6 py-4 border-b border-zinc-200 flex items-center justify-between bg-white flex-shrink-0">
-          <div className="flex items-center gap-3">
+        <div className="px-5 py-3 border-b border-zinc-200 flex items-center justify-between bg-white flex-shrink-0">
+          <div className="flex items-center gap-2.5">
             <button
               type="button"
               onClick={onClose}
-              className="text-zinc-600 hover:text-zinc-900 transition-colors"
+              className="text-zinc-600 hover:text-zinc-900 transition-colors p-1"
               title="Voltar"
             >
-              <ArrowLeft size={22} />
+              <ArrowLeft size={20} />
             </button>
-            <h2 className="text-[17px] font-bold text-[#0f2a4a] tracking-tight">
+            <h2 className="text-[16px] font-bold text-[#0f2a4a] tracking-tight">
               {initialItem ? 'Editar Bem ou Serviço' : 'Adicionar Bem ou Serviço'}
             </h2>
           </div>
@@ -423,50 +408,120 @@ export const PurchaseItemModal: React.FC<PurchaseItemModalProps> = ({
             <button
               type="button"
               onClick={handleClear}
-              className="px-5 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-sm font-semibold rounded-none transition-colors"
+              className="px-4 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-semibold rounded-none transition-colors"
             >
               Limpar
             </button>
             <button
               type="button"
               onClick={handleSave}
-              className="px-5 py-2 bg-[#0f2a4a] hover:bg-[#001f3f] text-white text-sm font-bold rounded-none shadow-sm transition-colors"
+              className="px-5 py-1.5 bg-[#0f2a4a] hover:bg-[#001f3f] text-white text-xs font-bold rounded-none shadow-sm transition-colors flex items-center gap-1.5"
             >
-              Adicionar
+              <Check size={14} />
+              <span>{initialItem ? 'Atualizar' : 'Adicionar'}</span>
             </button>
           </div>
         </div>
 
-        {/* Erro */}
+        {/* Alerta de erro */}
         {error && (
-          <div className="px-6 py-2 bg-red-50 border-b border-red-200 flex items-center gap-2 flex-shrink-0">
-            <AlertCircle size={14} className="text-red-500 shrink-0" />
-            <span className="text-xs text-red-700 font-semibold">{error}</span>
+          <div className="px-5 py-1.5 bg-red-50 border-b border-red-200 flex items-center gap-2 flex-shrink-0">
+            <AlertCircle size={13} className="text-red-500 shrink-0" />
+            <span className="text-[11px] text-red-700 font-semibold">{error}</span>
           </div>
         )}
 
-        {/* ── CORPO — scroll interno sem barra visível ── */}
+        {/* ── MODAL CALCULADORA DE IVA FLUTUANTE NA FRENTE DO FORMULÁRIO ── */}
+        {showCalculadora && (
+          <div className="absolute inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white border-2 border-[#0f2a4a] shadow-2xl w-full max-w-sm rounded-none p-4 space-y-3 animate-in fade-in zoom-in duration-150">
+              <div className="flex items-center justify-between border-b pb-2">
+                <div className="flex items-center gap-2 text-[#0f2a4a]">
+                  <Calculator size={16} />
+                  <h3 className="text-xs font-bold uppercase tracking-wider">
+                    Calculadora de IVA ({calcs.taxaPct}%)
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowCalculadora(false)}
+                  className="text-zinc-400 hover:text-zinc-700"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="space-y-2.5">
+                <div className="space-y-1">
+                  <label className="block text-[11px] font-bold text-zinc-700 uppercase">
+                    Valor Com IVA (Kz)
+                  </label>
+                  <input
+                    type="text"
+                    autoFocus
+                    value={calcComIva}
+                    onChange={e => handleCalcComIva(e.target.value)}
+                    placeholder="Ex: 114,00"
+                    className="w-full border border-zinc-300 bg-white px-3 py-1.5 text-sm font-semibold text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none text-right font-mono"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-[11px] font-bold text-zinc-700 uppercase">
+                    Valor Sem IVA (Kz)
+                  </label>
+                  <input
+                    type="text"
+                    value={calcSemIva}
+                    onChange={e => handleCalcSemIva(e.target.value)}
+                    placeholder="Ex: 100,00"
+                    className="w-full border border-zinc-300 bg-white px-3 py-1.5 text-sm font-semibold text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none text-right font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t">
+                <button
+                  type="button"
+                  onClick={() => setShowCalculadora(false)}
+                  className="px-3 py-1.5 text-xs text-zinc-600 hover:text-zinc-900 font-bold"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAplicarCalc}
+                  className="px-4 py-1.5 bg-[#0f2a4a] hover:bg-[#001f3f] text-white text-xs font-bold uppercase tracking-wider rounded-none transition-colors"
+                >
+                  Aplicar ao Preço
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── CORPO COM ESPAÇAMENTO VERTICAL OTIMIZADO E SEM SCROLLBAR VISÍVEL ── */}
         <div
-          className="flex-1 overflow-y-auto p-6 space-y-5 text-zinc-800"
-          style={{ scrollbarWidth: 'none' }}
+          className="flex-1 overflow-y-auto px-5 py-4 space-y-3.5 text-zinc-800"
+          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         >
 
           {/* LINHA 1: Tipo de Artigo + Quantidade */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-zinc-700">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-zinc-700">
                 Tipo de Artigo <span className="text-red-500">*</span>
               </label>
               <select
                 value={tipoArtigo}
                 onChange={e => handleTipoArtigoChange(e.target.value)}
-                className="w-full bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none"
+                className="w-full bg-white border border-zinc-300 px-2.5 py-1.5 text-xs text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none font-medium"
               >
                 {TIPOS_ARTIGO.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
             </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-zinc-700">
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-zinc-700">
                 Quantidade <span className="text-red-500">*</span>
               </label>
               <input
@@ -475,15 +530,15 @@ export const PurchaseItemModal: React.FC<PurchaseItemModalProps> = ({
                 step="any"
                 value={quantidade}
                 onChange={e => setQuantidade(parseFloat(e.target.value) || 0)}
-                className="w-full bg-white border border-zinc-300 px-3 py-2 text-sm font-semibold text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none text-right"
+                className="w-full bg-white border border-zinc-300 px-2.5 py-1.5 text-xs font-semibold text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none text-right"
               />
             </div>
           </div>
 
-          {/* LINHA 2: Descrição (textarea) */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold text-zinc-700">
-              Descrição <span className="text-red-500">*</span>
+          {/* LINHA 2: Descrição */}
+          <div className="space-y-1">
+            <label className="text-[11px] font-bold text-zinc-700">
+              Descrição do Bem ou Serviço <span className="text-red-500">*</span>
             </label>
             <div className="relative">
               <textarea
@@ -492,33 +547,33 @@ export const PurchaseItemModal: React.FC<PurchaseItemModalProps> = ({
                 autoFocus
                 value={descricao}
                 onChange={e => { setDescricao(e.target.value); if (error) setError(''); }}
-                placeholder="Informe a descrição do produto ou serviço..."
-                className="w-full bg-white border border-zinc-300 rounded-none p-3 text-sm text-zinc-800 focus:outline-none focus:border-[#0f2a4a] resize-none"
+                placeholder="Informe a descrição detalhada do produto ou serviço..."
+                className="w-full bg-white border border-zinc-300 rounded-none p-2.5 text-xs text-zinc-800 focus:outline-none focus:border-[#0f2a4a] resize-none"
               />
-              <span className="absolute bottom-2 right-2 text-[10px] text-zinc-400 font-mono">
+              <span className="absolute bottom-1.5 right-2 text-[9px] text-zinc-400 font-mono">
                 {descricao.length}/300
               </span>
             </div>
           </div>
 
-          {/* LINHA 3: Unidade de medida + Preço Unitário */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-zinc-700">
+          {/* LINHA 3: Unidade de medida (largura compacta) + Preço Unitário */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-zinc-700">
                 Unidade de medida <span className="text-red-500">*</span>
               </label>
               <select
                 value={unidade}
                 onChange={e => setUnidade(e.target.value)}
-                className="w-full bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none"
+                className="w-full bg-white border border-zinc-300 px-2.5 py-1.5 text-xs text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none"
               >
                 {unidadesDisponiveis.map(u => (
                   <option key={u} value={u}>{u}</option>
                 ))}
               </select>
             </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-zinc-700">
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-zinc-700">
                 Preço Unitário (sem impostos) <span className="text-red-500">*</span>
               </label>
               <div className="flex gap-1">
@@ -529,65 +584,28 @@ export const PurchaseItemModal: React.FC<PurchaseItemModalProps> = ({
                   value={valorUnitario || ''}
                   onChange={e => setValorUnitario(parseFloat(e.target.value) || 0)}
                   placeholder="0,00"
-                  className="flex-1 bg-white border border-zinc-300 px-3 py-2 text-sm font-semibold text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none text-right"
+                  className="flex-1 bg-white border border-zinc-300 px-2.5 py-1.5 text-xs font-semibold text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none text-right font-mono"
                 />
                 <button
                   type="button"
                   onClick={() => setShowCalculadora(v => !v)}
-                  title="Calculadora de IVA"
-                  className={`px-2 border transition-colors ${showCalculadora ? 'bg-[#0f2a4a] text-white border-[#0f2a4a]' : 'bg-zinc-100 text-zinc-600 border-zinc-300 hover:bg-zinc-200'}`}
+                  title="Abrir Calculadora de IVA"
+                  className={`px-2 border transition-colors flex items-center justify-center ${
+                    showCalculadora
+                      ? 'bg-[#0f2a4a] text-white border-[#0f2a4a]'
+                      : 'bg-zinc-100 text-zinc-700 border-zinc-300 hover:bg-zinc-200'
+                  }`}
                 >
-                  <Calculator size={14} />
+                  <Calculator size={13} />
                 </button>
               </div>
             </div>
           </div>
 
-          {/* CALCULADORA IVA — aparece quando clica na calculadora */}
-          {showCalculadora && (
-            <div className="bg-blue-50 border border-blue-200 p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-bold text-blue-800 uppercase tracking-wider">🧮 Calculadora de IVA ({calcs.taxaPct}%)</p>
-                <button type="button" onClick={() => setShowCalculadora(false)} className="text-blue-500 hover:text-blue-700">
-                  <X size={14} />
-                </button>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-blue-700 uppercase">Valor Com IVA (Kz)</label>
-                  <input
-                    type="text"
-                    value={calcComIva}
-                    onChange={e => handleCalcComIva(e.target.value)}
-                    placeholder="0,00"
-                    className="w-full border border-blue-300 bg-white px-3 py-2 text-sm font-semibold text-zinc-800 focus:outline-none focus:border-blue-500 rounded-none"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-blue-700 uppercase">Valor Sem IVA (Kz)</label>
-                  <input
-                    type="text"
-                    value={calcSemIva}
-                    onChange={e => handleCalcSemIva(e.target.value)}
-                    placeholder="0,00"
-                    className="w-full border border-blue-300 bg-white px-3 py-2 text-sm font-semibold text-zinc-800 focus:outline-none focus:border-blue-500 rounded-none"
-                  />
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={handleAplicarCalc}
-                className="w-full py-2 bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold uppercase tracking-wider rounded-none transition-colors"
-              >
-                Aplicar Valor Sem IVA ao Preço Unitário
-              </button>
-            </div>
-          )}
-
-          {/* LINHA 4: Desconto + Preço com desconto (calculado) */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-zinc-700">Desconto Linha (%)</label>
+          {/* LINHA 4: Desconto Linha (%) (largura compacta) + Preço com desconto */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-zinc-700">Desconto Linha (%)</label>
               <input
                 type="number"
                 min="0"
@@ -596,40 +614,40 @@ export const PurchaseItemModal: React.FC<PurchaseItemModalProps> = ({
                 value={descontoLinha || ''}
                 onChange={e => setDescontoLinha(Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
                 placeholder="0"
-                className="w-full bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none text-right"
+                className="w-full bg-white border border-zinc-300 px-2.5 py-1.5 text-xs text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none text-right"
               />
             </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-zinc-700">Preço Unit. com Desconto (Kz)</label>
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-zinc-700">Preço com Desconto (Kz)</label>
               <input
                 type="text"
                 readOnly
                 value={fmtKz(calcs.subtotal / Math.max(1, quantidade))}
-                className="w-full bg-zinc-100 border border-zinc-200 px-3 py-2 text-sm font-semibold text-zinc-600 rounded-none cursor-default"
+                className="w-full bg-zinc-100 border border-zinc-200 px-2.5 py-1.5 text-xs font-semibold text-zinc-600 rounded-none cursor-default font-mono"
               />
             </div>
           </div>
 
           {/* LINHA 5: Tipologia + Armazém */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-zinc-700">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-zinc-700">
                 Tipologia <span className="text-red-500">*</span>
               </label>
               <select
                 value={tipologiaCusto}
                 onChange={e => setTipologiaCusto(e.target.value)}
-                className="w-full bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none"
+                className="w-full bg-white border border-zinc-300 px-2.5 py-1.5 text-xs text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none"
               >
                 {TIPOLOGIAS.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
             </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-zinc-700">Armazém (Entrada em Stock)</label>
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-zinc-700">Armazém (Entrada em Stock)</label>
               <select
                 value={armazemId}
                 onChange={e => setArmazemId(e.target.value)}
-                className="w-full bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none"
+                className="w-full bg-white border border-zinc-300 px-2.5 py-1.5 text-xs text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none"
               >
                 <option value="">— Sem armazém —</option>
                 {armazens.map(a => (
@@ -642,17 +660,17 @@ export const PurchaseItemModal: React.FC<PurchaseItemModalProps> = ({
           </div>
 
           {/* LINHA 6: Local de Trabalho + Data Validade */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-zinc-700">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-zinc-700">
                 Local de Trabalho <span className="text-red-500">*</span>
               </label>
               <select
                 value={localTrabalhoId}
                 onChange={e => setLocalTrabalhoId(e.target.value)}
-                className="w-full bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none"
+                className="w-full bg-white border border-zinc-300 px-2.5 py-1.5 text-xs text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none"
               >
-                <option value="">— Selecione o local —</option>
+                <option value="">— Selecione o local de trabalho —</option>
                 {locais.map(l => (
                   <option key={l.id} value={l.id}>
                     {l.nome || l.name || String(l.id)}
@@ -660,16 +678,16 @@ export const PurchaseItemModal: React.FC<PurchaseItemModalProps> = ({
                 ))}
               </select>
             </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-zinc-700">
-                Data de Validade {tipoArtigo !== 'Produto' && <span className="text-zinc-400 font-normal text-[10px]">(só para Produto)</span>}
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-zinc-700">
+                Data de Validade {tipoArtigo !== 'Produto' && <span className="text-zinc-400 font-normal text-[10px]">(apenas Produto)</span>}
               </label>
               <input
                 type="date"
                 disabled={tipoArtigo !== 'Produto'}
                 value={dataValidade}
                 onChange={e => setDataValidade(e.target.value)}
-                className={`w-full border px-3 py-2 text-sm rounded-none ${
+                className={`w-full border px-2.5 py-1.5 text-xs rounded-none ${
                   tipoArtigo === 'Produto'
                     ? 'bg-white border-zinc-300 text-zinc-800 focus:outline-none focus:border-[#0f2a4a]'
                     : 'bg-zinc-100 border-zinc-200 text-zinc-400 cursor-not-allowed'
@@ -678,9 +696,9 @@ export const PurchaseItemModal: React.FC<PurchaseItemModalProps> = ({
             </div>
           </div>
 
-          {/* LINHA 7: Taxa de Imposto (Taxas e Impostos) */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold text-zinc-700">
+          {/* LINHA 7: Taxa de Imposto (Taxas e Impostos da Base de Dados) - Compacta */}
+          <div className="space-y-1">
+            <label className="text-[11px] font-bold text-zinc-700">
               Taxa de Imposto <span className="text-red-500">*</span>
             </label>
             {activeTaxes.length > 0 ? (
@@ -690,7 +708,7 @@ export const PurchaseItemModal: React.FC<PurchaseItemModalProps> = ({
                   const t = activeTaxes.find(tax => String(tax.id) === e.target.value);
                   if (t) handleSelectTax(t);
                 }}
-                className="w-full bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none"
+                className="w-full bg-white border border-zinc-300 px-2.5 py-1.5 text-xs text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none"
               >
                 <option value="">— Selecione a taxa de imposto —</option>
                 {activeTaxes.map(tax => (
@@ -708,7 +726,7 @@ export const PurchaseItemModal: React.FC<PurchaseItemModalProps> = ({
                   setTemIsencao(r === 0);
                   setTaxNome(r === 14 ? 'IVA 14%' : r === 7 ? 'IVA 7%' : r === 0 ? 'Isento (0%)' : `IVA ${r}%`);
                 }}
-                className="w-full bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none"
+                className="w-full bg-white border border-zinc-300 px-2.5 py-1.5 text-xs text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none"
               >
                 <option value={14}>IVA (14%) — Taxa Normal</option>
                 <option value={7}>IVA (7%) — Taxa Reduzida</option>
@@ -719,39 +737,27 @@ export const PurchaseItemModal: React.FC<PurchaseItemModalProps> = ({
             )}
           </div>
 
-          {/* Valor do Imposto calculado (leitura) */}
-          <div className="grid grid-cols-3 gap-3">
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-zinc-500 uppercase">Subtotal (sem IVA)</label>
-              <input readOnly value={fmtKz(calcs.subtotal)} className="w-full bg-zinc-100 border border-zinc-200 px-3 py-2 text-xs font-mono text-zinc-600 rounded-none cursor-default" />
-            </div>
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-zinc-500 uppercase">Valor IVA ({calcs.taxaPct}%)</label>
-              <input readOnly value={fmtKz(calcs.iva)} className="w-full bg-zinc-100 border border-zinc-200 px-3 py-2 text-xs font-mono text-zinc-600 rounded-none cursor-default" />
-            </div>
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-zinc-500 uppercase">Total Com IVA</label>
-              <input readOnly value={fmtKz(calcs.totalLinha)} className="w-full bg-zinc-100 border border-zinc-200 px-3 py-2 text-xs font-mono font-bold text-[#0f2a4a] rounded-none cursor-default" />
-            </div>
-          </div>
-
-          {/* LINHA 8: Rubrica PGC */}
-          <div className="space-y-1.5 relative">
-            <label className="text-xs font-bold text-zinc-700">
+          {/* LINHA 8: Rubrica PGC (todas contas da página PGC - Plano Geral de Contas) */}
+          <div className="space-y-1 relative">
+            <label className="text-[11px] font-bold text-zinc-700">
               Rubrica Contabilística (Conta PGC)
             </label>
             <input
               type="text"
-              placeholder="Pesquise por código ou descrição (ex: 32 Compras, 62 Serviços)..."
+              placeholder="Pesquise por código ou descrição da conta PGC (ex: 21 Compras, 62 Serviços)..."
               value={pgcSearch}
               onChange={e => {
                 setPgcSearch(e.target.value);
                 setShowPgcDropdown(true);
-                if (!e.target.value) { setRubricaId(''); setRubricaLabel(''); }
+                if (!e.target.value) {
+                  setRubricaId('');
+                  setRubricaLabel('');
+                  setContaPgc('');
+                }
               }}
               onFocus={() => setShowPgcDropdown(true)}
               onBlur={() => setTimeout(() => setShowPgcDropdown(false), 200)}
-              className="w-full bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none"
+              className="w-full bg-white border border-zinc-300 px-2.5 py-1.5 text-xs text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none"
             />
             {showPgcDropdown && filteredPgc.length > 0 && (
               <div className="absolute z-50 bottom-full mb-1 left-0 right-0 bg-white border border-zinc-300 shadow-xl max-h-48 overflow-y-auto">
@@ -762,10 +768,11 @@ export const PurchaseItemModal: React.FC<PurchaseItemModalProps> = ({
                     <button
                       key={c.id}
                       type="button"
-                      className="w-full text-left px-3 py-2 hover:bg-blue-50 text-xs border-b border-zinc-100 last:border-0"
+                      className="w-full text-left px-3 py-1.5 hover:bg-blue-50 text-xs border-b border-zinc-100 last:border-0"
                       onMouseDown={() => {
                         setRubricaId(c.id);
                         setRubricaLabel(label);
+                        setContaPgc(cod);
                         setPgcSearch(label);
                         setShowPgcDropdown(false);
                       }}
@@ -779,40 +786,41 @@ export const PurchaseItemModal: React.FC<PurchaseItemModalProps> = ({
             )}
           </div>
 
-          {/* RETENÇÃO NA FONTE 6,5% — Serviços */}
+          {/* RETENÇÃO NA FONTE 6,5% AUTOMÁTICA PARA SERVIÇOS */}
           {tipoArtigo === 'Serviço' && (
-            <div className="bg-amber-50 border border-amber-300 p-3.5 space-y-1">
+            <div className="bg-amber-50 border border-amber-300 p-2.5 space-y-0.5">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-amber-800">
                   ⚖️ Retenção na Fonte (6,5% sobre Serviços)
                 </span>
-                <span className="text-sm font-black text-amber-900 font-mono">
+                <span className="text-xs font-black text-amber-900 font-mono">
                   -{fmtKz(calcs.retencaoValor)}
                 </span>
               </div>
-              <p className="text-[10px] text-amber-700">Obrigatório por Lei Geral Tributária — aplicado sobre o valor do serviço sem IVA</p>
+              <p className="text-[10px] text-amber-700">
+                Obrigatório por Lei Geral Tributária — calculado sobre a base sem IVA.
+              </p>
             </div>
           )}
 
-          {/* TOTAL LINHA — Resumo Final */}
-          <div className="bg-[#0f2a4a] text-white p-4 flex items-center justify-between">
+          {/* TOTAL DA LINHA EM DESTAQUE */}
+          <div className="bg-[#0f2a4a] text-white px-4 py-2.5 flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider">Total da Linha</span>
-            <span className="text-lg font-black font-mono">{fmtKz(calcs.totalLinha)}</span>
+            <span className="text-base font-black font-mono">{fmtKz(calcs.totalLinha)}</span>
           </div>
 
-          {/* Botão Adicionar Imposto — integração adicional */}
+          {/* BOTÃO ADICIONAR AO DOCUMENTO */}
           <div className="flex justify-end pt-1">
             <button
               type="button"
               onClick={handleSave}
-              className="border border-[#0f2a4a] text-[#0f2a4a] hover:bg-[#0f2a4a] hover:text-white px-5 py-2 font-bold text-xs flex items-center gap-2 rounded-none transition-colors"
+              className="w-full py-2 bg-[#0f2a4a] hover:bg-[#001f3f] text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 rounded-none shadow-sm transition-colors"
             >
               <Plus size={14} /> Adicionar à lista de compras
             </button>
           </div>
 
         </div>
-        {/* fim scroll */}
       </div>
     </div>
   );

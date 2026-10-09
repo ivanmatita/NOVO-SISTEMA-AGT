@@ -712,6 +712,10 @@ export const GestaoComprasForm: React.FC<Props> = ({
     try {
       const { updated: itensCalc, totalFinal, totalIva, subtotalBruto, totalRetencoes } = calcTotals();
 
+      // Conta PGC principal do documento (da primeira linha com rubrica ou fallback)
+      const primaryPgc = itensCalc.find(it => it.conta_pgc || it.rubrica_id)?.conta_pgc ||
+                         itensCalc.find(it => it.rubrica_label)?.rubrica_label?.split('—')[0]?.trim() || null;
+
       const payload: any = {
         empresa_id: empresaId,
         ano,
@@ -728,9 +732,8 @@ export const GestaoComprasForm: React.FC<Props> = ({
         supplier_name: form.fornecedor_nome,
         supplier_nif: form.nif_fornecedor,
         nif: form.nif_fornecedor,
-        codigo_pais: form.codigo_pais || 'AO - Angola',
-        cativacao_iva: form.cativacao_iva || 'Sem cativação',
-        local_prestacao: form.local_prestacao || null,
+        country_code: form.codigo_pais || 'AO - Angola',
+        local_obra: form.local_prestacao || null,
         data_compra: form.data_documento,
         data_emissao: form.data_documento,
         date: form.data_documento,
@@ -752,6 +755,8 @@ export const GestaoComprasForm: React.FC<Props> = ({
         metodo_pagamento: form.metodo_pagamento || null,
         payment_method: form.metodo_pagamento || null,
         work_site: form.centro_custo_id || null,
+        conta_pgc: primaryPgc,
+        rubrica: primaryPgc,
         observacoes: form.observacoes || null,
         observacao: form.observacoes || null,
         subtotal: round2(subtotalBruto),
@@ -763,7 +768,14 @@ export const GestaoComprasForm: React.FC<Props> = ({
         saldo_pendente: round2(totalFinal),
         itens: itensCalc,
         items: itensCalc,
-        detalhes: { items: itensCalc, total: round2(totalFinal), retencoes: totalRetencoes },
+        detalhes: {
+          items: itensCalc,
+          total: round2(totalFinal),
+          retencoes: totalRetencoes,
+          cativacao_iva: form.cativacao_iva,
+          local_prestacao: form.local_prestacao,
+          codigo_pais: form.codigo_pais,
+        },
         status: 'pendente',
         estado: 'pendente',
         recibo_emitido: false,
@@ -1503,19 +1515,19 @@ export const GestaoComprasForm: React.FC<Props> = ({
               </div>
             )}
 
-            {/* Tabela de Bens e Serviços */}
+            {/* Tabela de Bens e Serviços com espaçamento compacto e ajustado */}
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
                   <tr className="bg-[#0f2a4a] text-white font-bold">
-                    <th className="px-3 py-2.5 text-left w-10">#</th>
-                    <th className="px-4 py-2.5 text-left">Descrição do produto / serviço</th>
-                    <th className="px-4 py-2.5 text-right w-28">Quantidade</th>
-                    <th className="px-4 py-2.5 text-right w-28">Preço Unit</th>
-                    <th className="px-4 py-2.5 text-right w-28">Desconto (%)</th>
-                    <th className="px-4 py-2.5 text-center w-32">Imposto / IVA</th>
-                    <th className="px-4 py-2.5 text-center w-28">Retenção (6,5%)</th>
-                    <th className="px-4 py-2.5 text-center w-20">Acção</th>
+                    <th className="px-3 py-2 text-left w-10">#</th>
+                    <th className="px-3 py-2 text-left">Descrição do produto / serviço</th>
+                    <th className="px-3 py-2 text-right w-24">Quantidade</th>
+                    <th className="px-3 py-2 text-right w-28">Preço Unit</th>
+                    <th className="px-3 py-2 text-right w-24">Desconto (%)</th>
+                    <th className="px-3 py-2 text-center w-28">Imposto / IVA</th>
+                    <th className="px-3 py-2 text-center w-28">Retenção (6,5%)</th>
+                    <th className="px-3 py-2 text-center w-20">Acção</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
@@ -1523,7 +1535,7 @@ export const GestaoComprasForm: React.FC<Props> = ({
                     <tr>
                       <td
                         colSpan={8}
-                        className="px-6 py-14 text-center text-[#9ca3af] font-semibold italic uppercase tracking-wider text-xs border-dashed border-2 border-[#e5e7eb] m-4"
+                        className="px-6 py-10 text-center text-[#9ca3af] font-semibold italic uppercase tracking-wider text-xs border-dashed border-2 border-[#e5e7eb] m-3"
                       >
                         NENHUM BEM OU SERVIÇO ADICIONADO. CLIQUE EM "+ ADICIONAR À LISTA" ACIMA.
                       </td>
@@ -1537,35 +1549,35 @@ export const GestaoComprasForm: React.FC<Props> = ({
                       const retencao = item.tipo_artigo === 'Serviço' ? round2(subtotal * 0.065) : 0;
                       return (
                         <tr key={item.uid} className="hover:bg-zinc-50 transition-colors">
-                          <td className="px-3 py-3 font-bold text-center text-[#0f2a4a]">{idx + 1}</td>
-                          <td className="px-4 py-3">
+                          <td className="px-3 py-2 font-bold text-center text-[#0f2a4a]">{idx + 1}</td>
+                          <td className="px-3 py-2">
                             <div className="font-bold text-[#111827]">
                               {item.descricao || <span className="text-zinc-400 italic">—</span>}
                             </div>
-                            <div className="text-[10px] text-[#6b7280] mt-0.5">
+                            <div className="text-[10px] text-[#6b7280]">
                               {item.tipo_artigo} · {item.unidade || 'UN'} {item.tipologia_custo ? `· ${item.tipologia_custo}` : ''}
                               {item.rubrica_label && ` · PGC: ${item.rubrica_label}`}
                             </div>
                             {item.armazem_id && (
-                              <div className="text-[10px] text-emerald-600 font-semibold mt-0.5">
+                              <div className="text-[10px] text-emerald-600 font-semibold">
                                 🏭 {armazens.find(a => a.id === item.armazem_id)?.name || item.armazem_id}
                                 {item.data_validade && ` (Validade: ${item.data_validade})`}
                               </div>
                             )}
                           </td>
-                          <td className="px-4 py-3 text-right font-semibold text-[#111827]">{item.quantidade}</td>
-                          <td className="px-4 py-3 text-right font-semibold text-[#111827] font-mono">
+                          <td className="px-3 py-2 text-right font-semibold text-[#111827]">{item.quantidade}</td>
+                          <td className="px-3 py-2 text-right font-semibold text-[#111827] font-mono">
                             {fmtNum(item.valor_unitario)}
                           </td>
-                          <td className="px-4 py-3 text-right text-zinc-600">
+                          <td className="px-3 py-2 text-right text-zinc-600">
                             {item.desconto_linha > 0 ? `${item.desconto_linha}%` : '0'}
                           </td>
-                          <td className="px-4 py-3 text-center">
+                          <td className="px-3 py-2 text-center">
                             <span className={`inline-block px-2 py-0.5 text-[10px] font-bold ${item.tax_rate > 0 ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-zinc-100 text-zinc-500'}`}>
                               {item.tax_rate > 0 ? `IVA (${item.tax_rate}%)` : 'Isento (0%)'}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-center font-mono text-[11px]">
+                          <td className="px-3 py-2 text-center font-mono text-[11px]">
                             {item.tipo_artigo === 'Serviço' ? (
                               <span className="text-amber-700 font-bold bg-amber-50 px-1.5 py-0.5 border border-amber-200">
                                 -{fmtNum(retencao)} Kz
@@ -1574,7 +1586,7 @@ export const GestaoComprasForm: React.FC<Props> = ({
                               <span className="text-zinc-400">—</span>
                             )}
                           </td>
-                          <td className="px-4 py-3 text-center">
+                          <td className="px-3 py-2 text-center">
                             <div className="flex items-center justify-center gap-1.5">
                               <button
                                 type="button"

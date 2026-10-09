@@ -432,9 +432,17 @@ export const GestaoComprasForm: React.FC<Props> = ({
     );
   });
 
-  const isCashDoc = ['Fatura Recibo de Compra', 'Pagamento', 'Recibo', 'Fatura Recibo'].some(
-    t => t.toLowerCase() === form.tipo_documento.trim().toLowerCase()
-  );
+  // Tipos de documento que requerem caixa e forma de pagamento
+  const isCashDoc = [
+    'fatura recibo de compra',
+    'fatura recibo',
+    'fatura/recibo (fr)',
+    'fatura/recibo',
+    'recibo',
+    'pagamento',
+    'fr',
+  ].some(t => form.tipo_documento.trim().toLowerCase().includes(t));
+
 
   const filteredSuppliers = suppliers.filter(s =>
     !supplierSearch || s.name.toLowerCase().includes(supplierSearch.toLowerCase()) || (s.nif || '').includes(supplierSearch)
@@ -533,7 +541,7 @@ export const GestaoComprasForm: React.FC<Props> = ({
     } else {
       setForm(f => ({ ...f, itens: [...f.itens, savedItem] }));
     }
-    setShowItemModal(false);
+    // O PurchaseItemModal fecha-se sozinho após chamar onSave
     setEditingItemIdx(null);
   };
 
@@ -874,7 +882,7 @@ export const GestaoComprasForm: React.FC<Props> = ({
 
   return (
     <div className="min-h-screen bg-[#f4f6f8] p-4 md:p-6 font-sans">
-      {/* PurchaseItemModal sem barra de rolagem e com todos os campos e retenção 6,5% */}
+      {/* PurchaseItemModal — painel lateral direito igual à imagem de referência */}
       <PurchaseItemModal
         isOpen={showItemModal}
         initialItem={editingItemIdx !== null ? form.itens[editingItemIdx] : null}
@@ -882,6 +890,7 @@ export const GestaoComprasForm: React.FC<Props> = ({
         locais={locais}
         pgcContas={pgcContas}
         metrics={metrics}
+        activeTaxes={activeTaxes}
         onClose={() => { setShowItemModal(false); setEditingItemIdx(null); }}
         onSave={handleItemSave}
       />

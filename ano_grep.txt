@@ -1,0 +1,5 @@
+2045:                        <th className="px-6 py-4">Mês/Ano</th>
+2859:                <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Mês/Ano:</label>
+3116:                  <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Mês/Ano:</label>
+10526:                     <p className="text-[8px] font-bold text-zinc-400 mb-1">Ano:</p>
+10673:               <p className="text-zinc-400 mb-2">Ano:</p>

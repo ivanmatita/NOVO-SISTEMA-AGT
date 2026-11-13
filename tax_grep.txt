@@ -1,0 +1,84 @@
+3145:                    const base_taxable = emp.subject_to_irt !== false ? (emp.salary - inss_worker) : 0;
+3146:                    const irt = emp.subject_to_irt !== false ? calculateIRT(base_taxable) : 0;
+3257:                      const base_taxable = emp.subject_to_irt !== false ? (emp.salary - inss_worker) : 0;
+3258:                      const irt = emp.subject_to_irt !== false ? calculateIRT(base_taxable) : 0;
+3532:                          const base_taxable = emp.subject_to_irt !== false ? (emp.salary - inss_worker) : 0;
+3533:                          const irt = emp.subject_to_irt !== false ? calculateIRT(base_taxable) : 0;
+4725:                              const base_taxable = draftReceipt.employee.subject_to_irt !== false ? (draftReceipt.employee.salary - inss_worker) : 0;
+4726:                              const irt = draftReceipt.employee.subject_to_irt !== false ? calculateIRT(base_taxable) : 0;
+4779:                            const base_taxable = draftReceipt.employee.subject_to_irt !== false ? (draftReceipt.employee.salary - inss_worker) : 0;
+4780:                            const irt = draftReceipt.employee.subject_to_irt !== false ? calculateIRT(base_taxable) : 0;
+4840:                            const base_taxable = draftReceipt.employee.subject_to_irt !== false ? (draftReceipt.employee.salary - inss_worker) : 0;
+4841:                            const irt = draftReceipt.employee.subject_to_irt !== false ? calculateIRT(base_taxable) : 0;
+4888:                            const base_taxable = draftReceipt.employee.subject_to_irt !== false ? (draftReceipt.employee.salary - inss_worker) : 0;
+4889:                            const irt = draftReceipt.employee.subject_to_irt !== false ? calculateIRT(base_taxable) : 0;
+6894:            tax_rate: 14 // Default IVA
+9755:  const [taxes, setTaxes] = useState<any[]>([]);
+9782:        rate: `${d.taxa}%`,
+9814:          {taxes.map(tax => (
+9815:            <tr key={tax.id} className="border-b border-zinc-100 text-sm">
+9816:              <td className="p-3">{tax.date}</td>
+9817:              <td className="p-3">{tax.layout}</td>
+9818:              <td className="p-3">{tax.type}</td>
+9819:              <td className="p-3">{tax.region}</td>
+9820:              <td className="p-3">{tax.code}</td>
+9821:              <td className="p-3">{tax.rate}</td>
+9822:              <td className="p-3">{tax.motive}</td>
+9824:                <button onClick={() => removeTax(tax.id)} className="text-red-500 hover:text-red-700">X</button>
+9838:              {ALL_TAXES.map((taxName, idx) => (
+9842:                    const isIva = taxName.includes('IVA');
+9843:                    const isIsento = taxName.includes('Isento') || taxName.includes('Não Sujeita');
+9844:                    const rateMatch = taxName.match(/(\d+)%/);
+9852:                      nome: taxName,
+9853:                      taxa: rateNum,
+9862:                      alert('Erro ao importar taxa: ' + error.message);
+9867:                  <span>{taxName}</span>
+9909:      tax_value: s.retencao_fonte_total || s.items?.reduce((acc, i) => acc + (i.retencao_fonte || 0), 0) || 0,
+9920:      tax_value: p.retencao_fonte_total || p.irt_retido || 0,
+9934:  const totalReceber = filtered.filter(r => r.category === 'receber').reduce((acc, r) => acc + (r.tax_value || 0), 0);
+9935:  const totalPagar = filtered.filter(r => r.category === 'pagar').reduce((acc, r) => acc + (r.tax_value || 0), 0);
+10008:                  {r.category === 'pagar' ? '-' : '+'}{formatCurrency(r.tax_value)}
+10624:  const taxDue = h1Sales * 0.02;
+10653:              <p>O imposto a pagar é calculado sobre o volume total de vendas realizadas no 1º semestre do exercício fiscal. A liquidação a que se refere o n.º 1 do presente artigo pode incidir, a título facultativo, sobre o valor efectivamente recebido das vendas não sujeitas à retenção na fonte, nos primeiros seis meses do exercício fiscal, mediante a aplicação de uma taxa de 2% sobre o respectivo valor...</p>
+10686:                    <p className="text-[10px] font-black text-blue-600 mt-1">IMPOSTO (2%): {formatCurrency(taxDue).replace('AOA', '')}</p>
+10752:                   <td className="p-3 text-right border-l border-zinc-300 text-[#003366] bg-white">{formatCurrency(taxDue).replace('AOA', '')}</td>
+11424:    { id: 'stamp-tax', label: 'Imposto de Selo', icon: <ShieldCheck size={24} />, description: 'Mapa de liquidação e controlo de Imposto de Selo sobre recebimentos.' },
+11425:    { id: 'income-tax-advance', label: 'Imposto por Conta', icon: <CreditCard size={24} />, description: 'Autoliquidação provisória do Imposto Industrial (2% sobre vendas).' },
+11476:      case 'stamp-tax':
+11478:      case 'income-tax-advance':
+13100:      tax: activeTaxes.length > 0 ? `${activeTaxes[0].nome} (${activeTaxes[0].taxa}%)` : 'IVA - 0%',
+13101:      tax_id: activeTaxes.length > 0 ? activeTaxes[0].id : null
+13117:    const taxId = field === 'tax_id' ? value : (newItems[index].tax_id || (activeTaxes.length > 0 ? activeTaxes[0].id : null));
+13118:    const selectedTax = activeTaxes.find(t => t.id === Number(taxId));
+13121:      newItems[index].tax = `${selectedTax.nome} (${selectedTax.taxa}%)`;
+13122:      newItems[index].tax_rate = Number(selectedTax.taxa);
+13123:      newItems[index].tax_id = selectedTax.id;
+13125:      newItems[index].tax_rate = 0;
+13164:    const rate = item.tax_rate || 0;
+13166:    const label = item.tax || 'Outros';
+13606:                        value={isNaN(Number(item.tax_id)) ? '' : item.tax_id}
+13607:                        onChange={(e) => updateItem(idx, 'tax_id', e.target.value)}
+13611:                          <option key={t.id} value={t.id}>{t.nome} ({t.taxa}%)</option>
+14525:  // Calculate VAT summary by tax label/name instead of just rate
+14527:    const label = item.tax || (item.tax_rate ? `IVA (${item.tax_rate}%)` : 'ISE (0%)');
+14529:      acc[label] = { base: 0, vat: 0, rate: item.tax_rate || 0 };
+14531:    const rate = item.tax_rate || 0;
+15525:      tax: activeTaxes.length > 0 ? `${activeTaxes[0].nome} (${activeTaxes[0].taxa}%)` : 'IVA - 0%',
+15526:      tax_id: activeTaxes.length > 0 ? activeTaxes[0].id : null
+15541:    const taxId = field === 'tax_id' ? value : (newItems[index].tax_id || (activeTaxes.length > 0 ? activeTaxes[0].id : null));
+15542:    const selectedTax = activeTaxes.find(t => t.id === Number(taxId));
+15545:      newItems[index].tax = `${selectedTax.nome} (${selectedTax.taxa}%)`;
+15546:      newItems[index].tax_rate = Number(selectedTax.taxa);
+15547:      newItems[index].tax_id = selectedTax.id;
+15549:      newItems[index].tax_rate = 0;
+15570:    const rate = item.tax_rate || 0;
+15572:    const label = item.tax || 'Outros';
+16231:                      value={isNaN(Number(item.tax_id)) ? '' : item.tax_id}                      onChange={(e) => updateItem(idx, 'tax_id', e.target.value)}
+16236:                        <option key={t.id} value={t.id}>{t.nome} ({t.taxa}%)</option>
+17061:                          <td className="py-3 px-4 text-right text-emerald-600 font-black font-mono">{formatCurrency((p.items ?? []).reduce((sum, it) => sum + ((it.total || 0) * ((it.tax_rate || 0) / 100)), 0)).replace('AOA', '').trim()}</td>
+19593:      // Try to load active taxes
+19608:      console.error('Error loading active taxes:', err);
+19807:        imposto: Number(doc.total_tax || doc.imposto || 0),
+20787:                        case 'tax-settings':
+20911:                        case 'withholding-tax':
+20968:                        case 'tax-series':

@@ -1,0 +1,1553 @@
+/**
+ * GestaoComprasList.tsx
+ * Lista compacta de documentos de Gestão de Compras.
+ * Estilo visual: semelhante à imagem de referência "Factura/recibo FORNECEDORES".
+ * Colunas: MovID | Data Valor | Data | Centro Custos/Caixa | DOC Nº | Fornecedor | Valor | Moeda | Hash | RSA | Ações
+ * Lê dados reais da tabela `compras` via Supabase com isolamento por empresa_id + RLS.
+ */
+
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import {
+  Search, Plus, FileDown, ChevronLeft, ChevronRight,
+  MoreVertical, Eye, Edit2, Copy, Printer, Download,
+  Paperclip, Shield, FileText, BarChart2, Package,
+  X, CheckCircle2, XCircle, Clock, Check, Hash as HashIcon,
+  RefreshCw, Filter, ChevronDown, ExternalLink, AlertTriangle,
+  FileCheck, FileX, Trash2, Camera
+} from 'lucide-react';
+import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../contexts/AuthContext';
+import { toast } from 'react-hot-toast';
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export interface CompraDoc {
+  id: string;
+  empresa_id: string;
+  fornecedor_id?: string;
+  fornecedor_nome?: string;
+  supplier_name?: string;
+  numero_documento?: string;
+  purchase_number?: string;
+  numero_fatura?: string;
+  invoice_number?: string;
+  numero_compra?: string;
+  tipo_documento?: string;
+  document_type?: string;
+  data_compra?: string;
+  data?: string;
+  date?: string;
+  data_servico?: string;   // "data valor" — existe na tabela
+  data_emissao?: string;
+  data_vencimento?: string;
+  due_date?: string;
+  valor_total?: number;
+  total?: number;
+  moeda?: string;
+  currency?: string;
+  hash?: string;
+  hash_documento?: string;
+  assinatura_digital?: string;
+  status?: string;
+  estado?: string;
+  recibo_emitido?: boolean;
+  tem_recibo?: boolean;
+  caixa_id?: string;
+  caixa?: string;
+  work_site?: string;
+  work_site_name?: string;
+  local_obra?: string;
+  taxa_retencao?: number;
+  saldo_pendente?: number;
+  valor_pago?: number;
+  document_url?: string;
+  ano?: number;
+  created_at?: string;
+  codigo?: string;
+  numero?: string;
+}
+
+
+
+interface Filters {
+  search: string;
+  supplierId: string;
+  docType: string;
+  dateFrom: string;
+  dateTo: string;
+  currency: string;
+  status: string;
+  workSiteId: string;
+}
+
+interface Props {
+  suppliers: Array<{ id: string | number; name: string; nif?: string }>;
+  workSites: Array<{ id: string | number; name?: string; title?: string }>;
+  caixas: Array<{ id: string; name: string }>;
+  fiscalYear: string;
+  onNewPurchase: () => void;
+  onEditPurchase: (doc: CompraDoc) => void;
+  onViewPurchase: (doc: CompraDoc) => void;
+  onOpenAttachments?: (doc: CompraDoc) => void;
+  onEmitReceipt?: (doc: CompraDoc) => void;
+  onEmitCreditNote?: (doc: CompraDoc) => void;
+  onDeletePurchase?: (doc: CompraDoc) => void;
+  onScanQr?: () => void;
+  companyData?: any;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+const fmtDate = (d?: string | null): string => {
+  if (!d) return '—';
+  try {
+    const dt = new Date(d);
+    if (isNaN(dt.getTime())) return '—';
+    return dt.toLocaleDateString('pt-PT', {
+      day: '2-digit', month: '2-digit', year: 'numeric'
+    }).replace(/\//g, '-');
+  } catch { return '—'; }
+};
+
+const fmtNum = (v?: number | string | null): string => {
+  const n = typeof v === 'string' ? parseFloat(v) : (v ?? 0);
+  if (isNaN(n)) return '0,00';
+  return n.toLocaleString('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
+const getDocDate = (d: CompraDoc) =>
+  d.data_compra || d.data || d.date || d.data_emissao || d.created_at || '';
+
+// data_servico = "Data Valor" real da tabela (data em que o serviço foi prestado)
+const getDocValorDate = (d: CompraDoc) =>
+  d.data_servico || d.data_compra || d.date || '';
+
+export const getDocAbbr = (tipoRaw?: string | null): string => {
+  if (!tipoRaw) return 'DOC';
+  const t = tipoRaw.trim();
+  const matchParen = t.match(/\(([A-Z]{2,3})\)/i);
+  if (matchParen) return matchParen[1].toUpperCase();
+
+  const lower = t.toLowerCase();
+  if (lower.includes('fatura/recibo') || lower.includes('fatura recibo') || lower.includes('fr')) return 'FR';
+  if (lower.includes('recibo') || lower.includes('rc')) return 'RC';
+  if (lower.includes('fatura') || lower.includes('ft') || lower.includes('fc')) return 'FT';
+  if (lower.includes('crédito') || lower.includes('credito') || lower.includes('nc')) return 'NC';
+  if (lower.includes('débito') || lower.includes('debito') || lower.includes('nd')) return 'ND';
+  if (lower.includes('guia') || lower.includes('ge')) return 'GE';
+  return t.substring(0, 2).toUpperCase();
+};
+
+const getDocNum = (d: CompraDoc): string => {
+  const tipo = d.tipo_documento || d.document_type || 'Compra';
+  const abbr = getDocAbbr(tipo);
+  const docNum = (d.numero_documento || d.purchase_number || '').trim();
+  const fatura = (d.numero_fatura || d.invoice_number || '').trim();
+
+  // Se docNum já contém barra, ex: "7026S44853N/754"
+  if (docNum.includes('/')) {
+    return `${abbr} ${docNum}`;
+  }
+
+  // Se serie e numero estao separados
+  if (docNum && fatura && docNum !== fatura) {
+    return `${abbr} ${docNum}/${fatura}`;
+  }
+
+  const num = docNum || fatura;
+  if (num) {
+    return `${abbr} ${num}`;
+  }
+
+  return '—';
+};
+
+const getTotal = (d: CompraDoc) => Number(d.valor_total ?? d.total ?? 0);
+
+const getMoeda = (d: CompraDoc) => {
+  const m = d.moeda || d.currency || 'AOA';
+  if (m === 'Kwanza' || m === 'kwanza') return 'AOA';
+  return m;
+};
+
+const getHash = (d: CompraDoc) => d.hash || d.hash_documento || '';
+
+// RSA: baseado no hash (campo assinatura_digital não existe na tabela compras)
+const isRSA = (d: CompraDoc) => getHash(d).length > 8;
+
+const isAnulado = (d: CompraDoc) =>
+  ['anulado', 'cancelled', 'void'].includes((d.status || d.estado || '').toLowerCase());
+
+const PAGE_SIZE = 25;
+
+// ---------------------------------------------------------------------------
+// Actions Sidebar (Right-side floating drawer)
+// ---------------------------------------------------------------------------
+
+const ActionsSidebar = ({
+  doc,
+  hasAttachment = false,
+  onClose,
+  onAction
+}: {
+  doc: CompraDoc;
+  hasAttachment?: boolean;
+  onClose: () => void;
+  onAction: (action: string, d: CompraDoc) => void;
+}) => {
+  const anulado = isAnulado(doc);
+  const temRecibo = doc.recibo_emitido || doc.tem_recibo;
+  const hash = getHash(doc);
+
+  const rawType = String(doc.tipo_documento || doc.document_type || '').toUpperCase();
+  const isReceiptType = rawType.includes('RECIBO') || rawType.includes('PAGAMENTO') || rawType.includes('FATURA RECIBO') || rawType === 'FR';
+  const isCreditNote = rawType.includes('CRÉDITO') || rawType.includes('CREDITO') || rawType === 'NC';
+  const isEligibleForReceipt = !anulado && !temRecibo && !isReceiptType && !isCreditNote;
+  const isEligibleForCreditNote = !anulado && !isCreditNote && !isReceiptType;
+
+  const actions = [
+    {
+      id: 'view',
+      icon: Eye,
+      label: 'Ver Documento',
+      desc: hasAttachment ? 'Documento / Anexo carregado' : 'Visualizar detalhes completos',
+      color: hasAttachment ? 'text-emerald-600' : 'text-blue-600',
+      badge: hasAttachment,
+      enabled: true
+    },
+    { id: 'edit', icon: Edit2, label: 'Editar', desc: 'Modificar documento', color: 'text-amber-600', enabled: true },
+    { id: 'receipt', icon: FileCheck, label: 'Emitir Recibo', desc: 'Registar pagamento/recibo desta fatura', color: 'text-emerald-600', enabled: true },
+    { id: 'credit_note', icon: FileX, label: 'Emitir Nota de Crédito', desc: 'Emitir nota de crédito retificativa', color: 'text-rose-600', enabled: true },
+    { id: 'duplicate', icon: Copy, label: 'Duplicar', desc: 'Criar cópia deste documento', color: 'text-purple-600', enabled: true },
+    { id: 'print', icon: Printer, label: 'Imprimir', desc: 'Imprimir documento', color: 'text-zinc-600', enabled: true },
+    { id: 'pdf', icon: Download, label: 'Exportar PDF', desc: 'Descarregar documento em PDF', color: 'text-zinc-600', enabled: true },
+    {
+      id: 'attachments',
+      icon: Paperclip,
+      label: 'Anexos',
+      desc: hasAttachment ? 'Ficheiros anexados disponíveis' : 'Gerir documentos de suporte',
+      color: hasAttachment ? 'text-emerald-600' : 'text-zinc-600',
+      badge: hasAttachment,
+      enabled: true
+    },
+    { id: 'certification', icon: Shield, label: 'Ver Certificação', desc: 'Verificar assinatura RSA e hash', color: 'text-indigo-600', enabled: true },
+    {
+      id: 'support_doc',
+      icon: FileText,
+      label: 'Ver Documento de Suporte',
+      desc: hasAttachment ? 'Anexo / ficheiro carregado' : 'Ver documento anexado / digitalizado',
+      color: hasAttachment ? 'text-emerald-600' : 'text-orange-600',
+      badge: hasAttachment,
+      enabled: true
+    },
+    { id: 'accounting', icon: BarChart2, label: 'Ver Impactos Contabilísticos', desc: 'Lançamentos no plano PGC', color: 'text-teal-600', enabled: true },
+    { id: 'stock', icon: Package, label: 'Ver Movimento de Stock', desc: 'Entradas de armazém geradas', color: 'text-rose-600', enabled: true },
+    { id: 'delete', icon: Trash2, label: 'Apagar Documento', desc: 'Eliminar permanentemente do sistema', color: 'text-red-600', enabled: true },
+  ];
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 z-[290] bg-black/20 backdrop-blur-[1px] transition-opacity"
+        onClick={onClose}
+      />
+      {/* Sidebar panel */}
+      <div className="fixed right-0 top-0 bottom-0 z-[300] w-80 bg-white border-l border-zinc-200 shadow-2xl flex flex-col animate-in slide-in-from-right duration-200">
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 bg-[#003366] text-white">
+          <div className="min-w-0">
+            <div className="text-[10px] font-black uppercase tracking-widest text-blue-200">Opções do Documento</div>
+            <div className="text-xs font-black truncate mt-0.5">{getDocNum(doc)}</div>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 hover:bg-white/20 rounded transition-colors flex-shrink-0 ml-2"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Doc summary banner */}
+        <div className="px-4 py-2.5 border-b border-zinc-100 bg-zinc-50">
+          <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Fornecedor</div>
+          <div className="text-xs font-black text-zinc-800 truncate">
+            {doc.fornecedor_nome || doc.supplier_name || '—'}
+          </div>
+          <div className="flex items-center justify-between gap-2 mt-1">
+            <span className="text-[10px] text-zinc-500 font-bold">{fmtDate(getDocDate(doc))}</span>
+            <span className="text-xs font-black text-[#003366]">
+              {getMoeda(doc)} {fmtNum(getTotal(doc))}
+            </span>
+          </div>
+          {anulado && (
+            <div className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider bg-red-100 text-red-700 border border-red-200">
+              <XCircle size={10} /> DOCUMENTO ANULADO
+            </div>
+          )}
+        </div>
+
+        {/* Actions list */}
+        <div className="flex-1 overflow-y-auto py-1">
+          {actions.map(({ id, icon: Icon, label, desc, color, enabled }) => {
+            if (!enabled) return null;
+            return (
+              <button
+                key={id}
+                onClick={() => { onAction(id, doc); onClose(); }}
+                className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-blue-50/50 transition-colors text-left border-b border-zinc-50 last:border-0 group"
+              >
+                <div className={`w-8 h-8 flex items-center justify-center ${color} bg-zinc-100 group-hover:bg-white rounded-none border border-zinc-200 flex-shrink-0 transition-colors`}>
+                  <Icon size={15} />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-[11px] font-black text-zinc-800 group-hover:text-[#003366] transition-colors">{label}</div>
+                  <div className="text-[9px] text-zinc-400 uppercase tracking-wide truncate">{desc}</div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Footer */}
+        <div className="px-4 py-2.5 bg-zinc-50 border-t border-zinc-100 text-center">
+          <p className="text-[9px] text-zinc-400 font-black uppercase tracking-widest">IMATEC SOFTWARE ERP</p>
+        </div>
+      </div>
+    </>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// Modals: Certificação, Impactos Contabilísticos, Movimento de Stock
+// ---------------------------------------------------------------------------
+
+const CertificationModal = ({ doc, onClose }: { doc: CompraDoc; onClose: () => void }) => {
+  const hash = getHash(doc);
+  const rsa = isRSA(doc);
+
+  return (
+    <div className="fixed inset-0 z-[320] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+      <div className="bg-white border border-zinc-200 shadow-2xl max-w-md w-full p-5 space-y-4">
+        <div className="flex items-center justify-between border-b border-zinc-100 pb-2">
+          <div className="flex items-center gap-2 text-[#003366]">
+            <Shield size={18} />
+            <h3 className="text-sm font-black uppercase tracking-wider">Certificação e Assinatura RSA</h3>
+          </div>
+          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-600"><X size={16} /></button>
+        </div>
+
+        <div className="space-y-3 text-xs">
+          <div className="bg-zinc-50 p-3 border border-zinc-200 space-y-2">
+            <div>
+              <span className="text-[10px] font-bold text-zinc-500 uppercase block">Documento</span>
+              <span className="font-black text-zinc-800">{getDocNum(doc)}</span>
+            </div>
+            <div>
+              <span className="text-[10px] font-bold text-zinc-500 uppercase block">Estado da Certificação RSA</span>
+              {rsa ? (
+                <span className="inline-flex items-center gap-1.5 text-emerald-700 font-black">
+                  <CheckCircle2 size={13} /> Certificado Fiscalmente
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 text-amber-700 font-bold">
+                  <Clock size={13} /> Aguarda Certificação
+                </span>
+              )}
+            </div>
+            <div>
+              <span className="text-[10px] font-bold text-zinc-500 uppercase block">Hash do Documento</span>
+              {hash ? (
+                <div className="font-mono text-[11px] bg-white p-2 border border-zinc-200 text-zinc-800 break-all select-all">
+                  {hash}
+                </div>
+              ) : (
+                <span className="text-zinc-400 italic">Sem hash gerado</span>
+              )}
+            </div>
+            {doc.assinatura_digital && (
+              <div>
+                <span className="text-[10px] font-bold text-zinc-500 uppercase block">Assinatura Digital</span>
+                <div className="font-mono text-[10px] bg-white p-2 border border-zinc-200 text-zinc-600 break-all max-h-24 overflow-y-auto">
+                  {doc.assinatura_digital}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex justify-end pt-2">
+          <button
+            onClick={onClose}
+            className="px-4 py-1.5 bg-[#003366] text-white text-xs font-black uppercase tracking-wider hover:bg-[#002244]"
+          >
+            Fechar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const AccountingModal = ({ doc, onClose }: { doc: CompraDoc; onClose: () => void }) => {
+  const { user } = useAuth();
+  const [entries, setEntries] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchAccounting = async () => {
+      setLoading(true);
+      try {
+        const empresaId = user?.empresa_id || user?.company_id;
+        const { data, error } = await supabase
+          .from('lancamentos_contabeis')
+          .select('*')
+          .eq('empresa_id', empresaId)
+          .or(`origem_id.eq.${doc.id},documento_ref.eq.${doc.numero_documento || ''},documento_ref.eq.${doc.purchase_number || ''}`);
+        
+        if (!error && data) {
+          setEntries(data);
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchAccounting();
+  }, [doc, user]);
+
+  return (
+    <div className="fixed inset-0 z-[320] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+      <div className="bg-white border border-zinc-200 shadow-2xl max-w-xl w-full p-5 space-y-4">
+        <div className="flex items-center justify-between border-b border-zinc-100 pb-2">
+          <div className="flex items-center gap-2 text-[#003366]">
+            <BarChart2 size={18} />
+            <h3 className="text-sm font-black uppercase tracking-wider">Impactos Contabilísticos (PGC)</h3>
+          </div>
+          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-600"><X size={16} /></button>
+        </div>
+
+        <div className="text-xs space-y-2">
+          <div className="flex justify-between bg-zinc-50 p-2 border border-zinc-200">
+            <div><strong>Documento:</strong> {getDocNum(doc)}</div>
+            <div><strong>Valor:</strong> {getMoeda(doc)} {fmtNum(getTotal(doc))}</div>
+          </div>
+
+          {loading ? (
+            <div className="p-6 text-center text-zinc-400">A carregar lançamentos...</div>
+          ) : entries.length === 0 ? (
+            <div className="p-6 text-center text-zinc-400 italic bg-zinc-50 border border-zinc-200">
+              Nenhum lançamento contabilístico direto registado para este documento. Os lançamentos automáticos de compras são consolidados no encerramento diário ou apuramento de IVA.
+            </div>
+          ) : (
+            <div className="border border-zinc-200 overflow-x-auto max-h-60 overflow-y-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="bg-zinc-100 font-bold">
+                    <th className="p-2">Conta</th>
+                    <th className="p-2">Descrição</th>
+                    <th className="p-2 text-right">Débito</th>
+                    <th className="p-2 text-right">Crédito</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {entries.map((e, idx) => (
+                    <tr key={idx} className="border-b border-zinc-100">
+                      <td className="p-2 font-mono font-bold">{e.conta_pgc || e.conta_debito || e.conta_credito}</td>
+                      <td className="p-2">{e.descricao || e.descricao_conta}</td>
+                      <td className="p-2 text-right font-mono">{e.debito ? fmtNum(e.debito) : '—'}</td>
+                      <td className="p-2 text-right font-mono">{e.credito ? fmtNum(e.credito) : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end pt-2">
+          <button onClick={onClose} className="px-4 py-1.5 bg-[#003366] text-white text-xs font-black uppercase tracking-wider hover:bg-[#002244]">
+            Fechar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const StockModal = ({ doc, onClose }: { doc: CompraDoc; onClose: () => void }) => {
+  const { user } = useAuth();
+  const [movements, setMovements] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchStock = async () => {
+      setLoading(true);
+      try {
+        const empresaId = user?.empresa_id || user?.company_id;
+        const { data, error } = await supabase
+          .from('movimentacoes_stock')
+          .select('*, produtos(name), armazens(name)')
+          .eq('empresa_id', empresaId)
+          .or(`referencia.eq.${doc.id},reference_id.eq.${doc.id}`);
+        
+        if (!error && data) {
+          setMovements(data);
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchStock();
+  }, [doc, user]);
+
+  return (
+    <div className="fixed inset-0 z-[320] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+      <div className="bg-white border border-zinc-200 shadow-2xl max-w-xl w-full p-5 space-y-4">
+        <div className="flex items-center justify-between border-b border-zinc-100 pb-2">
+          <div className="flex items-center gap-2 text-[#003366]">
+            <Package size={18} />
+            <h3 className="text-sm font-black uppercase tracking-wider">Movimentos de Stock</h3>
+          </div>
+          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-600"><X size={16} /></button>
+        </div>
+
+        <div className="text-xs space-y-2">
+          <div className="flex justify-between bg-zinc-50 p-2 border border-zinc-200">
+            <div><strong>Documento:</strong> {getDocNum(doc)}</div>
+            <div><strong>Fornecedor:</strong> {doc.fornecedor_nome || doc.supplier_name || '—'}</div>
+          </div>
+
+          {loading ? (
+            <div className="p-6 text-center text-zinc-400">A carregar movimentos de stock...</div>
+          ) : movements.length === 0 ? (
+            <div className="p-6 text-center text-zinc-400 italic bg-zinc-50 border border-zinc-200">
+              Nenhum movimento de stock directo associado a este documento (pode ser compra de serviços ou custos gerais).
+            </div>
+          ) : (
+            <div className="border border-zinc-200 overflow-x-auto max-h-60 overflow-y-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="bg-zinc-100 font-bold">
+                    <th className="p-2">Tipo</th>
+                    <th className="p-2">Produto</th>
+                    <th className="p-2">Armazém</th>
+                    <th className="p-2 text-right">Quantidade</th>
+                    <th className="p-2 text-right">Data</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {movements.map((m, idx) => (
+                    <tr key={idx} className="border-b border-zinc-100">
+                      <td className="p-2">
+                        <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 font-bold text-[10px] uppercase">
+                          {m.tipo || m.type}
+                        </span>
+                      </td>
+                      <td className="p-2 font-bold">{m.produtos?.name || m.description || 'Produto'}</td>
+                      <td className="p-2">{m.armazens?.name || 'Armazém Geral'}</td>
+                      <td className="p-2 text-right font-black">{m.quantidade || m.quantity}</td>
+                      <td className="p-2 text-right text-zinc-500">{fmtDate(m.created_at)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end pt-2">
+          <button onClick={onClose} className="px-4 py-1.5 bg-[#003366] text-white text-xs font-black uppercase tracking-wider hover:bg-[#002244]">
+            Fechar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// Main List Component
+// ---------------------------------------------------------------------------
+
+export const GestaoComprasList: React.FC<Props> = ({
+  suppliers,
+  workSites,
+  caixas,
+  fiscalYear,
+  onNewPurchase,
+  onEditPurchase,
+  onViewPurchase,
+  onOpenAttachments,
+  onEmitReceipt,
+  onEmitCreditNote,
+  onDeletePurchase,
+  onScanQr,
+  companyData
+}) => {
+  const { user } = useAuth();
+
+  const [docs, setDocs] = useState<CompraDoc[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [totalCount, setTotalCount] = useState(0);
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState<number>(25);
+  const [filters, setFilters] = useState<Filters>({
+    search: '',
+    supplierId: '',
+    docType: '',
+    dateFrom: '',
+    dateTo: '',
+    currency: '',
+    status: '',
+    workSiteId: '',
+  });
+  const [showFilters, setShowFilters] = useState(true);
+  const [selectedDoc, setSelectedDoc] = useState<CompraDoc | null>(null);
+
+  // Inline field edit modal (Hash / Centro Custos / Caixa)
+  const [inlineEdit, setInlineEdit] = useState<{
+    doc: CompraDoc;
+    field: 'hash' | 'work_site' | 'caixa_id';
+    label: string;
+    value: string;
+  } | null>(null);
+  const [inlineSaving, setInlineSaving] = useState(false);
+
+  const [certModalDoc, setCertModalDoc] = useState<CompraDoc | null>(null);
+  const [accountingModalDoc, setAccountingModalDoc] = useState<CompraDoc | null>(null);
+  const [stockModalDoc, setStockModalDoc] = useState<CompraDoc | null>(null);
+  const [docsWithAttachments, setDocsWithAttachments] = useState<Set<string>>(new Set());
+
+  // Debounce search
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  useEffect(() => {
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => {
+      setDebouncedSearch(filters.search);
+      setPage(0);
+    }, 350);
+    return () => { if (searchTimer.current) clearTimeout(searchTimer.current); };
+  }, [filters.search]);
+
+  // ---------------------------------------------------------------------------
+  // Fetch from Supabase
+  // ---------------------------------------------------------------------------
+  const fetchDocs = useCallback(async () => {
+    const empresaId = user?.empresa_id || user?.company_id;
+    if (!empresaId) return;
+
+    setLoading(true);
+    try {
+      const ano = Number(fiscalYear || new Date().getFullYear());
+
+      let query = supabase
+        .from('compras')
+        .select(
+          'id, empresa_id, fornecedor_id, fornecedor_nome, supplier_name, numero_documento, purchase_number, numero_fatura, invoice_number, numero_compra, tipo_documento, document_type, data_compra, data, date, data_servico, data_emissao, data_vencimento, due_date, valor_total, total, moeda, currency, hash, hash_documento, status, estado, recibo_emitido, tem_recibo, caixa_id, caixa, work_site, work_site_name, local_obra, taxa_retencao, saldo_pendente, valor_pago, document_url, ano, created_at, numero, codigo',
+          { count: 'exact' }
+        )
+        .eq('empresa_id', empresaId)
+        .eq('ano', ano);
+
+      // Filters
+      if (filters.supplierId) {
+        query = query.eq('fornecedor_id', filters.supplierId);
+      }
+      if (filters.docType) {
+        query = query.ilike('tipo_documento', `%${filters.docType}%`);
+      }
+      if (filters.currency) {
+        query = query.eq('moeda', filters.currency);
+      }
+      if (filters.status) {
+        if (filters.status === 'anulado') {
+          query = query.in('status', ['anulado', 'cancelled']);
+        } else if (filters.status === 'pago') {
+          query = query.eq('recibo_emitido', true);
+        } else if (filters.status === 'pendente') {
+          query = query.not('status', 'in', '("anulado","cancelled")').eq('recibo_emitido', false);
+        }
+      }
+      if (filters.workSiteId) {
+        query = query.eq('work_site', filters.workSiteId);
+      }
+      if (filters.dateFrom) {
+        query = query.gte('data_compra', filters.dateFrom);
+      }
+      if (filters.dateTo) {
+        query = query.lte('data_compra', filters.dateTo);
+      }
+      if (debouncedSearch) {
+        const term = debouncedSearch.trim();
+        query = query.or(
+          `fornecedor_nome.ilike.%${term}%,supplier_name.ilike.%${term}%,numero_documento.ilike.%${term}%,numero_fatura.ilike.%${term}%,invoice_number.ilike.%${term}%,purchase_number.ilike.%${term}%,referencia.ilike.%${term}%,tipo_documento.ilike.%${term}%,document_type.ilike.%${term}%`
+        );
+      }
+
+      const from = page * pageSize;
+      const to = from + pageSize - 1;
+
+      const { data, error, count } = await query
+        .order('created_at', { ascending: false })
+        .range(from, to);
+
+      if (error) {
+        console.error('[GestaoComprasList] fetch error:', error);
+        toast.error(`Erro ao carregar compras: ${error.message}`);
+        return;
+      }
+
+      const loadedDocs: CompraDoc[] = data || [];
+      setDocs(loadedDocs);
+      setTotalCount(count ?? 0);
+
+      // Identificar quais documentos têm anexos em media_arquivos ou document_url
+      const idsWithDirectUrl = new Set<string>(
+        loadedDocs
+          .filter(d => !!(d.document_url || (d as any).comprovativo_url || (d as any).file_url || (d as any).anexo_url || (d as any).anexo))
+          .map(d => d.id)
+      );
+
+      const docIds = loadedDocs.map(d => String(d.id)).filter(Boolean);
+      if (docIds.length > 0) {
+        try {
+          const { data: mediaFiles } = await supabase
+            .from('media_arquivos')
+            .select('entidade_id')
+            .eq('entidade', 'compras')
+            .eq('empresa_id', empresaId)
+            .in('entidade_id', docIds);
+
+          if (mediaFiles && mediaFiles.length > 0) {
+            mediaFiles.forEach(mf => {
+              if (mf.entidade_id) idsWithDirectUrl.add(String(mf.entidade_id));
+            });
+          }
+        } catch (mErr) {
+          console.warn('[GestaoComprasList] media_arquivos check warning:', mErr);
+        }
+      }
+
+      setDocsWithAttachments(idsWithDirectUrl);
+    } catch (err: any) {
+      console.error('[GestaoComprasList] exception:', err);
+      toast.error(`Falha ao carregar compras: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.empresa_id, user?.company_id, fiscalYear, page, pageSize, filters.supplierId, filters.docType, filters.currency, filters.status, filters.dateFrom, filters.dateTo, filters.workSiteId, debouncedSearch]);
+
+  useEffect(() => { fetchDocs(); }, [fetchDocs]);
+
+  // ---------------------------------------------------------------------------
+  // Action handler
+  // ---------------------------------------------------------------------------
+  const handleAction = async (action: string, doc: CompraDoc) => {
+    switch (action) {
+      case 'view':
+      case 'print':
+      case 'pdf':
+        onViewPurchase(doc);
+        break;
+      case 'edit':
+        if (isAnulado(doc)) {
+          toast('Documento anulado — aberto em modo de consulta/retificação.', { icon: 'ℹ️' });
+        } else if (doc.recibo_emitido || doc.tem_recibo) {
+          toast('Documento com recibo emitido — certifique-se das alterações.', { icon: '⚠️' });
+        }
+        onEditPurchase(doc);
+        break;
+      case 'duplicate':
+        try {
+          const { data: fullDoc, error } = await supabase
+            .from('compras')
+            .select('*')
+            .eq('id', doc.id)
+            .single();
+
+          if (error || !fullDoc) {
+            toast.error('Erro ao carregar dados do documento para duplicação.');
+            return;
+          }
+
+          const rawItems = fullDoc.itens || fullDoc.items || [];
+          const parsedItems = typeof rawItems === 'string' ? JSON.parse(rawItems) : (rawItems || []);
+
+          const duplicated: any = {
+            ...fullDoc,
+            id: '',
+            numero_documento: '',
+            purchase_number: '',
+            invoice_number: '',
+            numero_fatura: '',
+            hash: '',
+            hash_documento: '',
+            status: 'pendente',
+            estado: 'pendente',
+            recibo_emitido: false,
+            tem_recibo: false,
+            items: parsedItems,
+            itens: parsedItems,
+          };
+          onEditPurchase(duplicated);
+        } catch (err) {
+          console.error(err);
+          toast.error('Falha ao duplicar documento.');
+        }
+        break;
+      case 'attachments':
+        if (onOpenAttachments) {
+          onOpenAttachments(doc);
+        } else {
+          toast('Módulo de anexos aberto.', { icon: '📎' });
+        }
+        break;
+      case 'certification':
+        setCertModalDoc(doc);
+        break;
+      case 'support_doc':
+        if (doc.document_url) {
+          window.open(doc.document_url, '_blank', 'noopener');
+        } else {
+          toast('Nenhum documento de suporte anexado.', { icon: 'ℹ️' });
+        }
+        break;
+      case 'accounting':
+        setAccountingModalDoc(doc);
+        break;
+      case 'stock':
+        setStockModalDoc(doc);
+        break;
+      case 'receipt':
+        if (onEmitReceipt) {
+          onEmitReceipt(doc);
+        } else {
+          toast('Emissão de recibo não disponível.', { icon: 'ℹ️' });
+        }
+        break;
+      case 'credit_note':
+        if (onEmitCreditNote) {
+          onEmitCreditNote(doc);
+        } else {
+          toast('Emissão de nota de crédito não disponível.', { icon: 'ℹ️' });
+        }
+        break;
+      case 'delete':
+        if (onDeletePurchase) {
+          onDeletePurchase(doc);
+        } else {
+          toast.error('Eliminação não disponível.');
+        }
+        break;
+    }
+  };
+
+  // Inline field save handler
+  const handleInlineSave = async () => {
+    if (!inlineEdit) return;
+    const empresaId = user?.empresa_id || user?.company_id;
+    if (!empresaId) return;
+    setInlineSaving(true);
+    try {
+      const update: any = { [inlineEdit.field]: inlineEdit.value || null };
+      const { error } = await supabase
+        .from('compras')
+        .update(update)
+        .eq('id', inlineEdit.doc.id)
+        .eq('empresa_id', empresaId);
+      if (error) throw error;
+      toast.success(`${inlineEdit.label} actualizado com sucesso!`);
+      setInlineEdit(null);
+      fetchDocs();
+    } catch (err: any) {
+      toast.error(`Erro ao guardar: ${err.message}`);
+    } finally {
+      setInlineSaving(false);
+    }
+  };
+
+  const totalPages = Math.ceil(totalCount / pageSize);
+
+  // Centro custo / Caixa display — usa colunas reais da tabela e resolve nomes
+  const getCentroDisplay = (doc: CompraDoc) => {
+    const wsMatch = workSites.find(w => String(w.id) === String(doc.work_site))?.name || workSites.find(w => String(w.id) === String(doc.work_site))?.title;
+    const cc = doc.work_site_name || wsMatch || doc.work_site || doc.local_obra || '';
+
+    // Resolve caixa name strictly from caixas array using caixa_id or caixa
+    const caixaObj = caixas.find(c => String(c.id) === String(doc.caixa_id) || String(c.id) === String(doc.caixa));
+    let caixaName = caixaObj?.name || '';
+    if (!caixaName && doc.caixa && !/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(doc.caixa) && isNaN(Number(doc.caixa))) {
+      caixaName = doc.caixa;
+    }
+    return { cc, caixa: caixaName };
+  };
+
+  // MovID: número sequencial descendente baseado em posição na página
+  const getMovId = (doc: CompraDoc, idx: number) => {
+    const globalIdx = page * pageSize + idx;
+    const seqNum = totalCount - globalIdx;
+    if (seqNum > 0) return String(seqNum);
+    return doc.numero_compra || doc.numero || (doc.id ? String(doc.id).substring(0, 6).toUpperCase() : '—');
+  };
+
+  return (
+    <div className="space-y-3">
+      {/* ------------------------------------------------------------------ */}
+      {/* Header Bar */}
+      {/* ------------------------------------------------------------------ */}
+      <div className="flex flex-wrap gap-3 items-center justify-between">
+        {/* Search */}
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400" size={14} />
+          <input
+            type="text"
+            placeholder="Fornecedor, Nº Doc, Tipo Doc, Referência..."
+            value={filters.search}
+            onChange={e => setFilters(f => ({ ...f, search: e.target.value }))}
+            className="w-full pl-8 pr-3 py-1.5 bg-white border border-zinc-200 text-xs font-medium text-zinc-800 focus:outline-none focus:border-[#003366] rounded-none shadow-sm"
+          />
+        </div>
+
+        <div className="flex items-center gap-2">
+          {onScanQr && (
+            <button
+              type="button"
+              onClick={onScanQr}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-black uppercase tracking-wider transition-all shadow-sm border border-emerald-600"
+              title="Digitalizar documento de compra ou ler QR Code"
+            >
+              <Camera size={13} />
+              Digitalizar / QR
+            </button>
+          )}
+
+          <button
+            onClick={() => setShowFilters(s => !s)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold border transition-all ${showFilters ? 'bg-[#003366] text-white border-[#003366]' : 'bg-white text-zinc-600 border-zinc-200 hover:border-[#003366]'}`}
+          >
+            <Filter size={13} />
+            Filtros
+            <ChevronDown size={12} className={`transition-transform ${showFilters ? 'rotate-180' : ''}`} />
+          </button>
+
+          <button
+            onClick={fetchDocs}
+            className="p-1.5 bg-white border border-zinc-200 text-zinc-500 hover:text-[#003366] hover:border-[#003366] transition-all"
+            title="Actualizar dados"
+          >
+            <RefreshCw size={14} />
+          </button>
+
+          <button
+            onClick={onNewPurchase}
+            className="flex items-center gap-1.5 px-4 py-1.5 bg-[#003366] hover:bg-[#002244] text-white text-xs font-black uppercase tracking-wider transition-all shadow-sm"
+          >
+            <Plus size={14} />
+            Registar Compra
+          </button>
+        </div>
+      </div>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Filters Bar */}
+      {/* ------------------------------------------------------------------ */}
+      {showFilters && (
+        <div className="bg-white border border-zinc-200 p-3 flex flex-wrap gap-3 shadow-sm">
+          <div className="space-y-0.5">
+            <label className="text-[9px] font-black text-zinc-500 uppercase tracking-wider block">Tipo Documento</label>
+            <select
+              value={filters.docType}
+              onChange={e => { setFilters(f => ({ ...f, docType: e.target.value })); setPage(0); }}
+              className="bg-zinc-50 border border-zinc-200 px-2 py-1 text-xs font-medium text-zinc-800 focus:outline-none focus:border-[#003366] min-w-[160px]"
+            >
+              <option value="">Todos</option>
+              <option value="Fatura">Fatura (FT)</option>
+              <option value="Fatura Recibo">Fatura / Recibo (FR)</option>
+              <option value="Recibo">Recibo (RC)</option>
+              <option value="Nota de Crédito">Nota de Crédito (NC)</option>
+              <option value="Nota de Débito">Nota de Débito (ND)</option>
+              <option value="Guia de Entrada">Guia de Entrada (GE)</option>
+            </select>
+          </div>
+
+          <div className="space-y-0.5">
+            <label className="text-[9px] font-black text-zinc-500 uppercase tracking-wider block">Fornecedor</label>
+            <select
+              value={filters.supplierId}
+              onChange={e => { setFilters(f => ({ ...f, supplierId: e.target.value })); setPage(0); }}
+              className="bg-zinc-50 border border-zinc-200 px-2 py-1 text-xs font-medium text-zinc-800 focus:outline-none focus:border-[#003366] min-w-[180px]"
+            >
+              <option value="">Todos os Fornecedores</option>
+              {suppliers.map(s => (
+                <option key={s.id} value={String(s.id)}>{s.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-0.5">
+            <label className="text-[9px] font-black text-zinc-500 uppercase tracking-wider block">Moeda</label>
+            <select
+              value={filters.currency}
+              onChange={e => { setFilters(f => ({ ...f, currency: e.target.value })); setPage(0); }}
+              className="bg-zinc-50 border border-zinc-200 px-2 py-1 text-xs font-medium text-zinc-800 focus:outline-none focus:border-[#003366]"
+            >
+              <option value="">Todas</option>
+              <option value="AOA">AOA</option>
+              <option value="USD">USD</option>
+              <option value="EUR">EUR</option>
+            </select>
+          </div>
+
+          <div className="space-y-0.5">
+            <label className="text-[9px] font-black text-zinc-500 uppercase tracking-wider block">Estado</label>
+            <select
+              value={filters.status}
+              onChange={e => { setFilters(f => ({ ...f, status: e.target.value })); setPage(0); }}
+              className="bg-zinc-50 border border-zinc-200 px-2 py-1 text-xs font-medium text-zinc-800 focus:outline-none focus:border-[#003366]"
+            >
+              <option value="">Todos</option>
+              <option value="pendente">Pendentes</option>
+              <option value="pago">Pagos</option>
+              <option value="anulado">Anulados</option>
+            </select>
+          </div>
+
+          <div className="space-y-0.5">
+            <label className="text-[9px] font-black text-zinc-500 uppercase tracking-wider block">De</label>
+            <input
+              type="date"
+              value={filters.dateFrom}
+              onChange={e => { setFilters(f => ({ ...f, dateFrom: e.target.value })); setPage(0); }}
+              className="bg-zinc-50 border border-zinc-200 px-2 py-1 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
+            />
+          </div>
+
+          <div className="space-y-0.5">
+            <label className="text-[9px] font-black text-zinc-500 uppercase tracking-wider block">Até</label>
+            <input
+              type="date"
+              value={filters.dateTo}
+              onChange={e => { setFilters(f => ({ ...f, dateTo: e.target.value })); setPage(0); }}
+              className="bg-zinc-50 border border-zinc-200 px-2 py-1 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
+            />
+          </div>
+
+          <div className="space-y-0.5">
+            <label className="text-[9px] font-black text-zinc-500 uppercase tracking-wider block">Local de Trabalho</label>
+            <select
+              value={filters.workSiteId}
+              onChange={e => { setFilters(f => ({ ...f, workSiteId: e.target.value })); setPage(0); }}
+              className="bg-zinc-50 border border-zinc-200 px-2 py-1 text-xs font-medium text-zinc-800 focus:outline-none focus:border-[#003366] min-w-[160px]"
+            >
+              <option value="">Todos os Locais</option>
+              {workSites.map(ws => (
+                <option key={ws.id} value={String(ws.id)}>{ws.name || ws.title || String(ws.id)}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-end">
+            <button
+              onClick={() => { setFilters({ search: '', supplierId: '', docType: '', dateFrom: '', dateTo: '', currency: '', status: '', workSiteId: '' }); setPage(0); }}
+              className="px-3 py-1 text-[10px] font-black text-zinc-500 border border-zinc-200 hover:text-red-600 hover:border-red-200 transition-all uppercase tracking-wider"
+            >
+              Limpar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Summary row */}
+      {/* ------------------------------------------------------------------ */}
+      <div className="flex items-center justify-between text-[10px] text-zinc-500 font-bold uppercase tracking-wider px-0.5">
+        <span>{totalCount} documento{totalCount !== 1 ? 's' : ''} encontrado{totalCount !== 1 ? 's' : ''} • Exercício {fiscalYear}</span>
+        {totalPages > 1 && (
+          <span>Pág. {page + 1} de {totalPages}</span>
+        )}
+      </div>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Header Banner - Visual Reference "Factura/recibo FORNECEDORES"     */}
+      {/* ------------------------------------------------------------------ */}
+      <div className="w-full bg-gradient-to-b from-[#e8ecf1] via-[#d5dbe3] to-[#c2cbd6] border border-[#a8b5c4] rounded-t-md py-2 px-4 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
+        <h2 className="text-xs md:text-sm font-bold text-zinc-900 tracking-wide uppercase">
+          Factura/recibo FORNECEDORES
+        </h2>
+      </div>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Compact Table (Reference Image Structure) */}
+      {/* ------------------------------------------------------------------ */}
+      <div className="bg-white border border-[#a8b5c4] border-t-0 overflow-x-auto shadow-sm">
+        <table className="w-full border-collapse text-left whitespace-nowrap" style={{ minWidth: 950 }}>
+          <thead>
+            <tr className="bg-white text-zinc-900 text-[11px] font-bold border-b border-zinc-200">
+              <th className="px-3 py-2 border-r border-zinc-200 text-center w-16">MovID</th>
+              <th className="px-3 py-2 border-r border-zinc-200">Data Valor</th>
+              <th className="px-3 py-2 border-r border-zinc-200">Data</th>
+              <th className="px-3 py-2 border-r border-zinc-200">
+                <div className="leading-tight">
+                  <div>Centro Custos</div>
+                  <div>Caixa</div>
+                </div>
+              </th>
+              <th className="px-3 py-2 border-r border-zinc-200">DOC Nº</th>
+              <th className="px-3 py-2 border-r border-zinc-200">Fornecedor</th>
+              <th className="px-3 py-2 border-r border-zinc-200 text-right">Valor</th>
+              <th className="px-3 py-2 border-r border-zinc-200 text-center">Hash</th>
+              <th className="px-3 py-2 border-r border-zinc-200 text-center">RSA</th>
+              <th className="px-3 py-2 text-right">Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading && (
+              <tr>
+                <td colSpan={10} className="px-4 py-8 text-center text-zinc-400 text-xs font-bold uppercase tracking-wider">
+                  A carregar compras reais do banco de dados...
+                </td>
+              </tr>
+            )}
+            {!loading && docs.length === 0 && (
+              <tr>
+                <td colSpan={10} className="px-4 py-12 text-center text-zinc-400 text-xs font-bold uppercase tracking-widest italic">
+                  Nenhum documento de compra encontrado para os filtros selecionados.
+                </td>
+              </tr>
+            )}
+            {!loading && docs.map((doc, idx) => {
+              const anulado = isAnulado(doc);
+              const temRecibo = !!(doc.recibo_emitido || doc.tem_recibo);
+              const hashVal = getHash(doc);
+              const hashShort = hashVal ? hashVal.substring(0, 4) : '';
+              const rsa = isRSA(doc);
+              const { cc, caixa } = getCentroDisplay(doc);
+              const isEven = idx % 2 === 0;
+              const hasAttachment = !!(
+                doc.document_url ||
+                (doc as any).document_path ||
+                (doc as any).comprovativo_url ||
+                (doc as any).file_url ||
+                (doc as any).anexo_url ||
+                (doc as any).anexo ||
+                docsWithAttachments.has(String(doc.id))
+              );
+
+              return (
+                <tr
+                  key={doc.id}
+                  className={`
+                    border-b border-zinc-200/80 text-[11px] group transition-colors leading-tight
+                    ${isEven ? 'bg-white' : 'bg-zinc-50/40'}
+                    ${anulado ? 'opacity-50 bg-red-50/20' : 'hover:bg-blue-100/60'}
+                  `}
+                >
+                  {/* 1. MovID */}
+                  <td className="px-3 py-1.5 border-r border-zinc-100 text-center">
+                    <span
+                      className="inline-flex items-center justify-center min-w-[38px] bg-zinc-100 hover:bg-zinc-200 border border-zinc-300 rounded-full px-2 py-0.5 font-bold text-[11px] text-zinc-800 font-mono shadow-xs transition-colors"
+                      title={`ID BD: ${doc.id}`}
+                    >
+                      {getMovId(doc, idx)}
+                    </span>
+                  </td>
+
+                  {/* 2. Data Valor */}
+                  <td className="px-3 py-1.5 border-r border-zinc-100 text-zinc-800">
+                    {fmtDate(getDocValorDate(doc))}
+                  </td>
+
+                  {/* 3. Data */}
+                  <td className="px-3 py-1.5 border-r border-zinc-100 text-zinc-800">
+                    {fmtDate(getDocDate(doc))}
+                  </td>
+
+                  {/* 4. Centro Custos / Caixa — click to open inline edit */}
+                  <td className="px-3 py-1.5 border-r border-zinc-100 max-w-[180px]">
+                    <button
+                      className="block w-full text-left group/cc"
+                      title="Clique para editar Centro de Custos"
+                      onClick={() => setInlineEdit({
+                        doc,
+                        field: 'work_site',
+                        label: 'Centro de Custos',
+                        value: doc.work_site || doc.work_site_name || '',
+                      })}
+                    >
+                      <div className="font-bold text-zinc-900 text-[11px] truncate uppercase group-hover/cc:text-blue-700 transition-colors">
+                        {cc || <span className="text-zinc-400 italic normal-case font-normal">—</span>}
+                      </div>
+                    </button>
+                    <button
+                      className="block w-full text-left group/cx"
+                      title="Clique para editar Caixa"
+                      onClick={() => setInlineEdit({
+                        doc,
+                        field: 'caixa_id',
+                        label: 'Caixa',
+                        value: doc.caixa_id || doc.caixa || '',
+                      })}
+                    >
+                      <div className="text-zinc-600 text-[10px] truncate uppercase tracking-tight group-hover/cx:text-blue-600 transition-colors">
+                        {caixa || <span className="text-zinc-400 italic normal-case font-normal">—</span>}
+                      </div>
+                    </button>
+                  </td>
+
+                  {/* 5. DOC Nº */}
+                  <td className="px-3 py-1.5 border-r border-zinc-100">
+                    <div className="flex flex-col">
+                      <span className={`font-bold font-mono text-[11px] ${anulado ? 'text-red-500' : 'text-zinc-900'}`}>
+                        {getDocNum(doc)}
+                      </span>
+                      <span className="text-[9px] text-zinc-500 uppercase font-semibold tracking-tight">
+                        {doc.tipo_documento || doc.document_type || 'Compra'}
+                      </span>
+                    </div>
+                    {anulado && (
+                      <span className="ml-1 text-[8px] font-black text-red-500 uppercase">(ANULADO)</span>
+                    )}
+                  </td>
+
+                  {/* 6. Fornecedor */}
+                  <td className="px-3 py-1.5 border-r border-zinc-100 max-w-[240px]">
+                    <span className="font-bold text-zinc-900 uppercase text-[11px] truncate block" title={doc.fornecedor_nome || doc.supplier_name}>
+                      {doc.fornecedor_nome || doc.supplier_name || '—'}
+                    </span>
+                  </td>
+
+                  {/* 7. Valor + Moeda */}
+                  <td className="px-3 py-1.5 border-r border-zinc-100 text-right whitespace-nowrap">
+                    <span className="font-bold text-zinc-900 text-[12px] tabular-nums font-mono">
+                      {fmtNum(getTotal(doc))}
+                    </span>
+                    <span className="ml-1.5 text-[10px] font-bold text-zinc-600">
+                      {getMoeda(doc)}
+                    </span>
+                  </td>
+
+                  {/* 8. Hash — click to open inline edit */}
+                  <td className="px-3 py-1.5 border-r border-zinc-100 text-center">
+                    {hashVal ? (
+                      <button
+                        title={`Hash: ${hashVal} — Clique para editar`}
+                        className="font-mono text-[11px] text-indigo-700 hover:text-indigo-900 font-bold transition-colors cursor-pointer"
+                        onClick={() => setInlineEdit({
+                          doc,
+                          field: 'hash',
+                          label: 'Hash',
+                          value: hashVal,
+                        })}
+                      >
+                        {hashShort || hashVal.substring(0, 4)}
+                      </button>
+                    ) : (
+                      <button
+                        title="Clique para definir Hash"
+                        className="text-zinc-300 text-[10px] hover:text-zinc-500 transition-colors"
+                        onClick={() => setInlineEdit({ doc, field: 'hash', label: 'Hash', value: '' })}
+                      >
+                        ----
+                      </button>
+                    )}
+                  </td>
+
+                  {/* 9. RSA (circular radio indicator) */}
+                  <td className="px-3 py-1.5 border-r border-zinc-100 text-center">
+                    <span
+                      title={rsa ? 'Documento Certificado RSA' : 'Documento Não Certificado'}
+                      className={`inline-block w-3 h-3 rounded-full border transition-all ${
+                        rsa
+                          ? 'bg-emerald-500 border-emerald-600 shadow-xs'
+                          : 'bg-zinc-200 border-zinc-300'
+                      }`}
+                    />
+                  </td>
+
+                  {/* 10. Ações: Edit | Document | Chart | ⋮ */}
+                  <td className="px-3 py-1.5 text-right whitespace-nowrap">
+                    <div className="flex items-center justify-end gap-1.5">
+                      {/* Emitir Recibo (direct row action for eligible invoices) */}
+                      {!anulado && !temRecibo && !['RECIBO', 'PAGAMENTO', 'FATURA RECIBO', 'FR', 'NC', 'CRÉDITO', 'CREDITO'].some(t => (doc.tipo_documento || doc.document_type || '').toUpperCase().includes(t)) && (
+                        <button
+                          onClick={() => handleAction('receipt', doc)}
+                          className="p-1 text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 border border-emerald-200 rounded-none transition-all"
+                          title="Emitir Recibo desta Fatura"
+                        >
+                          <FileCheck size={13} />
+                        </button>
+                      )}
+
+                      {/* Edit button — presente em todos os documentos */}
+                      <button
+                        onClick={() => handleAction('edit', doc)}
+                        className="p-1 text-amber-600 hover:text-amber-800 hover:bg-amber-50 border border-amber-200 rounded-none transition-all"
+                        title="Editar Documento"
+                      >
+                        <Edit2 size={13} />
+                      </button>
+
+                      {/* Document icon — green if has attachment, grey otherwise */}
+                      <button
+                        onClick={() => {
+                          if (hasAttachment && onOpenAttachments) {
+                            onOpenAttachments(doc);
+                          } else {
+                            onViewPurchase(doc);
+                          }
+                        }}
+                        className={`relative p-1 border rounded-none transition-all ${
+                          hasAttachment
+                            ? 'text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 border-emerald-300'
+                            : 'text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 border-zinc-200'
+                        }`}
+                        title={hasAttachment ? 'Ver Documento Anexado' : 'Ver Documento'}
+                      >
+                        <FileText size={13} />
+                        {hasAttachment && (
+                          <span className="absolute -bottom-1 -right-1 bg-emerald-500 text-white text-[7px] font-black rounded-full w-3 h-3 flex items-center justify-center leading-none">
+                            ✓
+                          </span>
+                        )}
+                      </button>
+
+                      {/* Blue bar chart icon (Impactos Contabilísticos) */}
+                      <button
+                        onClick={() => setAccountingModalDoc(doc)}
+                        className="p-1 bg-[#38bdf8] text-white hover:bg-[#0ea5e9] rounded-none transition-all shadow-xs"
+                        title="Impactos Contabilísticos"
+                      >
+                        <BarChart2 size={13} />
+                      </button>
+
+                      {/* ⋮ More options drawer */}
+                      <button
+                        onClick={() => setSelectedDoc(doc)}
+                        className="p-1 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 border border-zinc-200 rounded-none transition-all"
+                        title="Opções do Documento"
+                      >
+                        <MoreVertical size={13} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+          {/* Footer totals */}
+          {!loading && docs.length > 0 && (
+            <tfoot>
+              <tr className="bg-zinc-100/80 border-t-2 border-zinc-300">
+                <td colSpan={6} className="px-3 py-2 text-[10px] font-black text-zinc-600 uppercase tracking-wider">
+                  Total da página ({docs.length} registos)
+                </td>
+                <td className="px-3 py-2 text-right text-[12px] font-black text-[#003366]">
+                  {fmtNum(docs.reduce((s, d) => s + getTotal(d), 0))}
+                </td>
+                <td colSpan={4} />
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </div>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Pagination & Page Size */}
+      {/* ------------------------------------------------------------------ */}
+      {totalCount > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-2 border border-zinc-200 shadow-xs">
+          <div className="flex items-center gap-3">
+            <span className="text-[11px] text-zinc-500 font-bold">
+              A mostrar {page * pageSize + 1}–{Math.min((page + 1) * pageSize, totalCount)} de {totalCount} compras
+            </span>
+            <div className="flex items-center gap-1.5 border-l border-zinc-200 pl-3">
+              <span className="text-[10px] text-zinc-400 font-bold uppercase">Mostrar:</span>
+              <select
+                value={pageSize}
+                onChange={e => { setPageSize(Number(e.target.value)); setPage(0); }}
+                className="bg-zinc-50 border border-zinc-200 text-xs px-2 py-1 font-bold text-zinc-800 focus:outline-none focus:border-[#003366]"
+              >
+                <option value={25}>25 por página</option>
+                <option value={50}>50 por página</option>
+                <option value={100}>100 por página</option>
+                <option value={200}>200 por página</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1">
+            <button
+              disabled={page === 0}
+              onClick={() => setPage(p => Math.max(0, p - 1))}
+              className="p-1.5 border border-zinc-200 text-zinc-500 disabled:opacity-30 hover:bg-zinc-50 transition-all"
+              title="Página anterior"
+            >
+              <ChevronLeft size={14} />
+            </button>
+            {Array.from({ length: Math.min(7, totalPages) }, (_, i) => {
+              const startPage = Math.max(0, Math.min(totalPages - 7, page - 3));
+              const pageNum = startPage + i;
+              if (pageNum >= totalPages) return null;
+              return (
+                <button
+                  key={pageNum}
+                  onClick={() => setPage(pageNum)}
+                  className={`min-w-[28px] h-7 px-1.5 text-[11px] font-black border transition-all ${pageNum === page ? 'bg-[#003366] text-white border-[#003366]' : 'border-zinc-200 text-zinc-600 hover:bg-zinc-50'}`}
+                >
+                  {pageNum + 1}
+                </button>
+              );
+            })}
+            <button
+              disabled={page >= totalPages - 1}
+              onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+              className="p-1.5 border border-zinc-200 text-zinc-500 disabled:opacity-30 hover:bg-zinc-50 transition-all"
+              title="Próxima página"
+            >
+              <ChevronRight size={14} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Actions Sidebar Overlay */}
+      {/* ------------------------------------------------------------------ */}
+      {selectedDoc && (
+        <ActionsSidebar
+          doc={selectedDoc}
+          hasAttachment={!!(
+            selectedDoc.document_url ||
+            (selectedDoc as any).document_path ||
+            (selectedDoc as any).comprovativo_url ||
+            (selectedDoc as any).file_url ||
+            (selectedDoc as any).anexo_url ||
+            (selectedDoc as any).anexo ||
+            docsWithAttachments.has(String(selectedDoc.id))
+          )}
+          onClose={() => setSelectedDoc(null)}
+          onAction={handleAction}
+        />
+      )}
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Modals */}
+      {/* ------------------------------------------------------------------ */}
+      {certModalDoc && (
+        <CertificationModal
+          doc={certModalDoc}
+          onClose={() => setCertModalDoc(null)}
+        />
+      )}
+
+      {accountingModalDoc && (
+        <AccountingModal
+          doc={accountingModalDoc}
+          onClose={() => setAccountingModalDoc(null)}
+        />
+      )}
+
+      {stockModalDoc && (
+        <StockModal
+          doc={stockModalDoc}
+          onClose={() => setStockModalDoc(null)}
+        />
+      )}
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Inline Field Edit Modal (Hash / Centro Custos / Caixa)             */}
+      {/* ------------------------------------------------------------------ */}
+      {inlineEdit && (
+        <div className="fixed inset-0 z-[350] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="bg-white border border-zinc-200 shadow-2xl w-full max-w-sm p-5 space-y-4">
+            <div className="flex items-center justify-between border-b border-zinc-100 pb-2">
+              <div className="flex items-center gap-2 text-[#003366]">
+                <Edit2 size={15} />
+                <h3 className="text-sm font-black uppercase tracking-wider">
+                  Editar: {inlineEdit.label}
+                </h3>
+              </div>
+              <button
+                onClick={() => setInlineEdit(null)}
+                className="text-zinc-400 hover:text-zinc-600 transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-zinc-500 uppercase tracking-wider block">
+                {inlineEdit.label}
+              </label>
+              {inlineEdit.field === 'caixa_id' ? (
+                <select
+                  value={inlineEdit.value}
+                  onChange={e => setInlineEdit(ie => ie ? { ...ie, value: e.target.value } : ie)}
+                  className="w-full bg-zinc-50 border border-zinc-300 px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:border-[#003366]"
+                  autoFocus
+                >
+                  <option value="">— Sem Caixa —</option>
+                  {caixas.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              ) : inlineEdit.field === 'work_site' ? (
+                <select
+                  value={inlineEdit.value}
+                  onChange={e => setInlineEdit(ie => ie ? { ...ie, value: e.target.value } : ie)}
+                  className="w-full bg-zinc-50 border border-zinc-300 px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:border-[#003366]"
+                  autoFocus
+                >
+                  <option value="">— Sem Centro de Custos —</option>
+                  {workSites.map(ws => (
+                    <option key={ws.id} value={String(ws.id)}>{ws.name || ws.title || String(ws.id)}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={inlineEdit.value}
+                  onChange={e => setInlineEdit(ie => ie ? { ...ie, value: e.target.value } : ie)}
+                  className="w-full bg-zinc-50 border border-zinc-300 px-3 py-2 text-sm text-zinc-800 font-mono focus:outline-none focus:border-[#003366]"
+                  placeholder={`Introduza ${inlineEdit.label}...`}
+                  autoFocus
+                />
+              )}
+              <div className="text-[10px] text-zinc-400">
+                Documento: <strong>{getDocNum(inlineEdit.doc)}</strong> — {inlineEdit.doc.fornecedor_nome || inlineEdit.doc.supplier_name || '—'}
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                onClick={() => setInlineEdit(null)}
+                className="px-4 py-1.5 text-xs font-bold text-zinc-600 border border-zinc-200 hover:bg-zinc-50 transition-all uppercase tracking-wider"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleInlineSave}
+                disabled={inlineSaving}
+                className="px-5 py-1.5 bg-[#003366] text-white text-xs font-black uppercase tracking-wider hover:bg-[#002244] transition-all disabled:opacity-50"
+              >
+                {inlineSaving ? 'A guardar...' : 'Guardar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default GestaoComprasList;

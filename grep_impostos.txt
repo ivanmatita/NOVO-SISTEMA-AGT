@@ -1,0 +1,33 @@
+155:import CalculosImpostosForm from './components/CalculosImpostosForm';
+161:import ImpostoPorContaForm from './components/ImpostoPorContaForm';
+2576:                        <td className="py-4">Imposto sobre Rendimento (IRT)</td>
+4821:                      <td className="px-4 py-3 uppercase">IRT (Imposto de Rendimento)</td>
+5184:  const a = totals.facturacaoSImposto || 0;
+5185:  const b = totals.fornecedoresSImposto || 0;
+5193:      facturacaoSImposto: 0,
+5199:      Receita: d.facturacaoSImposto,
+5238:          <p className="text-lg font-black text-[#003366]">{formatCurrency(totals.facturacaoSImposto)}</p>
+5265:            { months.map((_, idx) => <td key={idx} className="text-right py-2 px-1 text-zinc-500">{formatValue(getMonthValue(idx, 'facturacaoSImposto'))}</td>) }
+5266:            <td className="text-right py-2 px-1 font-bold text-zinc-700">{formatValue(totals.facturacaoSImposto)}</td>
+5269:            <td className="py-2 font-medium text-zinc-700">Imposto Recebido</td>
+5275:            { months.map((_, idx) => <td key={idx} className="text-right py-2 px-1 text-zinc-600 font-medium">{formatValue(getMonthValue(idx, 'facturacaoCImposto'))}</td>) }
+5276:            <td className="text-right py-2 px-1 font-black text-zinc-900">{formatValue(totals.facturacaoCImposto)}</td>
+5286:            <td className="py-2 font-medium text-zinc-700">Custos Aceites S/ Imposto</td>
+5292:            { months.map((_, idx) => <td key={idx} className="text-right py-2 px-1 text-zinc-500">{formatValue(getMonthValue(idx, 'fornecedoresSImposto'))}</td>) }
+5293:            <td className="text-right py-2 px-1 font-bold text-zinc-700">{formatValue(totals.fornecedoresSImposto)}</td>
+5328:            Obs: Imposto Industrial Previsional (Pode dferir do imposto real a pagar. Não contempla os impostos já pagos e considera as facturas não aceites fiscalmente)
+5331:            O Imposto previsional Contab pode dferir do imposto real a pagar . Não contempla os impostos já pagos e considera apenas os custos aceites fiscalmente.
+5722:  const categories = ['Vendas', 'Serviços', 'Aluguer', 'Salários', 'Impostos', 'Fornecedores', 'Manutenção', 'Outros'];
+6108:                  <th className="px-4 py-3">Impostos</th>
+8005:                  <p className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Relatório Consolidado de Encargos Sociais e Impostos</p>
+9797:        <h2 className="text-2xl font-bold text-[#003366]">Tabela de Impostos</h2>
+9941:          <h2 className="text-2xl font-black text-[#003366] uppercase tracking-tighter">Retenção na Fonte (IRT / Imposto Industrial)</h2>
+10491:            <h2 className="text-xl font-black text-[#003366] uppercase tracking-tighter">Imposto Selo Verba 23.3</h2>
+10578:                  <th className="p-2 text-right">Imposto Gerado</th>
+10632:            <h2 className="text-xl font-black text-[#003366] uppercase tracking-tighter">Imposto por Conta</h2>
+10652:              <p>O Imposto Industrial relativo aos contribuintes do regime geral é objecto de autoliquidação provisória e pagamento devido, até ao último dia útil do mês de Agosto, por referência ao próprio exercício em que a actividade tenha lugar.</p>
+11424:    { id: 'stamp-tax', label: 'Imposto de Selo', icon: <ShieldCheck size={24} />, description: 'Mapa de liquidação e controlo de Imposto de Selo sobre recebimentos.' },
+11425:    { id: 'income-tax-advance', label: 'Imposto por Conta', icon: <CreditCard size={24} />, description: 'Autoliquidação provisória do Imposto Industrial (2% sobre vendas).' },
+11487:        return <CalculosImpostosForm invoices={invoices} />;
+11491:        return <ImpostoPorContaForm />;
+21210:                        <option value="imposto">Imposto</option>

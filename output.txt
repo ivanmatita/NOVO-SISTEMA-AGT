@@ -1,0 +1,2 @@
+const ALL_TAXES = [
+              {ALL_TAXES.map((taxName, idx) => (

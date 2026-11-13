@@ -1,0 +1,9 @@
+src/services/authService.ts:290:              permission_areas: perfil.permission_areas || [],
+src/types.ts:36:  permission_areas?: string[];
+src/types.ts:560:  permission_areas: string[];
+src/App.tsx:898:            const isRestricted = !isGlobalAdmin && item.id !== 'dashboard' && !user?.permission_areas?.includes(item.id);
+src/App.tsx:11344:      setPermissionAreas(u.permission_areas || (u.permission_area ? [u.permission_area] : []));
+src/App.tsx:11409:      setPermissionAreas(u.permission_areas || []);
+src/App.tsx:11419:        permission_areas: permissionAreas
+src/App.tsx:11492:      permission_areas: isAdminState ? SIDEBAR_MENU_ITEMS.map(m => m.id) : permissionAreas,
+src/App.tsx:26428:                          const hasTabPermission = isGlobalAdmin || user?.permission_areas?.includes(activeTab);

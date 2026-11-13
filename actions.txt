@@ -1,0 +1,36 @@
+9587:const DocumentActionsModal = ({ document, onClose, onAction }: { 
+9590:  onAction: (action: string, doc: IssuedDocument) => void
+9593:    onAction(action, document);
+10781:const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isDraftsPage = false, globalUsers }: { 
+10783:  onAction: (action: string, doc: IssuedDocument) => void, 
+10863:                      onAction('print_a4', doc);
+10873:                      onAction('export_pdf', doc);
+10946:                      onClick={() => { onAction('edit', showActionsModal); setShowActionsModal(null); }}
+10961:                    onClick={() => { onAction('clone', showActionsModal); setShowActionsModal(null); }}
+10975:                    onClick={() => { onAction('export_pdf', showActionsModal); setShowActionsModal(null); }}
+10989:                    onClick={() => { onAction('reports', showActionsModal); setShowActionsModal(null); }}
+11004:                      onClick={() => { onAction('send_email', showActionsModal); setShowActionsModal(null); }}
+11011:                      onClick={() => { onAction('share_whatsapp', showActionsModal); setShowActionsModal(null); }}
+11023:                      onClick={() => { onAction('print_a4', showActionsModal); setShowActionsModal(null); }} 
+11031:                      onClick={() => { onAction('print_p24', showActionsModal); setShowActionsModal(null); }} 
+11039:                      onClick={() => { onAction('print_p24xl', showActionsModal); setShowActionsModal(null); }} 
+11047:                      onClick={() => { onAction('print_p80', showActionsModal); setShowActionsModal(null); }} 
+11058:                    onClick={() => { onAction('receipt', showActionsModal); setShowActionsModal(null); }}
+11074:                       onClick={() => { onAction('delivery_guide', showActionsModal); setShowActionsModal(null); }}
+11082:                       onClick={() => { onAction('credit_note', showActionsModal); setShowActionsModal(null); }}
+11093:                      onClick={() => { onAction('void', showActionsModal); setShowActionsModal(null); }}
+11109:                      onClick={() => { onAction('delete', showActionsModal); setShowActionsModal(null); }}
+11126:                        onAction('foreign_draft', showActionsModal);
+11145:                    onClick={() => { onAction('convert', showActionsModal); setShowActionsModal(null); }}
+11180:  onAction = (action: string, doc: IssuedDocument) => {},
+11197:  onAction?: (action: string, doc: IssuedDocument) => void,
+17828:  onAction,
+17851:  onAction: (action: string, doc: IssuedDocument) => void,
+18307:                onAction={onAction}
+22402:const PurchaseActionsModal = ({ purchase, onClose, onAction }: { 
+22405:  onAction: (action: string, p: Purchase) => void
+22408:    onAction(action, purchase);
+23423:          onAction={(action, p) => {
+27334:                                  onAction={handleDocumentAction}
+27364:                                  onAction={handleDocumentAction}
+27596:                                      onAction={handleDocumentAction}

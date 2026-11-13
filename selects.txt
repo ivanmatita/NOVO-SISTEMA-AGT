@@ -1,0 +1,89 @@
+                  <select 
+                  <select 
+                          <select value={gender} onChange={e => setGender(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]">
+                          <select value={maritalStatus} onChange={e => setMaritalStatus(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]">
+                        <select 
+                          <select value={contractType} onChange={e => setContractType(e.target.value as any)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]">
+                        <select value={academicLevel} onChange={e => setAcademicLevel(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]">
+                <select className="w-full border border-zinc-200 px-4 py-2 text-xs focus:outline-none focus:border-[#003366] font-bold text-[#003366]">
+                <select className="w-full border border-zinc-200 px-4 py-2 text-xs focus:outline-none focus:border-[#003366] font-bold text-[#003366]">
+                <select 
+                        <select className="bg-transparent border-none text-[10px] font-black text-[#003366] focus:outline-none">
+                              <select 
+                  <select className="w-full border border-zinc-200 px-4 py-2 text-xs focus:outline-none focus:border-[#003366] font-bold text-[#003366]">
+                  <select 
+                  <select className="w-full border border-zinc-200 px-4 py-2 text-xs focus:outline-none focus:border-[#003366] font-bold text-[#003366]">
+                    <select name="employee" className="w-full border border-zinc-200 px-3 py-2 text-xs">
+                        <select className="w-full border border-zinc-200 px-4 py-2 text-xs focus:outline-none focus:border-[#003366] font-bold text-[#003366]">
+                  <select 
+                  <select 
+                  <select 
+              <select className="bg-zinc-50 border border-zinc-200 rounded-none px-3 py-2 text-xs focus:outline-none focus:border-[#003366]">
+              <select className="bg-zinc-50 border border-zinc-200 rounded-none px-3 py-2 text-xs focus:outline-none focus:border-[#003366]">
+                    <select className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm focus:outline-none focus:border-[#003366]">
+                    <select value={selectedPOS} onChange={e => setSelectedPOS(e.target.value)} className="w-full bg-zinc-50 border-2 border-zinc-100 p-4 font-bold focus:border-[#003366] outline-none transition-all">
+              <select 
+              <select 
+                <select 
+                <select value={permissionArea} onChange={e => setPermissionArea(e.target.value)} className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm">
+          <select 
+                      <select 
+                  <select name="regime" value={formData.regime} onChange={handleChange} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]">
+                  <select name="tipo_empresa" value={formData.tipo_empresa} onChange={handleChange} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]">
+                    <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="bg-transparent text-[10px] font-black focus:outline-none uppercase tracking-widest text-[#003366]">
+                   <select 
+           <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="bg-zinc-50 border border-zinc-200 p-2 text-xs font-black uppercase">
+           <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="bg-zinc-50 border border-zinc-200 p-2 text-xs font-black uppercase">
+              <select 
+              <select 
+                    <select 
+                       <select 
+                       <select 
+                  <select value={selectedUser} onChange={e => setSelectedUser(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none">
+                  <select value={type} onChange={e => setType(e.target.value as 'normal' | 'manual')} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none">
+                <select 
+                <select 
+                <select 
+                  <select 
+              <select 
+              <select 
+              <select 
+              <select 
+              <select 
+              <select 
+                  <select 
+                  <select 
+              <select 
+              <select 
+                     <select 
+                     <select 
+                     <select 
+                     <select 
+        <select 
+                <select 
+                <select 
+              <select 
+              <select 
+              <select 
+              <select 
+                  <select 
+                  <select 
+              <select 
+                <select 
+                    <select 
+                    <select 
+                    <select 
+                    <select 
+                  <select className="w-full bg-zinc-50 border border-zinc-200 p-3 text-xs font-bold focus:outline-none focus:border-[#003366]">
+                    <select 
+                    <select value={tipoCliente} onChange={e => setTipoCliente(e.target.value)} className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs font-bold focus:border-[#003366] outline-none">
+              <select 
+                <select id="trans-from" className="w-full border border-zinc-200 p-2.5 text-sm focus:outline-none focus:border-[#003366] bg-zinc-50 font-bold">
+                <select id="trans-to" className="w-full border border-zinc-200 p-2.5 text-sm focus:outline-none focus:border-[#003366] bg-zinc-50 font-bold">
+                <select id="adj-type" className="w-full border border-zinc-200 p-2.5 text-sm focus:outline-none focus:border-[#003366] bg-zinc-50 font-bold">
+                <select name="unit" className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold">
+                <select name="warehouse_id" className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold">
+            <select 
+            <select 
+            <select 
+                      <select required value={taskFormData.type} onChange={e => setTaskFormData({...taskFormData, type: e.target.value})} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]">

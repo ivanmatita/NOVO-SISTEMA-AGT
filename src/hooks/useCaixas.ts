@@ -1,0 +1,663 @@
+import { useState, useEffect, useCallback } from 'react';
+import { supabase } from '../lib/supabase';
+import { Caixa, CaixaMovement } from '../types';
+import { systemUsersService } from '../services/systemUsersService';
+import { useAuth } from '../contexts/AuthContext';
+import { realtimeManager } from '../lib/realtimeManager';
+
+export const useCaixas = () => {
+  const { user: authUser } = useAuth();
+  const [caixas, setCaixas] = useState<Caixa[]>([]);
+  const [movements, setMovements] = useState<CaixaMovement[]>([]);
+  const [profiles, setProfiles] = useState<{ id: string, name: string, role: string }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [empresaId, setEmpresaId] = useState<string | null>(null);
+
+  const fetchCaixas = useCallback(async () => {
+    try {
+      setLoading(true);
+      const fetchEmpresaId = authUser?.empresa_id;
+      if (!fetchEmpresaId) {
+        setLoading(false);
+        return;
+      }
+      setEmpresaId(fetchEmpresaId);
+
+      const { data, error } = await supabase
+        .from('caixas')
+        .select('*')
+        .eq('empresa_id', fetchEmpresaId)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching caixas:', error);
+        return;
+      }
+
+      // Fetch caixas permissions
+      const { data: userPerms } = await supabase
+        .from('caixas_utilizadores')
+        .select('caixa_id, utilizador_id')
+        .eq('empresa_id', fetchEmpresaId)
+        .eq('activo', true);
+
+      const permsMap = new Map<string, string[]>();
+      (userPerms || []).forEach((p: any) => {
+        const list = permsMap.get(p.caixa_id) || [];
+        list.push(p.utilizador_id);
+        permsMap.set(p.caixa_id, list);
+      });
+
+      const visible = (data || []).filter(item => item.is_deleted !== true);
+      const mappedData = visible.map(item => ({
+        id: item.id,
+        name: item.nome_caixa || item.nome || '',
+        initialBalance: Number(item.saldo_inicial !== undefined && item.saldo_inicial !== null ? item.saldo_inicial : item.valor_inicial) || 0,
+        currentBalance: Number(item.current_balance !== undefined && item.current_balance !== null ? item.current_balance : (item.saldo_actual ?? 0)) || 0,
+        responsible: item.responsavel_caixa || item.responsavel || '',
+        user: item.utilizador_id || '',
+        obs: item.observacao || '',
+        status: item.status || 'aberto',
+        empresa_id: item.empresa_id,
+        account: item.numero_conta || item.account || '',
+        moeda: item.moeda || 'AOA',
+        codigo_caixa: item.codigo_caixa || item.codigo || '',
+        activo: item.activo !== false,
+        data_abertura: item.data_abertura || '',
+        data_fechamento: item.data_fechamento || '',
+        updated_at: item.updated_at || '',
+        permitted_users: permsMap.get(item.id) || []
+      })) as Caixa[];
+      
+      setCaixas(mappedData);
+
+      // Fetch movements too, preserving basic movement flow
+      const { data: movData } = await supabase
+        .from('caixa_movimentacoes')
+        .select('*')
+        .eq('empresa_id', fetchEmpresaId)
+        .order('created_at', { ascending: false });
+
+      if (movData) {
+        setMovements(movData.map(m => ({
+          id: m.id,
+          caixaId: m.caixa_id,
+          caixa_id: m.caixa_id,
+          targetCaixaId: m.target_caixa_id,
+          target_caixa_id: m.target_caixa_id,
+          type: (m.type || m.tipo || 'entrada') as any,
+          tipo: (m.tipo || m.type || 'entrada') as any,
+          amount: Number(m.amount ?? m.valor ?? m.valor_movimento ?? 0),
+          valor: Number(m.valor ?? m.amount ?? 0),
+          description: m.description || m.descricao || '',
+          descricao: m.descricao || m.description || '',
+          date: m.date || m.data || m.created_at,
+          data: m.data || m.date || m.created_at,
+          empresa_id: m.empresa_id,
+          moeda: m.moeda || 'AOA',
+          referencia: m.referencia || '',
+          documento_id: m.documento_id || null,
+          utilizador_id: m.utilizador_id || m.created_by,
+          created_by_nome: m.created_by_nome,
+          created_by_username: m.created_by_username,
+          ano: m.ano,
+          status: m.status
+        })));
+      }
+
+      // Fetch user profiles of company safely (and compile a comprehensive robust list)
+      let sysUsersList: any[] = [];
+      try {
+        const fetched = await systemUsersService.getUsers(fetchEmpresaId);
+        if (fetched && fetched.length > 0) {
+          sysUsersList = fetched;
+        }
+      } catch (err) {
+        console.error('Error fetching system users via service:', err);
+      }
+
+      // If we got no users from the service, try direct database lookups
+      if (sysUsersList.length === 0) {
+        try {
+          // Try with 'empresa_id'
+          const { data: profsByEmpresa, error: errEmpresa } = await supabase
+            .from('perfis')
+            .select('id, nome, role, email')
+            .eq('empresa_id', fetchEmpresaId);
+
+          if (profsByEmpresa && profsByEmpresa.length > 0) {
+            sysUsersList = profsByEmpresa;
+          } else {
+            // Also try with 'company_id' as column alias
+            const { data: profsByCompany } = await supabase
+              .from('perfis')
+              .select('id, nome, role, email')
+              .eq('company_id', fetchEmpresaId);
+
+            if (profsByCompany && profsByCompany.length > 0) {
+              sysUsersList = profsByCompany;
+            }
+          }
+        } catch (dbErr) {
+          console.error('Error fetching profiles from database directly:', dbErr);
+        }
+      }
+
+      // Fallback: search system_users as another direct query option
+      if (sysUsersList.length === 0) {
+        try {
+          const { data: sysUsersDirect } = await supabase
+            .from('system_users')
+            .select('id, name, role, email')
+            .eq('empresa_id', fetchEmpresaId);
+
+          if (sysUsersDirect && sysUsersDirect.length > 0) {
+            sysUsersList = sysUsersDirect.map(su => ({
+              id: su.id,
+              nome: su.name,
+              role: su.role,
+              email: su.email
+            }));
+          }
+        } catch (suErr) {
+          console.error('Error fetching system_users directly:', suErr);
+        }
+      }
+
+      // Map profiles gracefully
+      const activeSysUsers = sysUsersList.filter(u => u.is_active !== false);
+      let mappedProfiles = activeSysUsers.map(p => ({
+        id: p.id,
+        name: p.name || p.nome || p.email?.split('@')[0] || 'Utilizador',
+        role: p.role || 'operator'
+      }));
+
+      // GUARANTEE: ALWAYS prepend or append the currently logged-in user so they can select themselves
+      if (authUser) {
+        const hasCurrentUser = mappedProfiles.some(p => p.id === authUser.id);
+        if (!hasCurrentUser) {
+          mappedProfiles.push({
+            id: authUser.id,
+            name: authUser.username || authUser.email || 'Eu',
+            role: authUser.role || 'admin'
+          });
+        }
+      }
+
+      setProfiles(mappedProfiles);
+    } catch (err) {
+      console.error('Unexpected error fetching caixas:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [authUser?.empresa_id, authUser?.id, authUser?.username, authUser?.email, authUser?.role]);
+
+  useEffect(() => {
+    fetchCaixas();
+  }, [fetchCaixas]);
+
+  useEffect(() => {
+    const handleGlobalRefresh = () => {
+      fetchCaixas();
+    };
+
+    window.addEventListener('refresh_caixas', handleGlobalRefresh);
+    window.addEventListener('caixa_movement_added', handleGlobalRefresh);
+
+    if (empresaId) {
+      realtimeManager.subscribe('caixas', empresaId, handleGlobalRefresh);
+      realtimeManager.subscribe('caixa_movimentacoes', empresaId, handleGlobalRefresh);
+    }
+
+    return () => {
+      window.removeEventListener('refresh_caixas', handleGlobalRefresh);
+      window.removeEventListener('caixa_movement_added', handleGlobalRefresh);
+      if (empresaId) {
+        realtimeManager.unsubscribe('caixas', empresaId, handleGlobalRefresh);
+        realtimeManager.unsubscribe('caixa_movimentacoes', empresaId, handleGlobalRefresh);
+      }
+    };
+  }, [empresaId, fetchCaixas]);
+
+  const createCaixa = async (caixa: Partial<Caixa>) => {
+    try {
+      const currentEmpresaId = authUser?.empresa_id;
+      if (!currentEmpresaId) throw new Error('Empresa não identificada');
+
+      console.log("Tentando inserir caixa com empresa_id:", currentEmpresaId);
+
+      // Map utilizador_id safely
+      const selectedUtilizadorId = (caixa.user && caixa.user.trim() !== '') ? caixa.user : (authUser?.id || null);
+
+      const { data, error } = await supabase
+        .from('caixas')
+        .insert({
+          empresa_id: currentEmpresaId,
+          nome_caixa: caixa.name || '',
+          codigo_caixa: caixa.codigo_caixa || '',
+          
+          valor_inicial: caixa.initialBalance || 0,
+          saldo_inicial: caixa.initialBalance || 0,
+          
+          current_balance: caixa.initialBalance || 0,
+          saldo_actual: caixa.initialBalance || 0,
+          
+          responsavel: caixa.responsible || '',
+          responsavel_caixa: caixa.responsible || '',
+          
+          utilizador_id: selectedUtilizadorId,
+          observacao: caixa.obs || '',
+          
+          account: caixa.account || '',
+          numero_conta: caixa.account || '',
+          
+          moeda: caixa.moeda || 'AOA',
+          status: caixa.status || 'aberto',
+          activo: caixa.activo !== false,
+          data_abertura: caixa.data_abertura || new Date().toISOString()
+        })
+        .select();
+
+      if (error) {
+        console.error('Insert error details:', error);
+        throw new Error(`Erro SQL (${error.code}): ${error.message}`);
+      }
+
+      await fetchCaixas();
+      return data && data.length > 0 ? data[0] : null;
+    } catch (e) {
+      console.error('Error creating caixa:', e);
+      throw e;
+    }
+  };
+
+  const updateCaixa = async (id: string, updates: Partial<Caixa>) => {
+    try {
+      const currentEmpresaId = authUser?.empresa_id;
+      if (!currentEmpresaId) throw new Error('Empresa não identificada');
+
+      // Ensure we only update matching DB fields
+      const payload: any = {};
+      if (updates.name !== undefined) payload.nome_caixa = updates.name;
+      
+      if (updates.currentBalance !== undefined) {
+        payload.current_balance = updates.currentBalance;
+        payload.saldo_actual = updates.currentBalance;
+      }
+      
+      if (updates.responsible !== undefined) {
+        payload.responsavel = updates.responsible;
+        payload.responsavel_caixa = updates.responsible;
+      }
+      
+      // Prevent invalid literal UUID "" syntax errors
+      if (updates.user !== undefined) {
+        payload.utilizador_id = (updates.user && updates.user.trim() !== '') ? updates.user : null;
+      }
+      
+      if (updates.obs !== undefined) payload.observacao = updates.obs;
+      
+      if (updates.account !== undefined) {
+        payload.account = updates.account;
+        payload.numero_conta = updates.account;
+      }
+      
+      if (updates.status !== undefined) payload.status = updates.status;
+      if (updates.codigo_caixa !== undefined) payload.codigo_caixa = updates.codigo_caixa;
+      if (updates.moeda !== undefined) payload.moeda = updates.moeda;
+      if (updates.activo !== undefined) payload.activo = updates.activo;
+      if (updates.data_abertura !== undefined) payload.data_abertura = updates.data_abertura;
+      if (updates.data_fechamento !== undefined) payload.data_fechamento = updates.data_fechamento;
+      payload.updated_at = new Date().toISOString();
+
+      const { error } = await supabase
+        .from('caixas')
+        .update(payload)
+        .eq('id', id)
+        .eq('empresa_id', currentEmpresaId);
+
+      if (error) throw error;
+
+      // Synchronize and force immediate UI updates
+      await fetchCaixas();
+    } catch (e) {
+      console.error('Error updating caixa:', e);
+      throw e;
+    }
+  };
+
+  const deleteCaixa = async (id: string) => {
+    try {
+      const currentEmpresaId = authUser?.empresa_id;
+      if (!currentEmpresaId) throw new Error('Empresa não identificada');
+
+      const { error } = await supabase
+        .from('caixas')
+        .update({ is_deleted: true })
+        .eq('id', id)
+        .eq('empresa_id', currentEmpresaId);
+
+      if (error) throw error;
+
+      // Synchronize and force immediate UI updates
+      await fetchCaixas();
+    } catch (e) {
+      console.error('Error deleting caixa:', e);
+      throw e;
+    }
+  };
+
+  const addMovement = async (movement: Partial<CaixaMovement>) => {
+    try {
+      const currentEmpresaId = authUser?.empresa_id;
+      if (!currentEmpresaId) throw new Error('Empresa não identificada');
+
+      // Normalize: accept both PT (caixa_id/tipo/valor/descricao/referencia/documento_id)
+      // and EN (caixaId/type/amount/description/documentoId)
+      const cId: string = (movement as any).caixa_id || movement.caixaId || '';
+      const tipoMov: string = (movement as any).tipo || movement.type || '';
+      const valorMov: number = Number((movement as any).valor ?? movement.amount ?? 0);
+      const descMov: string = (movement as any).descricao || movement.description || '';
+      const refMov: string = (movement as any).referencia || '';
+      const docId: string | null = (movement as any).documento_id || (movement as any).documentoId || null;
+      const targetCId: string | null = (movement as any).target_caixa_id || movement.targetCaixaId || null;
+      const now = new Date();
+
+      if (!cId) {
+        console.warn('[useCaixas.addMovement] caixa_id vazio — movimento ignorado');
+        return;
+      }
+
+      // Idempotency: skip if movement with same documento_id already exists, or same caixa+ref+tipo
+      if (docId) {
+        const { data: existing } = await supabase
+          .from('caixa_movimentacoes')
+          .select('id')
+          .eq('empresa_id', currentEmpresaId)
+          .eq('caixa_id', cId)
+          .eq('documento_id', docId)
+          .limit(1);
+        if (existing && existing.length > 0) {
+          console.info('[useCaixas.addMovement] Movimento já existe (documento_id idempotency) — a ignorar');
+          await fetchCaixas();
+          return;
+        }
+      } else if (refMov) {
+        const { data: existing } = await supabase
+          .from('caixa_movimentacoes')
+          .select('id')
+          .eq('empresa_id', currentEmpresaId)
+          .eq('caixa_id', cId)
+          .ilike('referencia', refMov)
+          .eq('tipo', tipoMov)
+          .limit(1);
+        if (existing && existing.length > 0) {
+          console.info('[useCaixas.addMovement] Movimento já existe (referencia idempotency) — a ignorar');
+          await fetchCaixas();
+          return;
+        }
+      }
+
+      // Insert filling both PT and EN column names
+      const { error: movError } = await supabase
+        .from('caixa_movimentacoes')
+        .insert([{
+          empresa_id: currentEmpresaId,
+          caixa_id: cId,
+          target_caixa_id: targetCId,
+          tipo: tipoMov,
+          type: tipoMov,
+          valor: valorMov,
+          amount: valorMov,
+          descricao: descMov,
+          description: descMov,
+          referencia: refMov || null,
+          documento_id: docId,
+          moeda: (movement as any).moeda || 'AOA',
+          data: now.toISOString(),
+          date: now.toISOString(),
+          ano: now.getFullYear(),
+          utilizador_id: authUser?.id || null,
+          created_by: authUser?.id || null
+        }]);
+
+      if (movError) throw movError;
+
+      // Update primary caixa — both current_balance and saldo_actual
+      const { data: caixa } = await supabase
+        .from('caixas')
+        .select('current_balance, saldo_actual')
+        .eq('id', cId)
+        .single();
+
+      if (caixa) {
+        let newBalance = Number(caixa.current_balance || 0);
+        let newSaldo = Number(caixa.saldo_actual || caixa.current_balance || 0);
+        if (tipoMov === 'entrada') {
+          newBalance += valorMov;
+          newSaldo += valorMov;
+        }
+        if (tipoMov === 'saida' || tipoMov === 'transferencia') {
+          newBalance -= valorMov;
+          newSaldo -= valorMov;
+        }
+        await supabase
+          .from('caixas')
+          .update({ current_balance: newBalance, saldo_actual: newSaldo })
+          .eq('id', cId)
+          .eq('empresa_id', currentEmpresaId);
+      }
+
+      // Update target caixa balance if transfer
+      if (tipoMov === 'transferencia' && targetCId) {
+        const { data: targetCaixa } = await supabase
+          .from('caixas')
+          .select('current_balance, saldo_actual')
+          .eq('id', targetCId)
+          .single();
+
+        if (targetCaixa) {
+          const newTargetBalance = Number(targetCaixa.current_balance || 0) + valorMov;
+          const newTargetSaldo = Number(targetCaixa.saldo_actual || targetCaixa.current_balance || 0) + valorMov;
+          await supabase
+            .from('caixas')
+            .update({ current_balance: newTargetBalance, saldo_actual: newTargetSaldo })
+            .eq('id', targetCId)
+            .eq('empresa_id', currentEmpresaId);
+        }
+      }
+
+      await fetchCaixas();
+    } catch (e) {
+      console.error('Error adding movement:', e);
+      throw e;
+    }
+  };
+
+  const canUserOperateCaixa = (caixaId: string): boolean => {
+    if (!authUser) return false;
+    const role = (authUser.role || '').toLowerCase();
+    if (role === 'admin' || role === 'superadmin' || role === 'super_admin' || authUser.is_admin) {
+      return true;
+    }
+
+    const caixa = caixas.find(c => c.id === caixaId);
+    if (!caixa) return false;
+
+    // If no permitted_users configured, allow company users by default
+    if (!caixa.permitted_users || caixa.permitted_users.length === 0) {
+      return true;
+    }
+
+    return caixa.permitted_users.includes(authUser.id);
+  };
+
+  const saveCaixaPermissions = async (caixaId: string, userIds: string[]) => {
+    try {
+      const currentEmpresaId = authUser?.empresa_id;
+      if (!currentEmpresaId) throw new Error('Empresa não identificada');
+
+      // 1. Remove existing permissions for this caixa
+      await supabase
+        .from('caixas_utilizadores')
+        .delete()
+        .eq('empresa_id', currentEmpresaId)
+        .eq('caixa_id', caixaId);
+
+      // 2. Insert active user permissions
+      if (userIds.length > 0) {
+        const rows = userIds.map(uid => ({
+          empresa_id: currentEmpresaId,
+          caixa_id: caixaId,
+          utilizador_id: uid,
+          user_id: uid,
+          activo: true,
+          estado: 'ativo'
+        }));
+
+        const { error } = await supabase
+          .from('caixas_utilizadores')
+          .insert(rows);
+
+        if (error) throw error;
+      }
+
+      await fetchCaixas();
+    } catch (err) {
+      console.error('Error saving caixa permissions:', err);
+      throw err;
+    }
+  };
+
+  const transferirCaixas = async ({
+    fromCaixaId,
+    toCaixaId,
+    amount,
+    moeda = 'AOA',
+    description = ''
+  }: {
+    fromCaixaId: string;
+    toCaixaId: string;
+    amount: number;
+    moeda?: string;
+    description?: string;
+  }) => {
+    const currentEmpresaId = authUser?.empresa_id;
+    if (!currentEmpresaId) throw new Error('Empresa não identificada');
+
+    if (!canUserOperateCaixa(fromCaixaId)) {
+      throw new Error('Este utilizador não possui permissão para realizar movimentos neste Caixa de origem.');
+    }
+
+    try {
+      // 1. Try atomic PostgreSQL RPC
+      const { data: rpcData, error: rpcErr } = await supabase.rpc('transferir_entre_caixas', {
+        p_empresa_id: currentEmpresaId,
+        p_from_caixa_id: fromCaixaId,
+        p_to_caixa_id: toCaixaId,
+        p_valor: amount,
+        p_moeda: moeda,
+        p_descricao: description,
+        p_utilizador_id: authUser?.id
+      });
+
+      if (!rpcErr && rpcData) {
+        await fetchCaixas();
+        return rpcData;
+      }
+      if (rpcErr) {
+        console.warn('RPC transferir_entre_caixas fallback:', rpcErr);
+      }
+    } catch (rpcEx) {
+      console.warn('RPC exception, falling back to atomic sequence:', rpcEx);
+    }
+
+    // Fallback: atomic sequence with single shared reference
+    const transfId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const fromCaixa = caixas.find(c => c.id === fromCaixaId);
+    const toCaixa = caixas.find(c => c.id === toCaixaId);
+    const ref = `TRANSF-${transfId.substring(0, 8).toUpperCase()}`;
+
+    // Saida
+    const { error: errSaida } = await supabase.from('caixa_movimentacoes').insert([{
+      empresa_id: currentEmpresaId,
+      caixa_id: fromCaixaId,
+      target_caixa_id: toCaixaId,
+      tipo: 'transferencia',
+      type: 'saida',
+      valor: amount,
+      amount: amount,
+      descricao: description || `Transferência para ${toCaixa?.name || 'Caixa'}`,
+      description: description || `Transferência para ${toCaixa?.name || 'Caixa'}`,
+      referencia: ref,
+      documento_id: transfId,
+      moeda,
+      data: now,
+      date: now,
+      ano: new Date().getFullYear(),
+      utilizador_id: authUser?.id,
+      created_by: authUser?.id
+    }]);
+
+    if (errSaida) throw errSaida;
+
+    // Entrada
+    const { error: errEntrada } = await supabase.from('caixa_movimentacoes').insert([{
+      empresa_id: currentEmpresaId,
+      caixa_id: toCaixaId,
+      target_caixa_id: fromCaixaId,
+      tipo: 'transferencia',
+      type: 'entrada',
+      valor: amount,
+      amount: amount,
+      descricao: `Transferência recebida de ${fromCaixa?.name || 'Caixa'}${description ? ': ' + description : ''}`,
+      description: `Transferência recebida de ${fromCaixa?.name || 'Caixa'}${description ? ': ' + description : ''}`,
+      referencia: ref,
+      documento_id: transfId,
+      moeda,
+      data: now,
+      date: now,
+      ano: new Date().getFullYear(),
+      utilizador_id: authUser?.id,
+      created_by: authUser?.id
+    }]);
+
+    if (errEntrada) throw errEntrada;
+
+    // Update balances
+    if (fromCaixa) {
+      await supabase.from('caixas').update({
+        current_balance: Number(fromCaixa.currentBalance) - amount,
+        saldo_actual: Number(fromCaixa.currentBalance) - amount,
+        updated_at: now
+      }).eq('id', fromCaixaId);
+    }
+
+    if (toCaixa) {
+      await supabase.from('caixas').update({
+        current_balance: Number(toCaixa.currentBalance) + amount,
+        saldo_actual: Number(toCaixa.currentBalance) + amount,
+        updated_at: now
+      }).eq('id', toCaixaId);
+    }
+
+    await fetchCaixas();
+    return { success: true, transferencia_id: transfId, referencia: ref };
+  };
+
+  return {
+    caixas,
+    movements,
+    profiles,
+    loading,
+    refresh: fetchCaixas,
+    createCaixa,
+    updateCaixa,
+    deleteCaixa,
+    addMovement,
+    canUserOperateCaixa,
+    saveCaixaPermissions,
+    transferirCaixas
+  };
+};

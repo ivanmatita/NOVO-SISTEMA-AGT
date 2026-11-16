@@ -32,9 +32,11 @@ import {
   CheckCircle2,
   Headphones,
   Layers,
-  Server
+  Server,
+  Calculator
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { LicensingPricingCalculator } from './LicensingPricingCalculator';
 
 interface FeatureDetail {
   id: string;
@@ -82,7 +84,27 @@ export const LoginPage: React.FC = () => {
   const [regNomeAdmin, setRegNomeAdmin] = useState('');
   const [regUsernameAdmin, setRegUsernameAdmin] = useState('');
   const [regSelectedPlan, setRegSelectedPlan] = useState('mensal');
+  const [simulatorSelection, setSimulatorSelection] = useState<{
+    planId: string;
+    planName: string;
+    selectedModules: string[];
+    paymentOptionId: string;
+    paymentOptionLabel: string;
+    totalAPagar: number;
+    totalLiquido: number;
+    iva: number;
+    installments: number;
+    valorPrestacao: number;
+  } | null>(null);
+  const [pricingViewMode, setPricingViewMode] = useState<'simulator' | 'cards'>('simulator');
   const [regAcceptTerms, setRegAcceptTerms] = useState(false);
+
+  const handleProceedFromSimulator = (selection: any) => {
+    setSimulatorSelection(selection);
+    setRegSelectedPlan(selection.planId);
+    setShowRegisterModal(true);
+    setRegStep(1);
+  };
   
   const [regEmail, setRegEmail] = useState('');
   const [regPassword, setRegPassword] = useState('');
@@ -209,6 +231,8 @@ export const LoginPage: React.FC = () => {
         }
 
         const selectedPlanObj = licensingPlans.find(p => p.id === regSelectedPlan);
+        const finalPlanName = simulatorSelection ? `Licença ${simulatorSelection.planName}` : (selectedPlanObj?.name || regSelectedPlan);
+        const finalPlanPrice = simulatorSelection ? `${simulatorSelection.totalAPagar.toLocaleString('pt-AO', { minimumFractionDigits: 2 })} AOA` : (selectedPlanObj?.price || '0');
         
         await register({
           nome_empresa: regCompanyName.trim(),
@@ -222,9 +246,11 @@ export const LoginPage: React.FC = () => {
           endereco: regAddress,
           provincia: regProvince,
           municipio: regMunicipality,
-          plano: regSelectedPlan,
-          pacote_licenca: selectedPlanObj?.name || regSelectedPlan,
-          valor_licenca: selectedPlanObj?.price || '0',
+          plano: simulatorSelection ? simulatorSelection.planId : regSelectedPlan,
+          pacote_licenca: finalPlanName,
+          valor_licenca: finalPlanPrice,
+          modulos_especiais: simulatorSelection?.selectedModules || [],
+          periodicidade_pagamento: simulatorSelection?.paymentOptionLabel || 'Anual',
           pais: 'Angola'
         });
         
@@ -870,95 +896,133 @@ export const LoginPage: React.FC = () => {
       </section>
 
       {/* Preços Section */}
-      <section id="precos" className="py-28 px-6 lg:px-20 bg-zinc-50 border-t border-b border-zinc-200 scroll-mt-16">
-        <div className="max-w-7xl mx-auto space-y-16">
+      <section id="precos" className="py-24 px-4 sm:px-6 lg:px-12 bg-zinc-50 border-t border-b border-zinc-200 scroll-mt-16">
+        <div className="max-w-7xl mx-auto space-y-12">
           <div className="text-center space-y-4 max-w-3xl mx-auto">
             <div className="inline-flex items-center gap-2 bg-[#00D17F]/10 text-[#003366] px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-[0.2em]">
               <BarChart3 size={14} className="text-[#00D17F]" />
-              TABELA DE PREÇOS
+              TABELA DE PREÇOS E LICENCIAMENTO
             </div>
             <h3 className="text-3xl sm:text-4xl lg:text-5xl font-black text-[#003366] tracking-tight">Planos Acessíveis e Transparentes</h3>
             <p className="text-zinc-500 font-medium leading-relaxed">
-              Sem taxas ocultas ou fidelizações forçadas. Todos os planos incluem 14 dias de teste gratuito com acesso total a todas as funcionalidades do pacote escolhido.
+              Sem taxas ocultas ou fidelizações forçadas. Configure a sua licença, escolha módulos adicionais ou selecione um pacote pré-definido. Todos os planos incluem 14 dias de teste gratuito.
             </p>
-          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {licensingPlans.map((plan) => {
-              const isFeatured = plan.id === 'trimestral';
-              return (
-                <div 
-                  key={plan.id}
-                  className={`relative p-8 bg-white rounded-2xl border transition-all duration-300 flex flex-col justify-between ${
-                    isFeatured 
-                      ? 'border-2 border-[#00D17F] shadow-2xl scale-105 z-10' 
-                      : 'border-zinc-200 shadow-md hover:shadow-xl'
+            {/* Alternância de Visão */}
+            <div className="pt-2 flex items-center justify-center gap-2">
+              <div className="bg-zinc-200/80 p-1 rounded-xl inline-flex gap-1">
+                <button
+                  type="button"
+                  onClick={() => setPricingViewMode('simulator')}
+                  className={`px-5 py-2.5 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer ${
+                    pricingViewMode === 'simulator'
+                      ? 'bg-white text-[#003366] shadow-md'
+                      : 'text-zinc-600 hover:text-zinc-900'
                   }`}
                 >
-                  {isFeatured && (
-                    <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-[#00D17F] text-white text-[9px] font-black uppercase tracking-widest px-4 py-1 rounded-full shadow-md">
-                      MAIS POPULAR
-                    </div>
-                  )}
-                  {plan.id === 'anual' && (
-                    <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-[#003366] text-white text-[9px] font-black uppercase tracking-widest px-4 py-1 rounded-full shadow-md">
-                      MELHOR VALOR
-                    </div>
-                  )}
-
-                  <div>
-                    <h4 className="text-sm font-black text-[#003366] uppercase tracking-widest mb-2">{plan.name}</h4>
-                    <div className="flex items-baseline gap-1 mb-4">
-                      <span className="text-4xl font-black text-[#003366]">{plan.price}</span>
-                      <span className="text-zinc-400 text-sm font-bold uppercase tracking-tight">Kz{plan.period}</span>
-                    </div>
-                    <p className="text-xs text-zinc-500 font-medium leading-relaxed mb-6">{plan.desc}</p>
-
-                    <div className="space-y-3 mb-8">
-                      <p className="text-[10px] font-black text-zinc-400 uppercase tracking-wider">O que está incluído:</p>
-                      <ul className="space-y-2.5">
-                        {plan.features.map((feat) => (
-                          <li key={feat} className="flex items-center gap-2.5 text-xs font-bold text-zinc-600">
-                            <CheckCircle2 size={16} className="text-[#00D17F] shrink-0" />
-                            <span>{feat}</span>
-                          </li>
-                        ))}
-                        <li className="flex items-center gap-2.5 text-xs font-bold text-zinc-600">
-                          <CheckCircle2 size={16} className="text-[#00D17F] shrink-0" />
-                          <span>Em conformidade com a Legislação AGT</span>
-                        </li>
-                        <li className="flex items-center gap-2.5 text-xs font-bold text-zinc-600">
-                          <CheckCircle2 size={16} className="text-[#00D17F] shrink-0" />
-                          <span>Backups Diários em Nuvem</span>
-                        </li>
-                      </ul>
-                    </div>
-                  </div>
-
-                  <div>
-                    <button 
-                      onClick={() => {
-                        setRegSelectedPlan(plan.id);
-                        setShowRegisterModal(true);
-                        setRegStep(1);
-                      }}
-                      className={`w-full py-4 text-xs font-black uppercase tracking-widest rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                        isFeatured 
-                          ? 'bg-[#00D17F] hover:bg-[#00B36B] text-white shadow-lg shadow-[#00D17F]/30' 
-                          : 'bg-[#003366] hover:bg-black text-white'
-                      }`}
-                    >
-                      Começar 14 Dias Grátis
-                      <ArrowRight size={16} />
-                    </button>
-                    <p className="text-[10px] text-zinc-400 text-center font-bold uppercase tracking-tight mt-3">
-                      Sem necessidade de cartão de crédito
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
+                  <Calculator size={16} className={pricingViewMode === 'simulator' ? 'text-[#00D17F]' : ''} />
+                  Simulador de Licenças (Oficial)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPricingViewMode('cards')}
+                  className={`px-5 py-2.5 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer ${
+                    pricingViewMode === 'cards'
+                      ? 'bg-white text-[#003366] shadow-md'
+                      : 'text-zinc-600 hover:text-zinc-900'
+                  }`}
+                >
+                  <BarChart3 size={16} className={pricingViewMode === 'cards' ? 'text-[#00D17F]' : ''} />
+                  Pacotes Rápidos
+                </button>
+              </div>
+            </div>
           </div>
+
+          {/* Renderização Condicional: Simulador ou Cards */}
+          {pricingViewMode === 'simulator' ? (
+            <div className="pt-4">
+              <LicensingPricingCalculator onProceedToRegister={handleProceedFromSimulator} />
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              {licensingPlans.map((plan) => {
+                const isFeatured = plan.id === 'trimestral';
+                return (
+                  <div 
+                    key={plan.id}
+                    className={`relative p-8 bg-white rounded-2xl border transition-all duration-300 flex flex-col justify-between ${
+                      isFeatured 
+                        ? 'border-2 border-[#00D17F] shadow-2xl scale-105 z-10' 
+                        : 'border-zinc-200 shadow-md hover:shadow-xl'
+                    }`}
+                  >
+                    {isFeatured && (
+                      <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-[#00D17F] text-white text-[9px] font-black uppercase tracking-widest px-4 py-1 rounded-full shadow-md">
+                        MAIS POPULAR
+                      </div>
+                    )}
+                    {plan.id === 'anual' && (
+                      <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-[#003366] text-white text-[9px] font-black uppercase tracking-widest px-4 py-1 rounded-full shadow-md">
+                        MELHOR VALOR
+                      </div>
+                    )}
+
+                    <div>
+                      <h4 className="text-sm font-black text-[#003366] uppercase tracking-widest mb-2">{plan.name}</h4>
+                      <div className="flex items-baseline gap-1 mb-4">
+                        <span className="text-4xl font-black text-[#003366]">{plan.price}</span>
+                        <span className="text-zinc-400 text-sm font-bold uppercase tracking-tight">Kz{plan.period}</span>
+                      </div>
+                      <p className="text-xs text-zinc-500 font-medium leading-relaxed mb-6">{plan.desc}</p>
+
+                      <div className="space-y-3 mb-8">
+                        <p className="text-[10px] font-black text-zinc-400 uppercase tracking-wider">O que está incluído:</p>
+                        <ul className="space-y-2.5">
+                          {plan.features.map((feat) => (
+                            <li key={feat} className="flex items-center gap-2.5 text-xs font-bold text-zinc-600">
+                              <CheckCircle2 size={16} className="text-[#00D17F] shrink-0" />
+                              <span>{feat}</span>
+                            </li>
+                          ))}
+                          <li className="flex items-center gap-2.5 text-xs font-bold text-zinc-600">
+                            <CheckCircle2 size={16} className="text-[#00D17F] shrink-0" />
+                            <span>Em conformidade com a Legislação AGT</span>
+                          </li>
+                          <li className="flex items-center gap-2.5 text-xs font-bold text-zinc-600">
+                            <CheckCircle2 size={16} className="text-[#00D17F] shrink-0" />
+                            <span>Backups Diários em Nuvem</span>
+                          </li>
+                        </ul>
+                      </div>
+                    </div>
+
+                    <div>
+                      <button 
+                        onClick={() => {
+                          setRegSelectedPlan(plan.id);
+                          setSimulatorSelection(null);
+                          setShowRegisterModal(true);
+                          setRegStep(1);
+                        }}
+                        className={`w-full py-4 text-xs font-black uppercase tracking-widest rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                          isFeatured 
+                            ? 'bg-[#00D17F] hover:bg-[#00B36B] text-white shadow-lg shadow-[#00D17F]/30' 
+                            : 'bg-[#003366] hover:bg-black text-white'
+                        }`}
+                      >
+                        Começar 14 Dias Grátis
+                        <ArrowRight size={16} />
+                      </button>
+                      <p className="text-[10px] text-zinc-400 text-center font-bold uppercase tracking-tight mt-3">
+                        Sem necessidade de cartão de crédito
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </section>
 
@@ -1456,11 +1520,37 @@ export const LoginPage: React.FC = () => {
                     
                     {/* Step 2: Licensing Plans */}
                     {regStep === 2 && (
-                      <motion.div key="step2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-8">
+                      <motion.div key="step2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
                         <div className="text-center space-y-2 mb-4">
                           <h4 className="text-xl font-black text-[#003366]">Escolha o seu plano de subscrição</h4>
                           <p className="text-sm text-zinc-500 font-medium">Todos os planos incluem 14 dias de teste gratuito.</p>
                         </div>
+
+                        {simulatorSelection && (
+                          <div className="bg-blue-50/80 border border-blue-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-sm">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="bg-blue-600 text-white font-black text-[9px] uppercase tracking-wider px-2 py-0.5 rounded">
+                                  Configurado no Simulador
+                                </span>
+                                <h5 className="font-black text-[#003366] text-sm">
+                                  Licença {simulatorSelection.planName}
+                                </h5>
+                              </div>
+                              <p className="text-zinc-600 mt-1 font-medium">
+                                {simulatorSelection.paymentOptionLabel} • {simulatorSelection.selectedModules.length} módulo(s) especial(is)
+                              </p>
+                            </div>
+                            <div className="text-left sm:text-right shrink-0">
+                              <span className="text-[10px] text-zinc-400 font-bold uppercase block">
+                                Total a Pagar (IVA Incluído)
+                              </span>
+                              <span className="text-base font-black text-blue-700">
+                                {simulatorSelection.totalAPagar.toLocaleString('pt-AO', { minimumFractionDigits: 2 })} AOA
+                              </span>
+                            </div>
+                          </div>
+                        )}
 
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                           {licensingPlans.map((plan) => (

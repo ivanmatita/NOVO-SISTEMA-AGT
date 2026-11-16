@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   User,
@@ -36,7 +36,8 @@ import {
   Calculator
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { LicensingPricingCalculator } from './LicensingPricingCalculator';
+import { LicensingPricingCalculator, LICENSE_PLANS } from './LicensingPricingCalculator';
+import { LicensingPage } from './LicensingPage';
 
 interface FeatureDetail {
   id: string;
@@ -67,6 +68,35 @@ export const LoginPage: React.FC = () => {
 
   // Feature modal state
   const [selectedFeature, setSelectedFeature] = useState<FeatureDetail | null>(null);
+
+  // View state: 'home' (Landing Page padrão) ou 'licensing' (Página de Seleção de Licenças)
+  const [currentView, setCurrentView] = useState<'home' | 'licensing'>('home');
+
+  useEffect(() => {
+    const checkHash = () => {
+      const h = window.location.hash;
+      if (h === '#licenciamento' || h === '#planos' || h === '#licencas') {
+        setCurrentView('licensing');
+      } else if (h === '' || h === '#inicio' || h === '#login' || h === '#precos') {
+        setCurrentView('home');
+      }
+    };
+    checkHash();
+    window.addEventListener('hashchange', checkHash);
+    return () => window.removeEventListener('hashchange', checkHash);
+  }, []);
+
+  const navigateToLicensing = () => {
+    window.location.hash = '#licenciamento';
+    setCurrentView('licensing');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const navigateToHome = () => {
+    window.location.hash = '#inicio';
+    setCurrentView('home');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   // References for scrolling and focusing login
   const loginCardRef = useRef<HTMLDivElement>(null);
@@ -102,6 +132,25 @@ export const LoginPage: React.FC = () => {
   const handleProceedFromSimulator = (selection: any) => {
     setSimulatorSelection(selection);
     setRegSelectedPlan(selection.planId);
+    setShowRegisterModal(true);
+    setRegStep(1);
+  };
+
+  const handleProceedFromLicensingPage = (selectionData: any) => {
+    setSimulatorSelection({
+      planId: selectionData.planId,
+      planName: selectionData.planName,
+      selectedModules: selectionData.selectedModules || [],
+      paymentOptionId: selectionData.paymentOptionId || selectionData.periodicidade || 'anual',
+      paymentOptionLabel: selectionData.paymentOptionLabel || selectionData.periodicidadeLabel || 'Anual',
+      totalAPagar: selectionData.totalAPagar,
+      totalLiquido: selectionData.totalLiquido,
+      iva: selectionData.iva,
+      installments: selectionData.installments || 1,
+      valorPrestacao: selectionData.valorPrestacao || selectionData.totalAPagar
+    });
+    setRegSelectedPlan(selectionData.planId);
+    setCurrentView('home');
     setShowRegisterModal(true);
     setRegStep(1);
   };
@@ -150,42 +199,24 @@ export const LoginPage: React.FC = () => {
     }
   };
 
-  const licensingPlans = [
-    { 
-      id: 'mensal', 
-      name: 'Pacote Mensal', 
-      price: '25.000', 
-      period: '/mês', 
-      desc: 'Ideal para pequenas empresas e negócios em fase inicial.',
-      features: ['Até 5 utilizadores', 'Faturação em conformidade AGT', 'Suporte por Email e WhatsApp'] 
-    },
-    { 
-      id: 'trimestral', 
-      name: 'Pacote Trimestral', 
-      price: '70.000', 
-      period: '/3 meses', 
-      desc: 'Mais estabilidade para o seu negócio com desconto especial.',
-      features: ['Até 10 utilizadores', 'Gestão de Stocks e Armazéns', 'Suporte Prioritário 24/7'] 
-    },
-    { 
-      id: 'anual', 
-      name: 'Pacote Anual', 
-      price: '250.000', 
-      period: '/ano', 
-      desc: 'A solução definitiva com o melhor custo-benefício empresarial.',
-      features: ['Utilizadores Ilimitados', 'Todas as Funcionalidades (RH + PGC)', 'Consultoria e Formação Grátis'] 
-    }
-  ];
+  // Fonte comercial oficial única de planos consumida em todo o ecossistema
+  const licensingPlans = LICENSE_PLANS;
 
   const businessTypes = [
+    'Comércio',
     'Prestação de Serviços',
-    'Comercial',
+    'Farmácia',
+    'Agronegócio',
+    'Gestão',
+    'Escola',
+    'Stand Automóvel',
+    'Hotelaria',
+    'Igreja',
+    'Segurança Privada',
     'Restaurante',
     'Loja',
     'Boutique',
-    'Agronegócio',
-    'Escola',
-    'Outros'
+    'Outras'
   ];
 
   const handleRegisterCompany = async (e: React.FormEvent) => {
@@ -415,16 +446,49 @@ export const LoginPage: React.FC = () => {
     { label: 'CONTACTO', id: 'contacto' }
   ];
 
+  if (currentView === 'licensing') {
+    return (
+      <LicensingPage 
+        onBackToHome={navigateToHome} 
+        onProceedToRegister={handleProceedFromLicensingPage} 
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen font-sans selection:bg-[#00D17F]/30 bg-zinc-50 overflow-x-hidden">
       {/* Hero Section with Login Form */}
       <section id="inicio" className="relative min-h-screen flex flex-col scroll-mt-0">
-        {/* Background Image with Overlay */}
-        <div className="absolute inset-0 z-0">
+        {/* Background Image with Continuous Infinite Zoom Animation & Overlay */}
+        <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+          <style>{`
+            @keyframes heroInfiniteApproach {
+              0% {
+                transform: scale(1.00) translate3d(0, 0, 0);
+              }
+              50% {
+                transform: scale(1.18) translate3d(0, 0, 0);
+              }
+              100% {
+                transform: scale(1.00) translate3d(0, 0, 0);
+              }
+            }
+            .hero-continuous-approach {
+              animation: heroInfiniteApproach 26s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+              will-change: transform;
+              transform-origin: center center;
+            }
+            @media (prefers-reduced-motion: reduce) {
+              .hero-continuous-approach {
+                animation: none !important;
+                transform: scale(1.05) !important;
+              }
+            }
+          `}</style>
           <img 
             src="https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&q=80&w=1920" 
             alt="Office Background" 
-            className="w-full h-full object-cover"
+            className="w-full h-full object-cover hero-continuous-approach select-none"
             referrerPolicy="no-referrer"
           />
           <div className="absolute inset-0 bg-gradient-to-br from-[#003366]/95 via-[#003366]/85 to-transparent"></div>
@@ -467,10 +531,7 @@ export const LoginPage: React.FC = () => {
               Registar Empresa
             </button>
             <button 
-              onClick={() => {
-                setShowRegisterModal(true);
-                setRegStep(1);
-              }}
+              onClick={navigateToLicensing}
               className="bg-[#00D17F] hover:bg-[#00B36B] text-white px-6 py-2.5 text-[11px] font-black uppercase tracking-widest transition-all rounded-full shadow-lg shadow-[#00D17F]/20 cursor-pointer"
             >
               Experimentar Grátis
@@ -502,6 +563,19 @@ export const LoginPage: React.FC = () => {
                   Bem-vindo ao <br />
                   <span className="text-[#00D17F]">IMATEC SOFTWARE</span>
                 </motion.h1>
+
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.15 }}
+                  className="bg-white/10 backdrop-blur-xs border border-white/15 px-3.5 py-1.5 rounded-lg text-xs text-white/90 font-medium inline-flex items-center gap-2"
+                >
+                  <Building2 size={13} className="text-[#00D17F] shrink-0" />
+                  <span>
+                    Uma solução de gestão empresarial desenvolvida por <strong className="text-white font-bold">COGE FOCO ANGOLA — COMÉRCIO E PRESTAÇÃO DE SERVIÇOS</strong>.
+                  </span>
+                </motion.div>
+
                 <motion.p 
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -945,15 +1019,18 @@ export const LoginPage: React.FC = () => {
               <LicensingPricingCalculator onProceedToRegister={handleProceedFromSimulator} />
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              {licensingPlans.map((plan) => {
-                const isFeatured = plan.id === 'trimestral';
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {LICENSE_PLANS.map((plan) => {
+                const isFeatured = plan.isPopular || plan.id === 'soft';
+                const isBestValue = plan.id === 'silver';
                 return (
                   <div 
                     key={plan.id}
-                    className={`relative p-8 bg-white rounded-2xl border transition-all duration-300 flex flex-col justify-between ${
+                    className={`relative p-7 bg-white rounded-2xl border transition-all duration-300 flex flex-col justify-between ${
                       isFeatured 
-                        ? 'border-2 border-[#00D17F] shadow-2xl scale-105 z-10' 
+                        ? 'border-2 border-[#00D17F] shadow-2xl scale-[1.02] z-10' 
+                        : isBestValue
+                        ? 'border-2 border-[#003366] shadow-xl'
                         : 'border-zinc-200 shadow-md hover:shadow-xl'
                     }`}
                   >
@@ -962,36 +1039,59 @@ export const LoginPage: React.FC = () => {
                         MAIS POPULAR
                       </div>
                     )}
-                    {plan.id === 'anual' && (
+                    {isBestValue && (
                       <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-[#003366] text-white text-[9px] font-black uppercase tracking-widest px-4 py-1 rounded-full shadow-md">
-                        MELHOR VALOR
+                        RECOMENDADO
                       </div>
                     )}
 
                     <div>
-                      <h4 className="text-sm font-black text-[#003366] uppercase tracking-widest mb-2">{plan.name}</h4>
-                      <div className="flex items-baseline gap-1 mb-4">
-                        <span className="text-4xl font-black text-[#003366]">{plan.price}</span>
-                        <span className="text-zinc-400 text-sm font-bold uppercase tracking-tight">Kz{plan.period}</span>
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className="text-base font-black text-[#003366] uppercase tracking-wider">Licença {plan.name}</h4>
+                        <span className="text-[10px] font-bold text-zinc-400 uppercase bg-zinc-100 px-2 py-0.5 rounded">
+                          {plan.funcionarios === 'Ilimitado' ? 'Func. Ilimitados' : `${plan.funcionarios} Funcionários`}
+                        </span>
                       </div>
-                      <p className="text-xs text-zinc-500 font-medium leading-relaxed mb-6">{plan.desc}</p>
 
-                      <div className="space-y-3 mb-8">
-                        <p className="text-[10px] font-black text-zinc-400 uppercase tracking-wider">O que está incluído:</p>
-                        <ul className="space-y-2.5">
+                      {/* Bloco de Preço Anual Oficial com 40% Desconto */}
+                      <div className="space-y-1 mb-4 bg-zinc-50 p-3.5 rounded-xl border border-zinc-100">
+                        <span className="text-[9px] font-black uppercase tracking-wider text-zinc-400 block">Anuidade Oficial (40% Desc. + IVA)</span>
+                        <div className="flex items-baseline gap-1.5">
+                          <span className="text-2xl sm:text-3xl font-black text-[#003366]">{plan.anuidadeExibida}</span>
+                          <span className="text-zinc-500 text-xs font-bold uppercase">AOA / ano</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 pt-2 border-t border-zinc-200 text-[10px] text-zinc-600 font-semibold">
+                          <div>Trimestral: <span className="font-bold text-zinc-800">{plan.precoTrimestral}</span></div>
+                          <div>Mensal: <span className="font-bold text-zinc-800">{plan.precoMensal}</span></div>
+                        </div>
+                      </div>
+
+                      <p className="text-xs text-zinc-500 font-medium leading-relaxed mb-4">{plan.desc}</p>
+
+                      {/* Limites Anuais Oficiais */}
+                      <div className="mb-4 p-2.5 bg-blue-50/60 rounded-lg border border-blue-100/80 text-[11px] space-y-1">
+                        <div className="flex justify-between text-zinc-700">
+                          <span className="font-bold">Facturação Máx:</span>
+                          <span className="font-mono font-bold text-[#003366]">{plan.faturacao} AOA</span>
+                        </div>
+                        <div className="flex justify-between text-zinc-700">
+                          <span className="font-bold">Limite Funcionários:</span>
+                          <span className="font-bold text-emerald-700">{plan.funcionarios}</span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2 mb-6">
+                        <p className="text-[10px] font-black text-zinc-400 uppercase tracking-wider">Módulos & Benefícios:</p>
+                        <ul className="space-y-2">
                           {plan.features.map((feat) => (
-                            <li key={feat} className="flex items-center gap-2.5 text-xs font-bold text-zinc-600">
-                              <CheckCircle2 size={16} className="text-[#00D17F] shrink-0" />
+                            <li key={feat} className="flex items-center gap-2 text-xs font-bold text-zinc-600">
+                              <CheckCircle2 size={15} className="text-[#00D17F] shrink-0" />
                               <span>{feat}</span>
                             </li>
                           ))}
-                          <li className="flex items-center gap-2.5 text-xs font-bold text-zinc-600">
-                            <CheckCircle2 size={16} className="text-[#00D17F] shrink-0" />
-                            <span>Em conformidade com a Legislação AGT</span>
-                          </li>
-                          <li className="flex items-center gap-2.5 text-xs font-bold text-zinc-600">
-                            <CheckCircle2 size={16} className="text-[#00D17F] shrink-0" />
-                            <span>Backups Diários em Nuvem</span>
+                          <li className="flex items-center gap-2 text-xs font-bold text-zinc-600">
+                            <CheckCircle2 size={15} className="text-[#00D17F] shrink-0" />
+                            <span>14 Dias de Teste Gratuito Sem Compromisso</span>
                           </li>
                         </ul>
                       </div>
@@ -1000,12 +1100,21 @@ export const LoginPage: React.FC = () => {
                     <div>
                       <button 
                         onClick={() => {
-                          setRegSelectedPlan(plan.id);
-                          setSimulatorSelection(null);
-                          setShowRegisterModal(true);
-                          setRegStep(1);
+                          const numAnuidade = parseFloat(plan.anuidadeExibida.replace(/\./g, '').replace(',', '.'));
+                          handleProceedFromSimulator({
+                            planId: plan.id,
+                            planName: plan.name,
+                            selectedModules: [],
+                            paymentOptionId: 'anual',
+                            paymentOptionLabel: 'Pagamento Anual [ 40% Desconto ]',
+                            totalAPagar: numAnuidade,
+                            totalLiquido: plan.basePriceAnual * 0.60,
+                            iva: plan.basePriceAnual * 0.60 * 0.14,
+                            installments: 1,
+                            valorPrestacao: numAnuidade
+                          });
                         }}
-                        className={`w-full py-4 text-xs font-black uppercase tracking-widest rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                        className={`w-full py-3.5 text-xs font-black uppercase tracking-widest rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer ${
                           isFeatured 
                             ? 'bg-[#00D17F] hover:bg-[#00B36B] text-white shadow-lg shadow-[#00D17F]/30' 
                             : 'bg-[#003366] hover:bg-black text-white'
@@ -1014,7 +1123,7 @@ export const LoginPage: React.FC = () => {
                         Começar 14 Dias Grátis
                         <ArrowRight size={16} />
                       </button>
-                      <p className="text-[10px] text-zinc-400 text-center font-bold uppercase tracking-tight mt-3">
+                      <p className="text-[10px] text-zinc-400 text-center font-bold uppercase tracking-tight mt-2.5">
                         Sem necessidade de cartão de crédito
                       </p>
                     </div>
@@ -1244,9 +1353,17 @@ export const LoginPage: React.FC = () => {
           </div>
 
           <div className="pt-10 border-t border-white/5 flex flex-col md:flex-row items-center justify-between gap-6">
-            <p className="text-zinc-600 text-[10px] font-bold uppercase tracking-widest text-center md:text-left">
-              © 2024 IMATEC SOFTWARE. TODOS OS DIREITOS RESERVADOS. EM CONFORMIDADE COM A LEGISLAÇÃO FISCAL DA AGT.
-            </p>
+            <div className="space-y-1 text-center md:text-left">
+              <p className="text-zinc-400 text-xs font-bold uppercase tracking-wider">
+                © 2026 IMATEC SOFTWARE. Todos os direitos reservados.
+              </p>
+              <p className="text-zinc-500 text-[11px] font-medium tracking-wide">
+                Software desenvolvido e produzido por <strong className="text-white font-bold">COGE FOCO ANGOLA — COMÉRCIO E PRESTAÇÃO DE SERVIÇOS</strong>.
+              </p>
+              <p className="text-zinc-600 text-[10px] font-bold uppercase tracking-wider">
+                Em conformidade com a Legislação Fiscal da AGT · Angola.
+              </p>
+            </div>
             <div className="flex items-center gap-8 text-[10px] font-bold text-zinc-600 uppercase tracking-widest">
               <button className="hover:text-white transition-colors cursor-pointer">Privacidade</button>
               <button className="hover:text-white transition-colors cursor-pointer">Termos</button>
@@ -1363,8 +1480,7 @@ export const LoginPage: React.FC = () => {
                   <button 
                     onClick={() => {
                       setSelectedFeature(null);
-                      setShowRegisterModal(true);
-                      setRegStep(1);
+                      navigateToLicensing();
                     }}
                     className="bg-[#00D17F] hover:bg-[#00B36B] text-white px-6 py-2.5 text-xs font-black uppercase tracking-widest rounded-none shadow-md transition-all flex items-center gap-2 cursor-pointer"
                   >
@@ -1552,12 +1668,12 @@ export const LoginPage: React.FC = () => {
                           </div>
                         )}
 
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                           {licensingPlans.map((plan) => (
                             <div 
                               key={plan.id}
                               onClick={() => setRegSelectedPlan(plan.id)}
-                              className={`relative p-6 border-2 transition-all cursor-pointer flex flex-col ${
+                              className={`relative p-5 border-2 transition-all cursor-pointer flex flex-col justify-between ${
                                 regSelectedPlan === plan.id 
                                 ? 'border-[#00D17F] bg-[#00D17F]/5 shadow-lg' 
                                 : 'border-zinc-100 hover:border-zinc-300 bg-white'
@@ -1568,22 +1684,30 @@ export const LoginPage: React.FC = () => {
                                   Selecionado
                                 </div>
                               )}
-                              <div className="mb-4">
-                                <h5 className="text-xs font-black text-[#003366] uppercase tracking-widest mb-1">{plan.name}</h5>
-                                <div className="flex items-baseline gap-1">
-                                  <span className="text-2xl font-black text-[#003366]">{plan.price}</span>
-                                  <span className="text-zinc-400 text-xs font-bold uppercase tracking-tighter">Kz{plan.period}</span>
+                              <div>
+                                <div className="flex items-center justify-between mb-1">
+                                  <h5 className="text-xs font-black text-[#003366] uppercase tracking-widest">{plan.name}</h5>
+                                  <span className="text-[9px] font-bold text-zinc-500 bg-zinc-100 px-1.5 py-0.5 rounded">
+                                    {plan.funcionarios === 'Ilimitado' ? 'Func. Ilimitados' : `${plan.funcionarios} Func.`}
+                                  </span>
                                 </div>
+                                <div className="flex items-baseline gap-1 my-2">
+                                  <span className="text-xl font-black text-[#003366]">{plan.anuidadeExibida}</span>
+                                  <span className="text-zinc-400 text-[10px] font-bold uppercase tracking-tight">AOA/ano</span>
+                                </div>
+                                <div className="text-[10px] text-zinc-500 font-medium mb-3">
+                                  Facturação Máx: <strong className="text-zinc-800">{plan.faturacao} AOA</strong>
+                                </div>
+                                <p className="text-[10px] text-zinc-500 font-medium leading-relaxed mb-4">{plan.desc}</p>
+                                <ul className="space-y-2 mb-6 flex-grow">
+                                  {plan.features.slice(0, 3).map(feat => (
+                                    <li key={feat} className="flex items-center gap-1.5 text-[10px] font-bold text-zinc-600">
+                                      <Check size={12} className="text-[#00D17F] shrink-0" />
+                                      <span>{feat}</span>
+                                    </li>
+                                  ))}
+                                </ul>
                               </div>
-                              <p className="text-[10px] text-zinc-500 font-medium leading-relaxed mb-6">{plan.desc}</p>
-                              <ul className="space-y-3 mb-8 flex-grow">
-                                {plan.features.map(feat => (
-                                  <li key={feat} className="flex items-center gap-2 text-[10px] font-bold text-zinc-600">
-                                    <Check size={12} className="text-[#00D17F]" />
-                                    {feat}
-                                  </li>
-                                ))}
-                              </ul>
                               <div className={`w-full py-2.5 text-[10px] font-black uppercase tracking-widest text-center transition-all ${
                                 regSelectedPlan === plan.id 
                                 ? 'bg-[#00D17F] text-white' 

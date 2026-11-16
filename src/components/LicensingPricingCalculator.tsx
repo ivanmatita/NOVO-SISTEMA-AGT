@@ -8,6 +8,11 @@ export interface LicensePlan {
   funcionarios: string;
   basePriceAnual: number; // Preço base bruto sem desconto (com redução de 10.000 Kz)
   anuidadeExibida: string; // Valor final anual com desconto 40% e IVA 14%
+  precoMensal: string; // Valor mensal
+  precoTrimestral: string; // Valor trimestral (em 2 ou 4 parcelas)
+  desc: string;
+  features: string[];
+  isPopular?: boolean;
 }
 
 export interface SpecialModule {
@@ -24,16 +29,84 @@ export interface PaymentOption {
   installments: number; // 1, 2, 4, 12
 }
 
-// Planos com retificação do utilizador:
+// Planos Oficiais Únicos do Sistema:
 // - Apenas a licença Light tem 10 funcionários; todas as restantes têm funcionários Ilimitados
 // - Preço Base Anual Bruto reduzido em 10.000 Kz em cada licença
+// - Fonte única que alimenta tanto a página de Licenciamento quanto os Pacotes Rápidos
 export const LICENSE_PLANS: LicensePlan[] = [
-  { id: 'light', name: 'Light', faturacao: '10.000.000,00', funcionarios: '10', basePriceAnual: 50000, anuidadeExibida: '34.200,00' },
-  { id: 'soft', name: 'Soft', faturacao: '30.000.000,00', funcionarios: 'Ilimitado', basePriceAnual: 110000, anuidadeExibida: '75.240,00' },
-  { id: 'silver', name: 'Silver', faturacao: '100.000.000,00', funcionarios: 'Ilimitado', basePriceAnual: 290000, anuidadeExibida: '198.360,00' },
-  { id: 'gold', name: 'Gold', faturacao: '200.000.000,00', funcionarios: 'Ilimitado', basePriceAnual: 590000, anuidadeExibida: '403.560,00' },
-  { id: 'platine', name: 'Platine', faturacao: '350.000.000,00', funcionarios: 'Ilimitado', basePriceAnual: 890000, anuidadeExibida: '608.760,00' },
-  { id: 'corporative', name: 'Corporative', faturacao: 'Ilimitado', funcionarios: 'Ilimitado', basePriceAnual: 1190000, anuidadeExibida: '813.960,00' },
+  { 
+    id: 'light', 
+    name: 'Light', 
+    faturacao: '10.000.000,00', 
+    funcionarios: '10', 
+    basePriceAnual: 50000, 
+    anuidadeExibida: '34.200,00',
+    precoMensal: '5.700,00',
+    precoTrimestral: '16.530,00',
+    desc: 'Ideal para pequenos negócios, startups e profissionais liberais.',
+    features: ['Até 10 Funcionários', 'Facturação Comercial AGT & SAF-T', 'Gestão de Clientes e Fornecedores', '14 Dias de Teste Gratuito']
+  },
+  { 
+    id: 'soft', 
+    name: 'Soft', 
+    faturacao: '30.000.000,00', 
+    funcionarios: 'Ilimitado', 
+    basePriceAnual: 110000, 
+    anuidadeExibida: '75.240,00',
+    precoMensal: '12.540,00',
+    precoTrimestral: '36.366,00',
+    desc: 'Equilíbrio ideal para empresas em fase de expansão no mercado angolano.',
+    features: ['Funcionários Ilimitados', 'Facturação AGT & SAF-T Completo', 'Gestão de Stocks & Inventários', 'Recursos Humanos & Salários'],
+    isPopular: true
+  },
+  { 
+    id: 'silver', 
+    name: 'Silver', 
+    faturacao: '100.000.000,00', 
+    funcionarios: 'Ilimitado', 
+    basePriceAnual: 290000, 
+    anuidadeExibida: '198.360,00',
+    precoMensal: '33.060,00',
+    precoTrimestral: '95.874,00',
+    desc: 'Controlo financeiro rigoroso e gestão multi-armazém para médias empresas.',
+    features: ['Funcionários Ilimitados', 'Gestão Multi-Armazém e Stocks', 'Contabilidade e PGC Angola', 'Gestão Financeira e Tesouraria']
+  },
+  { 
+    id: 'gold', 
+    name: 'Gold', 
+    faturacao: '200.000.000,00', 
+    funcionarios: 'Ilimitado', 
+    basePriceAnual: 590000, 
+    anuidadeExibida: '403.560,00',
+    precoMensal: '67.260,00',
+    precoTrimestral: '195.054,00',
+    desc: 'Potência máxima e conformidade fiscal robusta para empresas consolidadas.',
+    features: ['Funcionários Ilimitados', 'Todas as Funcionalidades Base', 'Gestão de Frotas & Viaturas', 'Auditoria Fiscal AGT Avançada']
+  },
+  { 
+    id: 'platine', 
+    name: 'Platine', 
+    faturacao: '350.000.000,00', 
+    funcionarios: 'Ilimitado', 
+    basePriceAnual: 890000, 
+    anuidadeExibida: '608.760,00',
+    precoMensal: '101.460,00',
+    precoTrimestral: '294.234,00',
+    desc: 'Solução completa para médias e grandes operações empresariais.',
+    features: ['Funcionários Ilimitados', 'Ecossistema ERP Completo', 'Acesso Multi-Utilizador', 'Suporte Prioritário Especializado']
+  },
+  { 
+    id: 'corporative', 
+    name: 'Corporative', 
+    faturacao: 'Ilimitado', 
+    funcionarios: 'Ilimitado', 
+    basePriceAnual: 1190000, 
+    anuidadeExibida: '813.960,00',
+    precoMensal: '135.660,00',
+    precoTrimestral: '393.414,00',
+    desc: 'A solução definitiva sem limites de faturação para grandes corporações.',
+    features: ['Facturação & Funcionários Ilimitados', 'Todos os 12 Módulos Base Incluídos', 'Relatórios Fiscais & SAF-T Ilimitados', 'SLA de Atendimento Garantido']
+  },
 ];
 
 export const SPECIAL_MODULES: SpecialModule[] = [
@@ -43,6 +116,11 @@ export const SPECIAL_MODULES: SpecialModule[] = [
   { id: 'pos', name: 'POS (Posto vendas)', basePriceAnual: 6000, anuidadeExibida: '4.104,00' },
   { id: 'transitarios', name: 'Modulo Transitarios e Navegação', basePriceAnual: 6000, anuidadeExibida: '4.104,00' },
   { id: 'agencia_viagens', name: 'Modulo Agencia de Viagens', basePriceAnual: 12000, anuidadeExibida: '8.208,00' },
+  { id: 'mini_site', name: 'Mini Site', basePriceAnual: 6000, anuidadeExibida: '4.104,00' },
+  { id: 'stand_automovel', name: 'Stand Automóvel', basePriceAnual: 6000, anuidadeExibida: '4.104,00' },
+  { id: 'gestao_igreja', name: 'Gestão de Igreja', basePriceAnual: 6000, anuidadeExibida: '4.104,00' },
+  { id: 'agronegocio', name: 'Agronegócio', basePriceAnual: 6000, anuidadeExibida: '4.104,00' },
+  { id: 'farmacia', name: 'Farmácia', basePriceAnual: 6000, anuidadeExibida: '4.104,00' },
 ];
 
 export const PAYMENT_OPTIONS: PaymentOption[] = [
@@ -428,13 +506,13 @@ export const LicensingPricingCalculator: React.FC<LicensingPricingCalculatorProp
               <button
                 type="button"
                 onClick={handleProceed}
-                className="w-full py-3.5 px-4 bg-[#00D17F] hover:bg-[#00B36B] text-white font-black text-xs uppercase tracking-widest rounded-lg shadow-lg shadow-[#00D17F]/20 flex items-center justify-center gap-2 transition-all cursor-pointer"
+                className="w-full py-4 px-4 bg-[#00D17F] hover:bg-[#00B36B] text-white font-black text-xs uppercase tracking-widest rounded-lg shadow-lg shadow-[#00D17F]/20 flex items-center justify-center gap-2 transition-all cursor-pointer"
               >
-                <span>Avançar para Registo da Empresa</span>
+                <span>REGISTE A SUA EMPRESA</span>
                 <ArrowRight size={16} />
               </button>
               <p className="text-[10px] text-zinc-400 text-center font-bold uppercase tracking-tight mt-2">
-                Experimente 14 dias sem compromisso ou cartão
+                14 Dias de Teste Gratuito Sem Compromisso
               </p>
             </div>
           </div>

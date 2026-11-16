@@ -153,6 +153,7 @@ function isValidUUID(str: any): boolean {
 }
 
 async function getAuthUserContext(req: express.Request) {
+    if (!req || !req.headers) return null;
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
          return null;
@@ -164,7 +165,7 @@ async function getAuthUserContext(req: express.Request) {
     // Determine which Supabase URL and anon key to use for HTTP-based verification
     // Try primary environment first, then fallback to the other (handles token/env mismatch)
     const isStagingReq = (() => {
-        const host = (req.headers['x-forwarded-host'] || req.headers.host || '').toString().toLowerCase();
+        const host = (req?.headers?.['x-forwarded-host'] || req?.headers?.host || '').toString().toLowerCase();
         return host.includes('staging') || host.includes('teste') || host.includes('homologacao') || _isStaging;
     })();
     const primaryUrl = isStagingReq ? STAGING_URL : PROD_URL;
@@ -1381,7 +1382,7 @@ app.use((req, res, next) => {
 
       const client = supabaseAdmin;
 
-      // 1. Verificar se o Email ou Username já existe em PERFIS
+      // 1. Verificar duplicação de Email ou Username em PERFIS
       const { data: existingUser, error: checkError } = await client
         .from("perfis")
         .select("email, username")
@@ -1389,11 +1390,11 @@ app.use((req, res, next) => {
         .maybeSingle();
 
       if (checkError) {
-        console.error("[SERVER-AUTH] Erro ao verificar existência:", checkError);
+        console.error("[SERVER-AUTH] Erro ao verificar existência de utilizador:", checkError);
       }
 
       if (existingUser) {
-        if (existingUser.email.toLowerCase() === email.trim().toLowerCase()) {
+        if (existingUser.email && existingUser.email.toLowerCase() === email.trim().toLowerCase()) {
           return res.status(400).json({ error: "Este email já está registado no sistema." });
         }
         if (existingUser.username === requestedUsername) {
@@ -1401,7 +1402,65 @@ app.use((req, res, next) => {
         }
       }
 
-      // 1b. Criar Utilizador Auth (Admin Bypass)
+      // 1b. Verificar duplicação de NIF na tabela EMPRESAS
+      const nifClean = (formData.nif || '').trim();
+      if (nifClean) {
+        const { data: existingCompanyNif, error: nifCheckError } = await client
+          .from("empresas")
+          .select("id, nome_empresa, nif")
+          .eq("nif", nifClean)
+          .maybeSingle();
+
+        if (existingCompanyNif) {
+          return res.status(400).json({ 
+            error: `Já existe uma empresa registada com o NIF ${nifClean} (${existingCompanyNif.nome_empresa}). Por favor, utilize as suas credenciais no login.` 
+          });
+        }
+      }
+
+      // 1c. Tabela Comercial Oficial do Sistema & Validação de Preços no Servidor
+      const OFFICIAL_PLANS_MAP: Record<string, { name: string; basePrice: number; limiteFaturacao: string }> = {
+        'light': { name: 'Light', basePrice: 50000, limiteFaturacao: '10.000.000,00 AOA' },
+        'soft': { name: 'Soft', basePrice: 110000, limiteFaturacao: '30.000.000,00 AOA' },
+        'silver': { name: 'Silver', basePrice: 290000, limiteFaturacao: '100.000.000,00 AOA' },
+        'gold': { name: 'Gold', basePrice: 590000, limiteFaturacao: '200.000.000,00 AOA' },
+        'platine': { name: 'Platine', basePrice: 890000, limiteFaturacao: '350.000.000,00 AOA' },
+        'platinum': { name: 'Platine', basePrice: 890000, limiteFaturacao: '350.000.000,00 AOA' },
+        'corporate': { name: 'Corporative', basePrice: 1190000, limiteFaturacao: 'Ilimitado' },
+        'corporative': { name: 'Corporative', basePrice: 1190000, limiteFaturacao: 'Ilimitado' },
+      };
+
+      const selectedPlanKey = String(formData.plano || 'light').toLowerCase();
+      const planConfig = OFFICIAL_PLANS_MAP[selectedPlanKey] || OFFICIAL_PLANS_MAP['light'];
+      const planNameFormatted = planConfig.name;
+
+      const requestedModules: string[] = Array.isArray(formData.modulos_especiais) ? formData.modulos_especiais : [];
+      const periodicidadeLabel = formData.periodicidade_pagamento || 'Anual';
+
+      // Cálculo oficial no servidor:
+      const basePlanBruto = planConfig.basePrice;
+      const baseModulosBruto = requestedModules.reduce((acc, modId) => {
+        return acc + (modId === 'agencia_viagens' ? 12000 : 6000);
+      }, 0);
+      const subtotalBruto = basePlanBruto + baseModulosBruto;
+      
+      let taxaDesconto = 0.40; // Anual padrão 40%
+      if (periodicidadeLabel.toLowerCase().includes('2 vezes')) taxaDesconto = 0.03;
+      else if (periodicidadeLabel.toLowerCase().includes('4 vezes')) taxaDesconto = 0.01;
+      else if (periodicidadeLabel.toLowerCase().includes('12 vezes') || periodicidadeLabel.toLowerCase().includes('mensal')) taxaDesconto = 0.00;
+
+      const valorDesconto = subtotalBruto * taxaDesconto;
+      const valorLiquido = subtotalBruto - valorDesconto;
+      const valorIva = valorLiquido * 0.14; // IVA 14%
+      const valorTotalContratado = valorLiquido + valorIva;
+
+      // Período oficial do Trial (14 dias de teste gratuito)
+      const trialStartDate = new Date();
+      const trialEndDate = new Date(trialStartDate.getTime() + 14 * 24 * 60 * 60 * 1000);
+      const trialStartIso = trialStartDate.toISOString();
+      const trialEndIso = trialEndDate.toISOString();
+
+      // 1d. Criar Utilizador Auth (Admin Bypass)
       const { data: authUser, error: authError } = await client.auth.admin.createUser({
         email,
         password,
@@ -1426,7 +1485,7 @@ app.use((req, res, next) => {
 
       const userId = authUser.user.id;
 
-      // 2. Criar Empresa (O Banco de Dados gera o ID automaticamente agora que aplicamos o SQL)
+      // 2. Criar Empresa (em conformidade estrita com modo TRIAL de 14 dias)
       const companyName = (formData.nome_empresa || formData.nome || `Empresa de ${email.split('@')[0]}`).trim();
       const adminName = (formData.nome_administrador || formData.nome || companyName).trim();
       const { data: company, error: companyError } = await supabaseAdmin
@@ -1444,7 +1503,12 @@ app.use((req, res, next) => {
           pais: formData.pais || 'Angola',
           tipo_empresa: formData.tipo_empresa || null,
           nome_administrador: adminName,
-          plano: 'trial',
+          plano: planNameFormatted,
+          status_licenca: 'TRIAL',
+          licenca_ativa: true,
+          trial_inicio: trialStartIso,
+          trial_fim: trialEndIso,
+          data_expiracao_licenca: trialEndIso,
           ativo: true
         }])
         .select('id')
@@ -1455,6 +1519,56 @@ app.use((req, res, next) => {
         // Tenta limpar o user criado se a empresa falhar (cleanup)
         await supabaseAdmin.auth.admin.deleteUser(userId);
         return res.status(400).json({ error: `Erro na Tabela Empresas: ${companyError.message}` });
+      }
+
+      // 2b. Criar Registo de Licença na tabela licencas_empresas (TRIAL 14 Dias)
+      try {
+        await supabaseAdmin
+          .from('licencas_empresas')
+          .insert([{
+            empresa_id: company.id,
+            status_licenca: 'TRIAL',
+            tipo_licenca: 'TRIAL',
+            tipo_plano: planNameFormatted,
+            plano: planNameFormatted,
+            trial_inicio: trialStartIso,
+            trial_fim: trialEndIso,
+            dias_trial: 14,
+            licenca_ativa: true,
+            estado: 'Em Teste Gratuito',
+            valor_licenca: 0,
+            modulos: JSON.stringify(requestedModules),
+            solicitante_email: email,
+            data_inicio: trialStartIso,
+            data_fim: trialEndIso,
+            data_expiracao: trialEndIso,
+            ativo: true
+          }]);
+      } catch (licErr: any) {
+        console.warn("[SERVER-AUTH] Aviso ao criar licencas_empresas:", licErr.message);
+      }
+
+      // 2c. Registar no Histórico de Licenças
+      try {
+        await supabaseAdmin
+          .from('historico_licencas')
+          .insert([{
+            empresa_id: company.id,
+            acao: 'REGISTO_SAAS_TRIAL',
+            descricao: `Adesão de 14 dias de Teste Gratuito no plano ${planNameFormatted} (${periodicidadeLabel}). Total Contratado: ${valorTotalContratado.toLocaleString('pt-AO')} AOA.`,
+            usuario: email,
+            plano: planNameFormatted,
+            status: 'TRIAL',
+            metadata: {
+              valor_contratado: valorTotalContratado,
+              valor_liquido: valorLiquido,
+              iva: valorIva,
+              periodicidade: periodicidadeLabel,
+              modulos_especiais: requestedModules
+            }
+          }]);
+      } catch (histErr: any) {
+        console.warn("[SERVER-AUTH] Aviso ao criar historico_licencas:", histErr.message);
       }
 
       // 3. Criar Perfil (using physical columns of perfis in DB)

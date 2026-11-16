@@ -771,12 +771,24 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                         </div>
                         <div>
                           <p className="font-black text-[#003366] text-sm leading-tight uppercase">{company.nome_empresa}</p>
-                          <p className="text-[10px] text-zinc-400 font-mono font-bold tracking-tight">NIF: {company.nif || '5000000000'}</p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="text-[10px] text-zinc-400 font-mono font-bold tracking-tight">NIF: {company.nif || '5000000000'}</span>
+                            {company.tipo_empresa && (
+                              <span className="text-[9px] font-black uppercase text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
+                                {company.tipo_empresa}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </td>
                     <td className="p-4">
                        <div className="flex flex-col gap-0.5">
+                          {(company.nome_administrador || company.responsavel) && (
+                            <span className="text-[10px] font-black uppercase text-[#003366]">
+                              Resp: {company.nome_administrador || company.responsavel}
+                            </span>
+                          )}
                           <span className="text-xs font-bold text-zinc-700">
                             {company.municipio || company.provincia ? `${company.municipio || ''}, ${company.provincia || 'Angola'}` : 'Angola'}
                           </span>
@@ -1412,6 +1424,10 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
               <div className="p-4 bg-zinc-50 border border-zinc-200 space-y-1">
                 <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest block">Razão Social / Nome</span>
                 <span className="font-bold text-zinc-900 uppercase">{selectedCompany.nome_empresa}</span>
+              </div>
+              <div className="p-4 bg-zinc-50 border border-zinc-200 space-y-1">
+                <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest block">Tipo de Empresa / Sector</span>
+                <span className="font-bold text-blue-800 uppercase">{selectedCompany.tipo_empresa || 'Comércio / Geral'}</span>
               </div>
               <div className="p-4 bg-zinc-50 border border-zinc-200 space-y-1">
                 <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest block">NIF Fiscal AGT</span>

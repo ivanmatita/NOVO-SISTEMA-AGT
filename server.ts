@@ -9055,6 +9055,7 @@ app.use((req, res, next) => {
 
   // Ocorrências CRM
   app.get("/api/crm/occurrences", async (req, res) => {
+    if (!await isSuperAdmin(req)) return res.status(403).json({ error: "Acesso negado. Apenas administradores autorizados da IMATEC." });
     try {
       if (!supabaseAdmin) return res.json([]);
       const { empresa_id } = req.query as { empresa_id?: string };
@@ -9556,6 +9557,7 @@ app.use((req, res, next) => {
 
   // Comprovativos de Pagamento CRM (GET & POST)
   app.get("/api/crm/comprovativos", async (req, res) => {
+    if (!await isSuperAdmin(req)) return res.status(403).json({ error: "Acesso negado. Apenas administradores autorizados da IMATEC." });
     try {
       if (!supabaseAdmin) return res.json([]);
       const { empresa_id } = req.query as { empresa_id?: string };

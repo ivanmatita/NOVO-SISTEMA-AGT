@@ -109,18 +109,27 @@ export const StockAtualModule: React.FC<StockAtualModuleProps> = ({
 
       // FÓRMULA OFICIAL EXIGIDA:
       // Quantidade disponível = Total de entradas - Total de saídas + Ajustamentos positivos - Ajustamentos negativos
-      let qtdDisponivel = totalEntradas - totalSaidas + ajustesPositivos - ajustesNegativos;
-
-      // Se não houver movimentos registrados ainda para este produto, utiliza o stock base cadastrado se o armazém coincidir
+      // stockBase: usa stock_quantity do produto quando não há entradas via movimentos
+      // (produto criado via compra com stock direto no registo, sem movimento de entrada registado)
       const prodArmazemId = (prod as any).armazem_id || prod.warehouse_id;
       const matchesBaseWarehouse = wId === 'all' || String(prodArmazemId) === String(wId);
 
-      if (prodMovements.length === 0) {
-        if (matchesBaseWarehouse) {
-          qtdDisponivel = Number(prod.stock_quantity ?? (prod as any).stock ?? (prod as any).stock_atual ?? 0);
-        } else {
-          qtdDisponivel = 0;
-        }
+      let stockBase = 0;
+      if (entradasMov === 0 && matchesBaseWarehouse) {
+        stockBase = Number(
+          prod.stock_quantity ??
+          (prod as any).stock ??
+          (prod as any).stock_atual ??
+          (prod as any).estoque_atual ??
+          0
+        );
+      }
+
+      let qtdDisponivel = stockBase + entradasMov - totalSaidas + ajustesPositivos - ajustesNegativos;
+
+      // Se não houver movimentos de nenhum tipo e o armazém não coincide, zera o stock
+      if (prodMovements.length === 0 && !matchesBaseWarehouse) {
+        qtdDisponivel = 0;
       }
 
       // Custos e Valores
@@ -140,7 +149,8 @@ export const StockAtualModule: React.FC<StockAtualModuleProps> = ({
       const dataUltimaMov = lastMovement?.created_at ? new Date(lastMovement.created_at).toLocaleDateString('pt-AO') : dataEntrada;
 
       // Determinar se o produto tem relevância no armazém selecionado
-      const hasPresenceInWarehouse = wId === 'all' || matchesBaseWarehouse || prodMovements.length > 0;
+      // Inclui produtos com stock_quantity > 0 no armazém base mesmo sem movimentos
+      const hasPresenceInWarehouse = wId === 'all' || matchesBaseWarehouse || prodMovements.length > 0 || qtdDisponivel > 0;
 
       return {
         product: prod,

@@ -1019,14 +1019,14 @@ export const LoginPage: React.FC = () => {
               <LicensingPricingCalculator onProceedToRegister={handleProceedFromSimulator} />
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {LICENSE_PLANS.map((plan) => {
-                const isFeatured = plan.isPopular || plan.id === 'soft';
-                const isBestValue = plan.id === 'silver';
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              {licensingPlans.map((plan) => {
+                const isFeatured = plan.id === 'profissional' || plan.isPopular;
+                const isBestValue = plan.id === 'enterprise';
                 return (
                   <div 
                     key={plan.id}
-                    className={`relative p-7 bg-white rounded-2xl border transition-all duration-300 flex flex-col justify-between ${
+                    className={`relative p-6 bg-white rounded-2xl border transition-all duration-300 flex flex-col justify-between ${
                       isFeatured 
                         ? 'border-2 border-[#00D17F] shadow-2xl scale-[1.02] z-10' 
                         : isBestValue
@@ -1035,12 +1035,12 @@ export const LoginPage: React.FC = () => {
                     }`}
                   >
                     {isFeatured && (
-                      <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-[#00D17F] text-white text-[9px] font-black uppercase tracking-widest px-4 py-1 rounded-full shadow-md">
+                      <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-[#00D17F] text-white text-[9px] font-black uppercase tracking-widest px-4 py-1 rounded-full shadow-md whitespace-nowrap">
                         MAIS POPULAR
                       </div>
                     )}
                     {isBestValue && (
-                      <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-[#003366] text-white text-[9px] font-black uppercase tracking-widest px-4 py-1 rounded-full shadow-md">
+                      <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-[#003366] text-white text-[9px] font-black uppercase tracking-widest px-4 py-1 rounded-full shadow-md whitespace-nowrap">
                         RECOMENDADO
                       </div>
                     )}
@@ -1048,34 +1048,37 @@ export const LoginPage: React.FC = () => {
                     <div>
                       <div className="flex items-center justify-between mb-2">
                         <h4 className="text-base font-black text-[#003366] uppercase tracking-wider">Licença {plan.name}</h4>
-                        <span className="text-[10px] font-bold text-zinc-400 uppercase bg-zinc-100 px-2 py-0.5 rounded">
-                          {plan.funcionarios === 'Ilimitado' ? 'Func. Ilimitados' : `${plan.funcionarios} Funcionários`}
+                        <span className="text-[10px] font-bold text-zinc-500 uppercase bg-zinc-100 px-2 py-0.5 rounded">
+                          {plan.funcionarios === 'Ilimitado' ? 'Func. Ilimitados' : `${plan.funcionarios} Func.`}
                         </span>
                       </div>
 
-                      {/* Bloco de Preço Anual Oficial com 40% Desconto */}
+                      {/* Preço Mensal Oficial em Destaque Principal (Sem IVA) */}
                       <div className="space-y-1 mb-4 bg-zinc-50 p-3.5 rounded-xl border border-zinc-100">
-                        <span className="text-[9px] font-black uppercase tracking-wider text-zinc-400 block">Anuidade Oficial (40% Desc. + IVA)</span>
-                        <div className="flex items-baseline gap-1.5">
-                          <span className="text-2xl sm:text-3xl font-black text-[#003366]">{plan.anuidadeExibida}</span>
-                          <span className="text-zinc-500 text-xs font-bold uppercase">AOA / ano</span>
+                        <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500 block">Preço Mensal Oficial</span>
+                        <div className="flex items-baseline gap-1 my-1">
+                          <span className="text-2xl sm:text-3xl font-black text-[#003366]">{plan.precoMensal}</span>
+                          <span className="text-zinc-500 text-xs font-bold uppercase">AOA / mês</span>
                         </div>
-                        <div className="grid grid-cols-2 gap-2 pt-2 border-t border-zinc-200 text-[10px] text-zinc-600 font-semibold">
+                        <p className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded inline-block">
+                          Pagamento trimestral e anual disponíveis.
+                        </p>
+                        <div className="grid grid-cols-2 gap-2 pt-2 mt-1 border-t border-zinc-200 text-[10px] text-zinc-600 font-medium">
                           <div>Trimestral: <span className="font-bold text-zinc-800">{plan.precoTrimestral}</span></div>
-                          <div>Mensal: <span className="font-bold text-zinc-800">{plan.precoMensal}</span></div>
+                          <div>Anual: <span className="font-bold text-zinc-800">{plan.anuidadeExibida}</span></div>
                         </div>
                       </div>
 
                       <p className="text-xs text-zinc-500 font-medium leading-relaxed mb-4">{plan.desc}</p>
 
-                      {/* Limites Anuais Oficiais */}
+                      {/* Limites Oficiais */}
                       <div className="mb-4 p-2.5 bg-blue-50/60 rounded-lg border border-blue-100/80 text-[11px] space-y-1">
                         <div className="flex justify-between text-zinc-700">
                           <span className="font-bold">Facturação Máx:</span>
                           <span className="font-mono font-bold text-[#003366]">{plan.faturacao} AOA</span>
                         </div>
                         <div className="flex justify-between text-zinc-700">
-                          <span className="font-bold">Limite Funcionários:</span>
+                          <span className="font-bold">Utilizadores:</span>
                           <span className="font-bold text-emerald-700">{plan.funcionarios}</span>
                         </div>
                       </div>
@@ -1100,18 +1103,17 @@ export const LoginPage: React.FC = () => {
                     <div>
                       <button 
                         onClick={() => {
-                          const numAnuidade = parseFloat(plan.anuidadeExibida.replace(/\./g, '').replace(',', '.'));
                           handleProceedFromSimulator({
                             planId: plan.id,
                             planName: plan.name,
                             selectedModules: [],
-                            paymentOptionId: 'anual',
-                            paymentOptionLabel: 'Pagamento Anual [ 40% Desconto ]',
-                            totalAPagar: numAnuidade,
-                            totalLiquido: plan.basePriceAnual * 0.60,
-                            iva: plan.basePriceAnual * 0.60 * 0.14,
+                            paymentOptionId: 'mensal',
+                            paymentOptionLabel: 'Pagamento Mensal',
+                            totalAPagar: plan.precoMensalNum,
+                            totalLiquido: plan.precoMensalNum,
+                            iva: 0,
                             installments: 1,
-                            valorPrestacao: numAnuidade
+                            valorPrestacao: plan.precoMensalNum
                           });
                         }}
                         className={`w-full py-3.5 text-xs font-black uppercase tracking-widest rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer ${
@@ -1659,7 +1661,7 @@ export const LoginPage: React.FC = () => {
                             </div>
                             <div className="text-left sm:text-right shrink-0">
                               <span className="text-[10px] text-zinc-400 font-bold uppercase block">
-                                Total a Pagar (IVA Incluído)
+                                Total a Pagar (Sem IVA)
                               </span>
                               <span className="text-base font-black text-blue-700">
                                 {simulatorSelection.totalAPagar.toLocaleString('pt-AO', { minimumFractionDigits: 2 })} AOA
@@ -1668,7 +1670,7 @@ export const LoginPage: React.FC = () => {
                           </div>
                         )}
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                           {licensingPlans.map((plan) => (
                             <div 
                               key={plan.id}
@@ -1691,9 +1693,15 @@ export const LoginPage: React.FC = () => {
                                     {plan.funcionarios === 'Ilimitado' ? 'Func. Ilimitados' : `${plan.funcionarios} Func.`}
                                   </span>
                                 </div>
-                                <div className="flex items-baseline gap-1 my-2">
-                                  <span className="text-xl font-black text-[#003366]">{plan.anuidadeExibida}</span>
-                                  <span className="text-zinc-400 text-[10px] font-bold uppercase tracking-tight">AOA/ano</span>
+                                <div className="my-2 bg-zinc-50 p-2.5 rounded border border-zinc-100">
+                                  <span className="text-[9px] font-bold text-zinc-400 uppercase block">Mensal (Sem IVA)</span>
+                                  <div className="flex items-baseline gap-1">
+                                    <span className="text-lg font-black text-[#003366]">{plan.precoMensal}</span>
+                                    <span className="text-zinc-400 text-[9px] font-bold uppercase">AOA/mês</span>
+                                  </div>
+                                  <div className="text-[9px] text-zinc-500 mt-1 pt-1 border-t border-zinc-200">
+                                    Trim: <strong>{plan.precoTrimestral}</strong> • Anual: <strong>{plan.anuidadeExibida}</strong>
+                                  </div>
                                 </div>
                                 <div className="text-[10px] text-zinc-500 font-medium mb-3">
                                   Facturação Máx: <strong className="text-zinc-800">{plan.faturacao} AOA</strong>

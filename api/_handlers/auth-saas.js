@@ -111,7 +111,40 @@ export default async function handler(req, res) {
       } else {
         const newCompanyId = crypto.randomUUID();
         const trialInicio = new Date().toISOString();
-        const trialFim = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(); // 30 dias
+        const trialFim = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(); // Exatamente 14 dias trial
+
+        // Normalização oficial dos 4 planos únicos
+        const normalizeOfficialPlan = (raw) => {
+          if (!raw) return 'Básico';
+          const s = String(raw).trim().toLowerCase();
+          if (s.includes('basic') || s.includes('básic') || s.includes('light') || s.includes('start')) return 'Básico';
+          if (s.includes('stand') || s.includes('soft') || s.includes('med')) return 'Standard';
+          if (s.includes('enter') || s.includes('plat') || s.includes('corp')) return 'Enterprise';
+          if (s.includes('prof') || s.includes('silv') || s.includes('gold') || s.includes('pro') || s.includes('avanc')) return 'Profissional';
+          return 'Básico';
+        };
+
+        const planNameFormatted = normalizeOfficialPlan(formData.plano || formData.pacote_licenca || 'basico');
+        const planKeyNorm = planNameFormatted.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+        const PLAN_PRICES = {
+          'basico': { mensal: 25000, trimestral: 75000, anual: 270000 },
+          'standard': { mensal: 55000, trimestral: 165000, anual: 594000 },
+          'profissional': { mensal: 65000, trimestral: 195000, anual: 702000 },
+          'enterprise': { mensal: 150000, trimestral: 450000, anual: 1620000 },
+        };
+        const planPriceConfig = PLAN_PRICES[planKeyNorm] || PLAN_PRICES['basico'];
+
+        const periodicidadeRaw = String(formData.periodicidade_pagamento || 'mensal').toLowerCase();
+        let periodicidadeModalidade = 'Mensal';
+        let valorTotalContratado = planPriceConfig.mensal;
+        if (periodicidadeRaw.includes('trimestral') || periodicidadeRaw.includes('4 vezes') || periodicidadeRaw.includes('2 vezes')) {
+          periodicidadeModalidade = 'Trimestral';
+          valorTotalContratado = planPriceConfig.trimestral;
+        } else if (periodicidadeRaw.includes('anual') || periodicidadeRaw.includes('12 vezes')) {
+          periodicidadeModalidade = 'Anual';
+          valorTotalContratado = planPriceConfig.anual;
+        }
 
         const companyPayload = {
           id: newCompanyId,
@@ -127,13 +160,15 @@ export default async function handler(req, res) {
           pais: formData.pais || 'Angola',
           tipo_empresa: formData.tipo_empresa || null,
           nome_administrador: adminName,
-          plano: 'trial',
+          plano: planNameFormatted,
           ambiente: 'staging',
-          ativo: false,           // BLOQUEADO até ativação pelo SuperAdmin
-          licenca_ativa: false,
-          status_licenca: 'SUSPENSA', // Estado oficial: aguarda ativação
+          ativo: true,
+          licenca_ativa: true,
+          status_licenca: 'TRIAL',
+          valor_licenca: valorTotalContratado,
           trial_inicio: trialInicio,
-          trial_fim: trialFim
+          trial_fim: trialFim,
+          data_expiracao_licenca: trialFim
         };
 
         const compCreateRes = await fetch(`${config.supabaseUrl}/rest/v1/empresas`, {
@@ -153,22 +188,29 @@ export default async function handler(req, res) {
         }
         targetCompanyId = Array.isArray(createdComp) ? createdComp[0]?.id : newCompanyId;
 
-        // Criar licenca inicial — Producao BLOQUEADA, Staging ACESSÍVEL
-        const trialFimDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        // Criar registo oficial de licenca TRIAL 14 Dias na tabela licencas_empresas
+        const trialFimDate = trialFim.split('T')[0];
+        const requestedModules = Array.isArray(formData.modulos_especiais) ? formData.modulos_especiais : ['clientes', 'produtos', 'fornecedores', 'colaboradores', 'vendas', 'compras', 'caixa'];
         const licencaPayload = {
           empresa_id: targetCompanyId,
-          plano: 'trial',
-          tipo_plano: 'trial',
+          plano: planNameFormatted,
+          tipo_licenca: planNameFormatted,
+          tipo_plano: planNameFormatted,
+          valor_licenca: valorTotalContratado,
+          modalidade: periodicidadeModalidade,
           ambiente: 'staging',
-          estado: 'suspensa',      // Estado oficial: aguarda ativação
-          ativo: false,            // Inativa até ativação pelo SuperAdmin
-          licenca_ativa: false,
+          estado: 'Em Teste Gratuito',
+          status_licenca: 'TRIAL',
+          ativo: true,
+          licenca_ativa: true,
           homologacao_agt: false,
-          trial_inicio: new Date().toISOString(),
+          trial_inicio: trialInicio,
           trial_fim: trialFim,
+          dias_trial: 14,
           data_validade: trialFimDate,
-          data_inicio: new Date().toISOString().split('T')[0],
-          modulos: ['clientes', 'produtos', 'fornecedores', 'colaboradores', 'vendas', 'compras', 'caixa']
+          data_inicio: trialInicio.split('T')[0],
+          data_fim: trialFimDate,
+          modulos: requestedModules
         };
 
         await fetch(`${config.supabaseUrl}/rest/v1/licencas_empresas`, {

@@ -279,7 +279,7 @@ export const StockAtualModule: React.FC<StockAtualModuleProps> = ({
             <Building2 className="text-blue-600" size={22} />
           </div>
           <span className="text-sm sm:text-base font-black text-zinc-800 uppercase tracking-wide">
-            GESTÃO DE STOCK &amp; INVENTÁRIO
+            GESTÃO DE STOCK & INVENTÁRIO
           </span>
           <span className="text-xs text-zinc-500 font-medium mt-0.5">
             Stock Atual, quantidades, custos e movimentações

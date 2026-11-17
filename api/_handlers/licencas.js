@@ -1,6 +1,6 @@
 /**
  * api/licencas.js
- * Handler Serverless de Gestão, Solicitação e Aprovação de Licenças SaaS.
+ * Handler Serverless de Gestï¿½o, Solicitaï¿½ï¿½o e Aprovaï¿½ï¿½o de Licenï¿½as SaaS.
  * 100% Nativo, isolamento multi-tenant seguro e auditoria completa.
  */
 
@@ -24,10 +24,31 @@ export default async function handler(req, res) {
     pathname = req.url || '';
   }
 
-  // 1. Autenticação obrigatória
+  // 1. Autenticaï¿½ï¿½o obrigatï¿½ria
+  // Endpoint pÃºblico para consulta dos 4 planos comerciais oficiais (Fonte Ãšnica Supabase)
+  if ((pathname === '/api/planos' || pathname.startsWith('/api/planos')) && req.method === 'GET') {
+    try {
+      const planRes = await fetch(`${config.supabaseUrl}/rest/v1/planos_sistema?select=*&order=preco_mensal.asc`, {
+        headers: { 'apikey': config.serviceRoleKey, 'Authorization': `Bearer ${config.serviceRoleKey}` }
+      });
+      const plans = await planRes.json();
+      if (Array.isArray(plans) && plans.length > 0) {
+        return res.status(200).json(plans);
+      }
+    } catch (e) {}
+
+    // Fallback garantido para os 4 planos oficiais padrÃ£o
+    return res.status(200).json([
+      { id: 'basico', codigo: 'BASICO', nome: 'BÃ¡sico', descricao: 'Ideal para pequenas empresas, prestadores de serviÃ§os e negÃ³cios em inÃ­cio de atividade.', preco_mensal: 25000, preco_trimestral: 75000, preco_anual: 270000, ativo: true, destaque: false, limite_usuarios: '5', limite_faturacao: '10.000.000,00' },
+      { id: 'standard', codigo: 'STANDARD', nome: 'Standard', descricao: 'EquilÃ­brio ideal para empresas em expansÃ£o que necessitam de controlo comercial e recursos humanos.', preco_mensal: 55000, preco_trimestral: 165000, preco_anual: 594000, ativo: true, destaque: false, tag_destaque: 'EQUILÃBRIO', limite_usuarios: '15', limite_faturacao: '50.000.000,00' },
+      { id: 'profissional', codigo: 'PROFISSIONAL', nome: 'Profissional', descricao: 'PotÃªncia total para mÃ©dias e grandes empresas com mÃºltiplos departamentos e requisitos avanÃ§ados da AGT.', preco_mensal: 65000, preco_trimestral: 195000, preco_anual: 702000, ativo: true, destaque: true, tag_destaque: 'MAIS POPULAR', limite_usuarios: '50', limite_faturacao: '200.000.000,00' },
+      { id: 'enterprise', codigo: 'ENTERPRISE', nome: 'Enterprise', descricao: 'A soluÃ§Ã£o definitiva para grandes corporaÃ§Ãµes, grupos empresariais e operaÃ§Ãµes com alto volume de dados.', preco_mensal: 150000, preco_trimestral: 450000, preco_anual: 1620000, ativo: true, destaque: false, tag_destaque: 'RECOMENDADO', limite_usuarios: 'Ilimitado', limite_faturacao: 'Ilimitado' }
+    ]);
+  }
+
   const auth = await authenticateRequest(req);
   if (!auth.authenticated) {
-    return res.status(401).json({ error: auth.message || 'Não autenticado.' });
+    return res.status(401).json({ error: auth.message || 'Nï¿½o autenticado.' });
   }
 
   const { user, empresa_id, isSuperAdmin } = auth;
@@ -36,7 +57,7 @@ export default async function handler(req, res) {
   if (req.method === 'GET') {
     try {
       if (isSuperAdmin) {
-        // Admin global: lista todas as licenças com dados da empresa
+        // Admin global: lista todas as licenï¿½as com dados da empresa
         const licRes = await fetch(
           `${config.supabaseUrl}/rest/v1/licencas_empresas?select=*,empresas(id,nome,nome_empresa,nif,email,telefone)&order=created_at.desc`,
           {
@@ -65,9 +86,9 @@ export default async function handler(req, res) {
           historico: Array.isArray(historico) ? historico : []
         });
       } else {
-        // Utilizador da empresa: apenas a sua própria licença e histórico
+        // Utilizador da empresa: apenas a sua prï¿½pria licenï¿½a e histï¿½rico
         if (!empresa_id) {
-          return res.status(400).json({ error: 'Empresa não associada a este utilizador.' });
+          return res.status(400).json({ error: 'Empresa nï¿½o associada a este utilizador.' });
         }
 
         const licRes = await fetch(
@@ -108,7 +129,7 @@ export default async function handler(req, res) {
   if (pathname.includes('solicitar') && req.method === 'POST') {
     try {
       if (!empresa_id) {
-        return res.status(400).json({ error: 'Empresa não identificada.' });
+        return res.status(400).json({ error: 'Empresa nï¿½o identificada.' });
       }
 
       const { plano = 'basico', tipo_licenca, valor = 0, valor_licenca, observacao = '', observacoes = '', periodo = 'mensal', periodo_meses = 1 } = req.body || {};
@@ -154,7 +175,7 @@ export default async function handler(req, res) {
           empresa_id,
           plano: targetPlano,
           acao: 'solicitacao',
-          descricao: `Solicitação de ativação de licença (${targetPlano}, ${periodo}). Valor: ${targetValor} AOA.`,
+          descricao: `Solicitaï¿½ï¿½o de ativaï¿½ï¿½o de licenï¿½a (${targetPlano}, ${periodo}). Valor: ${targetValor} AOA.`,
           usuario: user.email,
           metadata: { periodo, periodo_meses, valor: targetValor, observacoes: targetObs, solicitante: user.email }
         }])
@@ -162,7 +183,7 @@ export default async function handler(req, res) {
 
       return res.status(200).json({
         success: true,
-        message: 'Solicitação de ativação enviada com sucesso.',
+        message: 'Solicitaï¿½ï¿½o de ativaï¿½ï¿½o enviada com sucesso.',
         estado: 'pendente_ativacao'
       });
     } catch (err) {
@@ -174,7 +195,7 @@ export default async function handler(req, res) {
   if (pathname.includes('comprovativo') && req.method === 'POST') {
     try {
       if (!empresa_id) {
-        return res.status(400).json({ error: 'Empresa não identificada.' });
+        return res.status(400).json({ error: 'Empresa nï¿½o identificada.' });
       }
 
       const { comprovativo_url, comprovativo_nome, valor = 0, montante, banco, numero_transacao } = req.body || {};
@@ -213,7 +234,7 @@ export default async function handler(req, res) {
         body: JSON.stringify([{
           empresa_id,
           acao: 'comprovativo_enviado',
-          descricao: `Comprovativo de pagamento enviado. Banco: ${banco || 'N/D'}, Transação: ${numero_transacao || 'N/D'}, Montante: ${targetValor} AOA.`,
+          descricao: `Comprovativo de pagamento enviado. Banco: ${banco || 'N/D'}, Transaï¿½ï¿½o: ${numero_transacao || 'N/D'}, Montante: ${targetValor} AOA.`,
           usuario: user.email,
           metadata: { comprovativo_url, comprovativo_nome, banco, numero_transacao, valor: targetValor }
         }])
@@ -221,7 +242,7 @@ export default async function handler(req, res) {
 
       return res.status(200).json({
         success: true,
-        message: 'Comprovativo enviado com sucesso. Aguardando aprovação do Administrador Global.',
+        message: 'Comprovativo enviado com sucesso. Aguardando aprovaï¿½ï¿½o do Administrador Global.',
         estado: 'comprovativo_enviado'
       });
     } catch (err) {
@@ -234,7 +255,7 @@ export default async function handler(req, res) {
     try {
       if (!isSuperAdmin) {
         return res.status(403).json({
-          error: 'Acesso negado: Apenas o Administrador Global do Sistema pode aprovar ou gerir licenças.',
+          error: 'Acesso negado: Apenas o Administrador Global do Sistema pode aprovar ou gerir licenï¿½as.',
           code: 'APENAS_ADMIN_GLOBAL'
         });
       }
@@ -267,7 +288,7 @@ export default async function handler(req, res) {
       }
 
       if (!targetEmpresaId) {
-        return res.status(400).json({ error: 'empresa_id ou licença válida é obrigatória.' });
+        return res.status(400).json({ error: 'empresa_id ou licenï¿½a vï¿½lida ï¿½ obrigatï¿½ria.' });
       }
 
       const now = new Date();
@@ -333,7 +354,7 @@ export default async function handler(req, res) {
           }
         );
 
-        // Auditoria no histórico
+        // Auditoria no histï¿½rico
         await fetch(`${config.supabaseUrl}/rest/v1/historico_licencas`, {
           method: 'POST',
           headers: {
@@ -347,7 +368,7 @@ export default async function handler(req, res) {
             data_inicio: dataInicio,
             data_fim: dataFim,
             acao: 'aprovacao',
-            descricao: `Licença APROVADA pelo Administrador Global (${user.email}). Plano: ${plano}, Período: ${periodo_meses} meses. Produção elegível marcada; Acesso a Produção permanece bloqueado até à migração da Parte 5.`,
+            descricao: `Licenï¿½a APROVADA pelo Administrador Global (${user.email}). Plano: ${plano}, Perï¿½odo: ${periodo_meses} meses. Produï¿½ï¿½o elegï¿½vel marcada; Acesso a Produï¿½ï¿½o permanece bloqueado atï¿½ ï¿½ migraï¿½ï¿½o da Parte 5.`,
             usuario: user.email,
             metadata: {
               aprovado_por: user.email,
@@ -362,7 +383,7 @@ export default async function handler(req, res) {
 
         return res.status(200).json({
           success: true,
-          message: 'Licença aprovada com sucesso! Empresa marcada como elegível para Produção. Acesso à Produção permanece bloqueado até à migração da Parte 5.',
+          message: 'Licenï¿½a aprovada com sucesso! Empresa marcada como elegï¿½vel para Produï¿½ï¿½o. Acesso ï¿½ Produï¿½ï¿½o permanece bloqueado atï¿½ ï¿½ migraï¿½ï¿½o da Parte 5.',
           licenca: {
             estado: 'ativa',
             plano,
@@ -387,7 +408,7 @@ export default async function handler(req, res) {
               status_licenca: 'suspensa',
               ativo: false,
               licenca_ativa: false,
-              motivo_rejeicao: motivo || 'Suspensão pelo Administrador Global',
+              motivo_rejeicao: motivo || 'Suspensï¿½o pelo Administrador Global',
               updated_at: nowIso
             })
           }
@@ -403,13 +424,13 @@ export default async function handler(req, res) {
           body: JSON.stringify([{
             empresa_id: targetEmpresaId,
             acao: 'suspensao',
-            descricao: `Licença BLOQUEADA/SUSPENSA por ${user.email}. Motivo: ${motivo || 'N/D'}`,
+            descricao: `Licenï¿½a BLOQUEADA/SUSPENSA por ${user.email}. Motivo: ${motivo || 'N/D'}`,
             usuario: user.email,
             motivo
           }])
         });
 
-        return res.status(200).json({ success: true, message: 'Licença suspensa com sucesso.', estado: 'suspensa' });
+        return res.status(200).json({ success: true, message: 'Licenï¿½a suspensa com sucesso.', estado: 'suspensa' });
       } else if (acao === 'rejeitar') {
         await fetch(
           `${config.supabaseUrl}/rest/v1/licencas_empresas?empresa_id=eq.${targetEmpresaId}`,
@@ -439,20 +460,20 @@ export default async function handler(req, res) {
           body: JSON.stringify([{
             empresa_id: targetEmpresaId,
             acao: 'rejeicao',
-            descricao: `Solicitação REJEITADA por ${user.email}. Motivo: ${motivo}`,
+            descricao: `Solicitaï¿½ï¿½o REJEITADA por ${user.email}. Motivo: ${motivo}`,
             usuario: user.email,
             motivo
           }])
         });
 
-        return res.status(200).json({ success: true, message: 'Solicitação rejeitada.', estado: 'rejeitada' });
+        return res.status(200).json({ success: true, message: 'Solicitaï¿½ï¿½o rejeitada.', estado: 'rejeitada' });
       }
 
-      return res.status(400).json({ error: 'Ação não reconhecida.' });
+      return res.status(400).json({ error: 'Aï¿½ï¿½o nï¿½o reconhecida.' });
     } catch (err) {
       return res.status(500).json({ error: err.message });
     }
   }
 
-  return res.status(404).json({ error: 'Rota não encontrada.' });
+  return res.status(404).json({ error: 'Rota nï¿½o encontrada.' });
 }

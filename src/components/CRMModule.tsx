@@ -1466,55 +1466,186 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
           </div>
         )}
 
-        {/* SUB-ABA 2: GESTÃO DA LICENÇA */}
-        {companySubTab === 'licenca' && (
-          <div className="bg-white border border-zinc-200 p-6 space-y-6 animate-in fade-in duration-300">
-            <div className="flex justify-between items-center border-b border-zinc-100 pb-4">
-              <h3 className="text-sm font-black text-[#003366] uppercase tracking-wider">Parâmetros Oficiais da Licença</h3>
-              <div className="flex gap-2">
-                <button onClick={() => setShowActivateModal(true)} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black uppercase tracking-widest flex items-center gap-2 cursor-pointer">
-                  <CheckCircle size={14} /> Ativar Licença
-                </button>
-                <button onClick={() => setShowDeactivateModal(true)} className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-black uppercase tracking-widest flex items-center gap-2 cursor-pointer">
-                  <XCircle size={14} /> Desativar Licença
-                </button>
-              </div>
-            </div>
+        {/* SUB-ABA 2: GESTÃO DA LICENÇA (PARÂMETROS CONSOLIDADOS DO CRM) */}
+        {companySubTab === 'licenca' && (() => {
+          const normPlan = normalizeOfficialPlan(selectedCompany.plano);
+          const precoContratado = Number((selectedCompany as any).preco_contratado || selectedCompany.valor_licenca || (normPlan === 'Básico' ? 25000 : normPlan === 'Standard' ? 55000 : normPlan === 'Enterprise' ? 150000 : 65000));
+          const modalidadeContratada = (selectedCompany as any).modalidade_pagamento || (selectedCompany as any).periodicidade_pagamento || 'Mensal';
+          const statusPagamento = (selectedCompany as any).status_pagamento || (lic.isAtiva ? 'Regularizado / Ativo' : 'Pendente de Regularização');
+          const lastUpgrade = companyHistorico.find(h => String(h.acao || '').toUpperCase().includes('UPGRADE') || String(h.acao || '').toUpperCase().includes('DOWNGRADE') || String(h.descricao || '').includes('Plano anterior'));
+          const planoAnterior = lastUpgrade ? (lastUpgrade.descricao?.match(/anterior:?\s*([A-Za-zÀ-ÿ]+)/i)?.[1] || 'Plano Inicial') : 'Plano Inicial';
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
-              <div className="p-4 bg-zinc-50 border border-zinc-200">
-                <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">Plano Atual</span>
-                <span className="text-sm font-black text-[#003366] uppercase mt-1 block">{selectedCompany.plano || 'Profissional'}</span>
+          return (
+            <div className="bg-white border border-zinc-200 p-6 space-y-6 animate-in fade-in duration-300">
+              <div className="flex justify-between items-center border-b border-zinc-100 pb-4">
+                <div>
+                  <h3 className="text-base font-black text-[#003366] uppercase tracking-wider">Parâmetros Oficiais de Licenciamento &amp; Subscrição</h3>
+                  <p className="text-xs text-zinc-500">Informações sincronizadas da base de dados central IMATEC para {selectedCompany.nome_empresa}.</p>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => setShowActivateModal(true)} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black uppercase tracking-widest flex items-center gap-2 cursor-pointer shadow-sm">
+                    <CheckCircle size={14} /> Ativar Licença
+                  </button>
+                  <button onClick={() => setShowDeactivateModal(true)} className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-black uppercase tracking-widest flex items-center gap-2 cursor-pointer shadow-sm">
+                    <XCircle size={14} /> Desativar Licença
+                  </button>
+                </div>
               </div>
-              <div className="p-4 bg-zinc-50 border border-zinc-200">
-                <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">Estado no Sistema</span>
-                <span className={`text-sm font-black uppercase mt-1 block ${lic.isAtiva ? 'text-emerald-700' : 'text-rose-700'}`}>{lic.statusNormalizado}</span>
-              </div>
-              <div className="p-4 bg-zinc-50 border border-zinc-200">
-                <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">Data de Ativação</span>
-                <span className="text-sm font-black font-mono text-zinc-900 mt-1 block">{lic.dataInicioStr}</span>
-              </div>
-              <div className="p-4 bg-zinc-50 border border-zinc-200">
-                <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">Vencimento Programado</span>
-                <span className="text-sm font-black font-mono text-zinc-900 mt-1 block">{lic.dataFimStr}</span>
-              </div>
-            </div>
 
-            {/* Ações de Upgrade e Downgrade */}
-            <div className="p-6 bg-zinc-50 border border-zinc-200 space-y-4">
-              <h4 className="text-xs font-black text-[#003366] uppercase tracking-wider">Operações de Alteração de Plano</h4>
-              <div className="flex gap-4">
-                <button onClick={() => setShowUpgradeModal(true)} className="flex-1 p-4 bg-[#003366] text-white font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 cursor-pointer shadow-sm">
-                  <ArrowUpCircle size={18} /> Solicitar Upgrade de Licença
-                </button>
-                <button onClick={() => setShowDowngradeModal(true)} className="flex-1 p-4 bg-amber-600 text-white font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 cursor-pointer shadow-sm">
-                  <ArrowDownCircle size={18} /> Solicitar Downgrade de Licença
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+              {/* Grelha Completa com os 14 Parâmetros Obrigatórios */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
+                
+                {/* 1. Nome da Empresa */}
+                <div className="p-4 bg-zinc-50 border border-zinc-200 rounded-xs">
+                  <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">Nome da Empresa</span>
+                  <span className="text-sm font-black text-zinc-900 uppercase mt-1 block truncate">{selectedCompany.nome_empresa || selectedCompany.nome}</span>
+                </div>
 
+                {/* 2. NIF */}
+                <div className="p-4 bg-zinc-50 border border-zinc-200 rounded-xs">
+                  <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">NIF da Empresa</span>
+                  <span className="text-sm font-mono font-black text-[#003366] mt-1 block">{selectedCompany.nif || 'Não Registado'}</span>
+                </div>
+
+                {/* 3. Licença Contratada */}
+                <div className="p-4 bg-blue-50/70 border border-blue-200 rounded-xs">
+                  <span className="text-[9px] font-black text-blue-600 uppercase tracking-widest block">Licença Contratada</span>
+                  <span className="text-sm font-black text-[#003366] uppercase mt-1 block">Plano {normPlan}</span>
+                </div>
+
+                {/* 4. Preço Contratado */}
+                <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-xs">
+                  <span className="text-[9px] font-black text-emerald-700 uppercase tracking-widest block">Preço Contratado (Sem IVA)</span>
+                  <span className="text-sm font-mono font-black text-emerald-800 mt-1 block">{formatKz(precoContratado)} AOA</span>
+                </div>
+
+                {/* 5. Modalidade de Pagamento */}
+                <div className="p-4 bg-zinc-50 border border-zinc-200 rounded-xs">
+                  <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">Modalidade de Pagamento</span>
+                  <span className="text-sm font-bold text-zinc-800 uppercase mt-1 block">{modalidadeContratada}</span>
+                </div>
+
+                {/* 6. Data de Início */}
+                <div className="p-4 bg-zinc-50 border border-zinc-200 rounded-xs">
+                  <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">Data de Início</span>
+                  <span className="text-sm font-mono font-bold text-zinc-800 mt-1 block">{lic.dataInicioStr}</span>
+                </div>
+
+                {/* 7. Data de Activação */}
+                <div className="p-4 bg-zinc-50 border border-zinc-200 rounded-xs">
+                  <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">Data de Activação</span>
+                  <span className="text-sm font-mono font-bold text-zinc-800 mt-1 block">{lic.dataInicioStr}</span>
+                </div>
+
+                {/* 8. Data de Validade / Vencimento */}
+                <div className="p-4 bg-zinc-50 border border-zinc-200 rounded-xs">
+                  <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">Data de Validade</span>
+                  <span className="text-sm font-mono font-black text-zinc-900 mt-1 block">{lic.dataFimStr}</span>
+                </div>
+
+                {/* 9. Próxima Renovação */}
+                <div className="p-4 bg-zinc-50 border border-zinc-200 rounded-xs">
+                  <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">Próxima Renovação</span>
+                  <span className="text-sm font-mono font-bold text-zinc-800 mt-1 block">{lic.dataFimStr}</span>
+                </div>
+
+                {/* 10. Dias Restantes */}
+                <div className="p-4 bg-zinc-50 border border-zinc-200 rounded-xs">
+                  <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">Dias Restantes</span>
+                  <span className={`text-sm font-black font-mono mt-1 block ${lic.diasRestantes <= 5 ? 'text-red-600' : 'text-emerald-700'}`}>
+                    {lic.diasRestantes} dias
+                  </span>
+                </div>
+
+                {/* 11. Estado da Licença */}
+                <div className="p-4 bg-zinc-50 border border-zinc-200 rounded-xs">
+                  <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">Estado da Licença</span>
+                  <span className={`text-xs font-black uppercase px-2 py-0.5 rounded inline-block mt-1 ${
+                    lic.isAtiva ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                  }`}>
+                    {lic.statusNormalizado}
+                  </span>
+                </div>
+
+                {/* 12. Estado do Pagamento */}
+                <div className="p-4 bg-zinc-50 border border-zinc-200 rounded-xs">
+                  <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">Estado do Pagamento</span>
+                  <span className={`text-xs font-bold uppercase mt-1 block ${lic.isAtiva ? 'text-emerald-700' : 'text-amber-700'}`}>
+                    {statusPagamento}
+                  </span>
+                </div>
+
+                {/* 13. Plano Anterior */}
+                <div className="p-4 bg-zinc-50 border border-zinc-200 rounded-xs lg:col-span-2">
+                  <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">Plano Anterior Contratado</span>
+                  <span className="text-xs font-bold text-zinc-700 uppercase mt-1 block">{planoAnterior}</span>
+                </div>
+
+                {/* 14. Tipo / Setor de Empresa */}
+                <div className="p-4 bg-zinc-50 border border-zinc-200 rounded-xs lg:col-span-2">
+                  <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">Sector / Tipo de Empresa</span>
+                  <span className="text-xs font-bold text-zinc-800 uppercase mt-1 block">{selectedCompany.tipo_empresa || 'Não especificado'}</span>
+                </div>
+
+              </div>
+
+              {/* Ações de Upgrade e Downgrade */}
+              <div className="p-6 bg-zinc-50 border border-zinc-200 space-y-4">
+                <h4 className="text-xs font-black text-[#003366] uppercase tracking-wider">Operações de Alteração de Plano (4 Planos Oficiais)</h4>
+                <div className="flex gap-4">
+                  <button onClick={() => setShowUpgradeModal(true)} className="flex-1 p-4 bg-[#003366] text-white font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 cursor-pointer shadow-sm hover:bg-[#002244] transition-colors">
+                    <ArrowUpCircle size={18} /> Solicitar Upgrade de Licença
+                  </button>
+                  <button onClick={() => setShowDowngradeModal(true)} className="flex-1 p-4 bg-amber-600 text-white font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 cursor-pointer shadow-sm hover:bg-amber-700 transition-colors">
+                    <ArrowDownCircle size={18} /> Solicitar Downgrade de Licença
+                  </button>
+                </div>
+              </div>
+
+              {/* Histórico Real de Alterações da Licença da Empresa */}
+              <div className="space-y-3 pt-2 border-t border-zinc-200">
+                <h4 className="text-xs font-black text-[#003366] uppercase tracking-wider flex items-center gap-2">
+                  <History size={16} className="text-[#003366]" />
+                  Histórico de Alterações de Licenciamento de {selectedCompany.nome_empresa}
+                </h4>
+                <div className="border border-zinc-200 overflow-hidden bg-white shadow-xs">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-zinc-50 border-b border-zinc-200 text-[10px] font-black uppercase text-zinc-500">
+                        <th className="p-3">Data / Hora</th>
+                        <th className="p-3">Ação Realizada</th>
+                        <th className="p-3">Descrição Detalhada</th>
+                        <th className="p-3">Responsável</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-100">
+                      {companyHistorico.map((h, i) => (
+                        <tr key={i} className="hover:bg-zinc-50">
+                          <td className="p-3 font-mono text-zinc-500">{new Date(h.created_at || Date.now()).toLocaleString('pt-AO')}</td>
+                          <td className="p-3">
+                            <span className="font-bold uppercase text-[#003366] bg-blue-50 px-2 py-0.5 rounded text-[10px]">
+                              {h.acao || 'Atualização'}
+                            </span>
+                          </td>
+                          <td className="p-3 text-zinc-700 font-medium">{h.descricao || '-'}</td>
+                          <td className="p-3 text-zinc-500 font-mono text-[11px]">{h.usuario || 'Sistema'}</td>
+                        </tr>
+                      ))}
+                      {companyHistorico.length === 0 && (
+                        <tr>
+                          <td colSpan={4} className="p-6 text-center text-zinc-400 italic">
+                            Nenhuma alteração contratual registada para esta empresa. O registo inicial encontra-se ativo.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+            </div>
+          );
+        })()}
         {/* SUB-ABA 3: COMPROVATIVOS DE PAGAMENTO DA EMPRESA */}
         {companySubTab === 'comprovativos' && (
           <div className="bg-white border border-zinc-200 p-6 space-y-6 animate-in fade-in duration-300">

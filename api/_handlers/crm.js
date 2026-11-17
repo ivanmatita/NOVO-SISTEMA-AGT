@@ -57,20 +57,49 @@ export default async function handler(req, res) {
         const rawLicenses = Array.isArray(licRes) ? licRes : [];
         const rawPerfis = Array.isArray(perfRes) ? perfRes : [];
 
+        const normalizeOfficialPlan = (raw) => {
+          if (!raw) return 'Profissional';
+          const s = String(raw).trim().toLowerCase();
+          if (s.includes('basic') || s.includes('básic') || s.includes('light') || s.includes('start')) return 'Básico';
+          if (s.includes('stand') || s.includes('soft') || s.includes('med')) return 'Standard';
+          if (s.includes('enter') || s.includes('plat') || s.includes('corp')) return 'Enterprise';
+          if (s.includes('prof') || s.includes('silv') || s.includes('gold') || s.includes('pro') || s.includes('avanc')) return 'Profissional';
+          return 'Profissional';
+        };
+
+        const PLAN_DEFAULT_PRICES = {
+          'Básico': 25000,
+          'Standard': 55000,
+          'Profissional': 65000,
+          'Enterprise': 150000
+        };
+
         const companies = rawCompanies.map(c => {
           const lic = rawLicenses.find(l => String(l.empresa_id) === String(c.id));
           const userCount = rawPerfis.filter(p => String(p.empresa_id) === String(c.id)).length;
+
+          const rawPlano = lic?.plano || lic?.tipo_licenca || c.plano;
+          const normPlan = normalizeOfficialPlan(rawPlano);
+          const precoContratado = Number(lic?.valor_licenca || c.valor_licenca || PLAN_DEFAULT_PRICES[normPlan] || 65000);
+          const trialInicio = c.trial_inicio || lic?.trial_inicio || lic?.data_inicio || c.created_at;
+          const trialFim = c.trial_fim || lic?.trial_fim || lic?.data_fim || c.data_expiracao_licenca;
 
           return {
             ...c,
             id: c.id,
             empresa_id: c.id,
             nome_empresa: c.nome_empresa || c.nome || c.razao_social || 'Empresa Sem Nome',
-            status_licenca: lic?.status_licenca || c.status_licenca || 'ativa',
-            plano: lic?.plano || c.plano || 'Profissional',
-            data_inicio: lic?.data_inicio || c.data_inicio || c.created_at,
-            data_fim: lic?.data_fim || c.data_fim || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-            duracao_dias: lic?.duracao_dias || c.duracao_dias || 30,
+            status_licenca: lic?.status_licenca || c.status_licenca || 'TRIAL',
+            plano: normPlan,
+            tipo_licenca: normPlan,
+            valor_licenca: precoContratado,
+            preco_contratado: precoContratado,
+            modalidade_pagamento: lic?.modalidade || c.periodicidade_pagamento || 'Mensal',
+            data_inicio: trialInicio,
+            data_fim: trialFim,
+            trial_inicio: trialInicio,
+            trial_fim: trialFim,
+            duracao_dias: lic?.duracao_dias || c.duracao_dias || 14,
             usuarios_count: userCount || 1
           };
         });

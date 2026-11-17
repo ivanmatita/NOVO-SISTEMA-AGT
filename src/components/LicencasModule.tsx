@@ -42,6 +42,17 @@ interface LicencasModuleProps {
   userProfile: any;
 }
 
+const normalizeOfficialPlan = (raw: string | null | undefined): string => {
+  if (!raw) return 'Profissional';
+  const s = String(raw).trim().toLowerCase();
+  if (s.includes('basic') || s.includes('básic') || s.includes('light') || s.includes('start')) return 'Básico';
+  if (s.includes('stand') || s.includes('soft') || s.includes('med')) return 'Standard';
+  if (s.includes('enter') || s.includes('plat') || s.includes('corp')) return 'Enterprise';
+  if (s.includes('prof') || s.includes('silv') || s.includes('gold') || s.includes('pro') || s.includes('avanc')) return 'Profissional';
+  if (s === 'trial') return 'Básico';
+  return 'Profissional';
+};
+
 export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfile }) => {
   const [activeTab, setActiveTab] = useState('list');
   const [licencas, setLicencas] = useState<any[]>([]);
@@ -803,10 +814,10 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
             className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"
           >
              {[
-               { name: 'Básico', price: 25000, users: 5, storage: '2GB', modules: ['Faturamento', 'Dashboard Base'], color: 'zinc' },
-               { name: 'Standard', price: 55000, users: 15, storage: '10GB', modules: ['Faturamento', 'RH Base', 'Stock Base'], color: 'blue' },
-               { name: 'Profissional', price: 65000, users: 50, storage: '50GB', modules: ['Todos os Módulos', 'Suporte 24/7', 'Backups Hora'], color: 'emerald', featured: true },
-               { name: 'Enterprise', price: 150000, users: 'Ilimitado', storage: '200GB', modules: ['Ecossistema Completo', 'API Access', 'Contas Custom'], color: 'indigo' }
+               { name: 'Básico', price: 25000, trimestral: 75000, anual: 270000, users: '5', storage: '2GB', modules: ['Faturação Comercial AGT & SAF-T', 'Clientes & Fornecedores', 'Dashboard Base', '14 Dias Grátis'], color: 'zinc' },
+               { name: 'Standard', price: 55000, trimestral: 165000, anual: 594000, users: '15', storage: '10GB', modules: ['Facturação AGT & SAF-T Completo', 'Gestão de Stocks & Inventários', 'Recursos Humanos & Salários', 'Tesouraria & Caixa'], color: 'blue' },
+               { name: 'Profissional', price: 65000, trimestral: 195000, anual: 702000, users: '50', storage: '50GB', modules: ['Todos os Módulos Base', 'Gestão Multi-Armazém e Stocks', 'Contabilidade e PGC Angola', 'Auditoria Fiscal AGT Avançada'], color: 'emerald', featured: true },
+               { name: 'Enterprise', price: 150000, trimestral: 450000, anual: 1620000, users: 'Ilimitado', storage: '200GB', modules: ['Facturação & Funcionários Ilimitados', 'Todos os 12 Módulos Base Incluídos', 'Integração API Dedicada', 'SLA Garantido'], color: 'indigo' }
              ].map((plan, i) => (
                <div key={i} className={`bg-white p-6 border ${plan.featured ? 'border-[#003366] ring-1 ring-[#003366] shadow-xl' : 'border-zinc-200'} flex flex-col relative`}>
                  {plan.featured && (
@@ -815,9 +826,16 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
                    </div>
                  )}
                  <h4 className="text-lg font-black text-zinc-900 uppercase tracking-tight mb-2">{plan.name}</h4>
-                 <div className="flex items-baseline gap-1 mb-6">
-                   <span className="text-2xl font-black text-[#003366]">{plan.price.toLocaleString()}</span>
-                   <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">AOA / Mês</span>
+                 <div className="mb-4 bg-zinc-50 p-3 rounded border border-zinc-100">
+                   <span className="text-[9px] font-bold text-zinc-400 uppercase block">Preço Mensal (Sem IVA)</span>
+                   <div className="flex items-baseline gap-1 my-0.5">
+                     <span className="text-2xl font-black text-[#003366]">{plan.price.toLocaleString()}</span>
+                     <span className="text-[10px] font-bold text-zinc-400 uppercase">AOA / Mês</span>
+                   </div>
+                   <div className="grid grid-cols-2 gap-1 text-[9px] text-zinc-500 pt-1.5 mt-1 border-t border-zinc-200">
+                     <div>Trim: <strong>{plan.trimestral.toLocaleString()} Kz</strong></div>
+                     <div>Anual: <strong>{plan.anual.toLocaleString()} Kz</strong></div>
+                   </div>
                  </div>
 
                  <div className="space-y-4 mb-8 flex-grow">
@@ -843,7 +861,7 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
                      plan.featured ? 'bg-[#003366] text-white shadow-lg hover:bg-[#002244]' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-800 hover:text-white'
                    }`}
                  >
-                   {myLicense.tipo_licenca === plan.name ? 'Plano Contratado' : 'Solicitar Upgrade'}
+                   {normalizeOfficialPlan(myLicense.tipo_licenca || myLicense.plano) === plan.name ? 'Plano Contratado' : 'Solicitar Alteração'}
                  </button>
                </div>
              ))}

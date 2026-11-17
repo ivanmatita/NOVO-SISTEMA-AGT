@@ -1419,39 +1419,47 @@ app.use((req, res, next) => {
       }
 
       // 1c. Tabela Comercial Oficial do Sistema & Validação de Preços no Servidor
-      const OFFICIAL_PLANS_MAP: Record<string, { name: string; basePrice: number; limiteFaturacao: string }> = {
-        'light': { name: 'Light', basePrice: 50000, limiteFaturacao: '10.000.000,00 AOA' },
-        'soft': { name: 'Soft', basePrice: 110000, limiteFaturacao: '30.000.000,00 AOA' },
-        'silver': { name: 'Silver', basePrice: 290000, limiteFaturacao: '100.000.000,00 AOA' },
-        'gold': { name: 'Gold', basePrice: 590000, limiteFaturacao: '200.000.000,00 AOA' },
-        'platine': { name: 'Platine', basePrice: 890000, limiteFaturacao: '350.000.000,00 AOA' },
-        'platinum': { name: 'Platine', basePrice: 890000, limiteFaturacao: '350.000.000,00 AOA' },
-        'corporate': { name: 'Corporative', basePrice: 1190000, limiteFaturacao: 'Ilimitado' },
-        'corporative': { name: 'Corporative', basePrice: 1190000, limiteFaturacao: 'Ilimitado' },
+      // Função de normalização rigorosa para os 4 planos oficiais
+      const normalizeOfficialPlan = (raw: string | null | undefined): 'Básico' | 'Standard' | 'Profissional' | 'Enterprise' => {
+        if (!raw) return 'Básico';
+        const s = String(raw).trim().toLowerCase();
+        if (s.includes('basic') || s.includes('básic') || s.includes('light') || s.includes('start')) return 'Básico';
+        if (s.includes('stand') || s.includes('soft') || s.includes('med')) return 'Standard';
+        if (s.includes('enter') || s.includes('plat') || s.includes('corp')) return 'Enterprise';
+        if (s.includes('prof') || s.includes('silv') || s.includes('gold') || s.includes('pro') || s.includes('avanc')) return 'Profissional';
+        return 'Básico';
       };
 
-      const selectedPlanKey = String(formData.plano || 'light').toLowerCase();
-      const planConfig = OFFICIAL_PLANS_MAP[selectedPlanKey] || OFFICIAL_PLANS_MAP['light'];
-      const planNameFormatted = planConfig.name;
+      // 4 Planos Oficiais do Sistema (Valores Sem IVA)
+      const OFFICIAL_PLANS_MAP: Record<string, { name: string; mensal: number; trimestral: number; anual: number; limiteFaturacao: string; limiteUsuarios: string }> = {
+        'basico': { name: 'Básico', mensal: 25000, trimestral: 75000, anual: 270000, limiteFaturacao: '10.000.000,00 AOA', limiteUsuarios: '5' },
+        'standard': { name: 'Standard', mensal: 55000, trimestral: 165000, anual: 594000, limiteFaturacao: '50.000.000,00 AOA', limiteUsuarios: '15' },
+        'profissional': { name: 'Profissional', mensal: 65000, trimestral: 195000, anual: 702000, limiteFaturacao: '200.000.000,00 AOA', limiteUsuarios: '50' },
+        'enterprise': { name: 'Enterprise', mensal: 150000, trimestral: 450000, anual: 1620000, limiteFaturacao: 'Ilimitado', limiteUsuarios: 'Ilimitado' },
+      };
+
+      const requestedPlanRaw = String(formData.plano || formData.pacote_licenca || 'basico');
+      const planNameFormatted = normalizeOfficialPlan(requestedPlanRaw);
+      const planKeyNorm = planNameFormatted.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      const planConfig = OFFICIAL_PLANS_MAP[planKeyNorm] || OFFICIAL_PLANS_MAP['basico'];
 
       const requestedModules: string[] = Array.isArray(formData.modulos_especiais) ? formData.modulos_especiais : [];
-      const periodicidadeLabel = formData.periodicidade_pagamento || 'Anual';
+      const periodicidadeLabel = formData.periodicidade_pagamento || 'Mensal';
 
-      // Cálculo oficial no servidor:
-      const basePlanBruto = planConfig.basePrice;
-      const baseModulosBruto = requestedModules.reduce((acc, modId) => {
+      // Cálculo oficial no servidor (Sem IVA):
+      let basePlanPrice = planConfig.mensal;
+      if (periodicidadeLabel.toLowerCase().includes('trimestral') || periodicidadeLabel.toLowerCase().includes('4 vezes') || periodicidadeLabel.toLowerCase().includes('2 vezes')) {
+        basePlanPrice = planConfig.trimestral;
+      } else if (periodicidadeLabel.toLowerCase().includes('anual') || periodicidadeLabel.toLowerCase().includes('12 vezes')) {
+        basePlanPrice = planConfig.anual;
+      }
+
+      const baseModulos = requestedModules.reduce((acc, modId) => {
         return acc + (modId === 'agencia_viagens' ? 12000 : 6000);
       }, 0);
-      const subtotalBruto = basePlanBruto + baseModulosBruto;
-      
-      let taxaDesconto = 0.40; // Anual padrão 40%
-      if (periodicidadeLabel.toLowerCase().includes('2 vezes')) taxaDesconto = 0.03;
-      else if (periodicidadeLabel.toLowerCase().includes('4 vezes')) taxaDesconto = 0.01;
-      else if (periodicidadeLabel.toLowerCase().includes('12 vezes') || periodicidadeLabel.toLowerCase().includes('mensal')) taxaDesconto = 0.00;
 
-      const valorDesconto = subtotalBruto * taxaDesconto;
-      const valorLiquido = subtotalBruto - valorDesconto;
-      const valorIva = 0; // SEM IVA / ISENTO DE INCIDÊNCIA DE IVA (Conforme regra comercial)
+      const valorLiquido = basePlanPrice + baseModulos;
+      const valorIva = 0; // SEM IVA / ISENTO
       const valorTotalContratado = valorLiquido;
 
       // Período oficial do Trial (14 dias de teste gratuito)
@@ -9129,17 +9137,49 @@ app.use((req, res, next) => {
       const { data: licenses } = await supabaseAdmin.from('licencas_empresas').select('*');
       const { data: profiles } = await supabaseAdmin.from('perfis').select('empresa_id');
 
+      const normalizeCRMPlan = (raw: string | null | undefined): 'Básico' | 'Standard' | 'Profissional' | 'Enterprise' => {
+        if (!raw) return 'Profissional';
+        const s = String(raw).trim().toLowerCase();
+        if (s.includes('basic') || s.includes('básic') || s.includes('light') || s.includes('start')) return 'Básico';
+        if (s.includes('stand') || s.includes('soft') || s.includes('med')) return 'Standard';
+        if (s.includes('enter') || s.includes('plat') || s.includes('corp')) return 'Enterprise';
+        if (s.includes('prof') || s.includes('silv') || s.includes('gold') || s.includes('pro') || s.includes('avanc')) return 'Profissional';
+        return 'Profissional';
+      };
+
+      const PLAN_DEFAULT_PRICES: Record<string, number> = {
+        'Básico': 25000,
+        'Standard': 55000,
+        'Profissional': 65000,
+        'Enterprise': 150000
+      };
+
       const combined = (companiesList || []).map(emp => {
         const lic = licenses?.find(l => String(l.empresa_id) === String(emp.id));
         const config = configEmpresas?.find(c => String(c.empresa_id) === String(emp.id));
         const companyUsers = profiles?.filter(p => String(p.empresa_id) === String(emp.id)).length || 0;
         
+        const rawPlano = lic?.plano || lic?.tipo_licenca || config?.plano || emp.plano;
+        const normPlan = normalizeCRMPlan(rawPlano);
+        const precoContratado = Number(lic?.valor_licenca || emp.valor_licenca || PLAN_DEFAULT_PRICES[normPlan] || 65000);
+
+        const trialInicio = emp.trial_inicio || lic?.trial_inicio || lic?.data_inicio || emp.created_at;
+        const trialFim = emp.trial_fim || lic?.trial_fim || lic?.data_fim || emp.data_expiracao_licenca;
+
         return {
           ...emp,
-          empresa_id: emp.id, // Ensure consistent ID field
-          status_licenca: lic?.status_licenca || config?.status_licenca || 'active',
-          data_fim: lic?.data_fim || config?.updated_at || emp.created_at,
-          plano: lic?.plano || config?.plano || 'Standard',
+          empresa_id: emp.id,
+          nome_empresa: emp.nome_empresa || emp.nome || 'Empresa Sem Nome',
+          status_licenca: lic?.status_licenca || emp.status_licenca || config?.status_licenca || 'TRIAL',
+          plano: normPlan,
+          tipo_licenca: normPlan,
+          valor_licenca: precoContratado,
+          preco_contratado: precoContratado,
+          modalidade_pagamento: lic?.modalidade || emp.periodicidade_pagamento || 'Mensal',
+          data_inicio: trialInicio,
+          data_fim: trialFim,
+          trial_inicio: trialInicio,
+          trial_fim: trialFim,
           usuarios_count: companyUsers
         };
       });
@@ -10423,6 +10463,126 @@ app.use((req, res, next) => {
     });
 
     res.json(data);
+  });
+
+  // --- Rotas Centrais de Planos de Licenciamento (Fonte Única Supabase) ---
+  app.get("/api/planos", async (req, res) => {
+    try {
+      if (supabaseAdmin) {
+        const { data, error } = await supabaseAdmin
+          .from('planos_sistema')
+          .select('*')
+          .order('preco_mensal', { ascending: true });
+        
+        if (!error && data && data.length > 0) {
+          return res.json(data);
+        }
+      }
+      // Fallback para os 4 planos oficiais padrão
+      return res.json([
+        {
+          id: 'basico',
+          codigo: 'BASICO',
+          nome: 'Básico',
+          descricao: 'Ideal para pequenas empresas, prestadores de serviços e negócios em início de atividade.',
+          preco_mensal: 25000,
+          preco_trimestral: 75000,
+          preco_anual: 270000,
+          ativo: true,
+          destaque: false,
+          limite_usuarios: '5',
+          limite_faturacao: '10.000.000,00',
+          limite_armazenamento: '2GB',
+          modulos: ['Facturação Comercial AGT & SAF-T', 'Clientes & Fornecedores', 'Dashboard Base', '14 Dias de Teste Gratuito'],
+          funcionalidades: ['Até 5 Utilizadores', 'Faturação AGT & SAF-T', 'Gestão de Clientes e Fornecedores', 'Suporte Base']
+        },
+        {
+          id: 'standard',
+          codigo: 'STANDARD',
+          nome: 'Standard',
+          descricao: 'Equilíbrio ideal para empresas em expansão que necessitam de controlo comercial e recursos humanos.',
+          preco_mensal: 55000,
+          preco_trimestral: 165000,
+          preco_anual: 594000,
+          ativo: true,
+          destaque: false,
+          tag_destaque: 'EQUILÍBRIO',
+          limite_usuarios: '15',
+          limite_faturacao: '50.000.000,00',
+          limite_armazenamento: '10GB',
+          modulos: ['Facturação AGT & SAF-T Completo', 'Gestão de Stocks & Inventários', 'Recursos Humanos & Salários', 'Tesouraria & Caixa'],
+          funcionalidades: ['Até 15 Utilizadores', 'Gestão de Stocks e Armazéns', 'Recursos Humanos e Salários', 'Controlo de Caixa e Bancos']
+        },
+        {
+          id: 'profissional',
+          codigo: 'PROFISSIONAL',
+          nome: 'Profissional',
+          descricao: 'Potência total para médias e grandes empresas com múltiplos departamentos e requisitos avançados da AGT.',
+          preco_mensal: 65000,
+          preco_trimestral: 195000,
+          preco_anual: 702000,
+          ativo: true,
+          destaque: true,
+          tag_destaque: 'MAIS POPULAR',
+          limite_usuarios: '50',
+          limite_faturacao: '200.000.000,00',
+          limite_armazenamento: '50GB',
+          modulos: ['Todos os Módulos Base', 'Gestão Multi-Armazém e Stocks', 'Contabilidade e PGC Angola', 'Gestão Financeira e Tesouraria', 'Recursos Humanos Avançado'],
+          funcionalidades: ['Até 50 Utilizadores', 'Gestão Multi-Armazém', 'Contabilidade e PGC Angola', 'Auditoria Fiscal AGT Avançada', 'Suporte Prioritário 24/7']
+        },
+        {
+          id: 'enterprise',
+          codigo: 'ENTERPRISE',
+          nome: 'Enterprise',
+          descricao: 'A solução definitiva para grandes corporações, grupos empresariais e operações com alto volume de dados.',
+          preco_mensal: 150000,
+          preco_trimestral: 450000,
+          preco_anual: 1620000,
+          ativo: true,
+          destaque: false,
+          tag_destaque: 'RECOMENDADO',
+          limite_usuarios: 'Ilimitado',
+          limite_faturacao: 'Ilimitado',
+          limite_armazenamento: '200GB',
+          modulos: ['Facturação & Funcionários Ilimitados', 'Todos os 12 Módulos Base Incluídos', 'Acesso Multi-Utilizador Ilimitado', 'Integração API Dedicada', 'SLA Garantido'],
+          funcionalidades: ['Utilizadores Ilimitados', 'Faturação Sem Limites', 'Ecossistema Completo ERP', 'Acesso Dedicado a APIs', 'SLA e Suporte Exclusivo']
+        }
+      ]);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.put("/api/planos/:id", async (req, res) => {
+    try {
+      const isMaster = await isSuperAdmin(req);
+      if (!isMaster) return res.status(403).json({ error: "Apenas administradores podem atualizar planos." });
+      if (!supabaseAdmin) return res.status(500).json({ error: "Supabase Admin não disponível" });
+
+      const planId = req.params.id;
+      const { preco_mensal, preco_trimestral, preco_anual, ativo, descricao, modulos, funcionalidades } = req.body;
+
+      const updateData: any = { updated_at: new Date().toISOString() };
+      if (preco_mensal !== undefined) updateData.preco_mensal = Number(preco_mensal);
+      if (preco_trimestral !== undefined) updateData.preco_trimestral = Number(preco_trimestral);
+      if (preco_anual !== undefined) updateData.preco_anual = Number(preco_anual);
+      if (ativo !== undefined) updateData.ativo = Boolean(ativo);
+      if (descricao !== undefined) updateData.descricao = descricao;
+      if (modulos !== undefined) updateData.modulos = modulos;
+      if (funcionalidades !== undefined) updateData.funcionalidades = funcionalidades;
+
+      const { data, error } = await supabaseAdmin
+        .from('planos_sistema')
+        .update(updateData)
+        .eq('id', planId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   app.get("/api/receipts", (req, res) => res.json(receipts));

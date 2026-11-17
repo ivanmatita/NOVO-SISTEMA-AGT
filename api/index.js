@@ -109,8 +109,8 @@ export default async function handler(req, res) {
     return systemUsersHandler(req, res);
   }
 
-  // 11. Licenças SaaS
-  if (pathname.startsWith('/api/licencas') || pathname === '/api/licencas') {
+  // 11. Licenças SaaS e Planos Centrais
+  if (pathname.startsWith('/api/licencas') || pathname === '/api/licencas' || pathname.startsWith('/api/planos') || pathname === '/api/planos') {
     return licencasHandler(req, res);
   }
 

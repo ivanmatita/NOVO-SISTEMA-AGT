@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { ArrowRight, Check, ShieldCheck, Sparkles, Building2, HelpCircle } from 'lucide-react';
 
 export interface LicensePlan {
@@ -6,10 +6,13 @@ export interface LicensePlan {
   name: string;
   faturacao: string;
   funcionarios: string;
-  basePriceAnual: number; // Preço base bruto sem desconto (com redução de 10.000 Kz)
-  anuidadeExibida: string; // Valor final anual com desconto 40% e IVA 14%
-  precoMensal: string; // Valor mensal
-  precoTrimestral: string; // Valor trimestral (em 2 ou 4 parcelas)
+  basePriceAnual: number; // Preço base anual sem IVA
+  anuidadeExibida: string; // Valor anual formatado sem IVA
+  precoMensal: string; // Valor mensal formatado sem IVA
+  precoTrimestral: string; // Valor trimestral formatado sem IVA
+  precoMensalNum: number;
+  precoTrimestralNum: number;
+  precoAnualNum: number;
   desc: string;
   features: string[];
   isPopular?: boolean;
@@ -18,105 +21,105 @@ export interface LicensePlan {
 export interface SpecialModule {
   id: string;
   name: string;
-  basePriceAnual: number; // Preço base bruto
-  anuidadeExibida: string; // Valor final anual exibido na tabela
+  basePriceAnual: number;
+  anuidadeExibida: string;
 }
 
 export interface PaymentOption {
   id: string;
   label: string;
-  discountRate: number; // 0.40 para 40%, 0.03 para 3%, etc.
-  installments: number; // 1, 2, 4, 12
+  discountRate: number;
+  installments: number;
 }
 
-// Planos Oficiais Únicos do Sistema:
-// - Apenas a licença Light tem 10 funcionários; todas as restantes têm funcionários Ilimitados
-// - Preço Base Anual Bruto reduzido em 10.000 Kz em cada licença
-// - Fonte única que alimenta tanto a página de Licenciamento quanto os Pacotes Rápidos
-export const LICENSE_PLANS: LicensePlan[] = [
+// 4 ÚNICOS PLANOS OFICIAIS DO IMATEC ERP
+// Fonte única unificada entre Login, Pacotes Rápidos, CRM e Gestão de Licenciamento
+export const DEFAULT_LICENSE_PLANS: LicensePlan[] = [
   { 
-    id: 'light', 
-    name: 'Light', 
+    id: 'basico', 
+    name: 'Básico', 
     faturacao: '10.000.000,00', 
-    funcionarios: '10', 
-    basePriceAnual: 50000, 
-    anuidadeExibida: '30.000,00',
-    precoMensal: '5.000,00',
-    precoTrimestral: '14.500,00',
-    desc: 'Ideal para pequenos negócios, startups e profissionais liberais.',
-    features: ['Até 10 Funcionários', 'Facturação Comercial AGT & SAF-T', 'Gestão de Clientes e Fornecedores', '14 Dias de Teste Gratuito']
+    funcionarios: '5', 
+    basePriceAnual: 300000, 
+    anuidadeExibida: '270.000,00',
+    precoMensal: '25.000,00',
+    precoTrimestral: '75.000,00',
+    precoMensalNum: 25000,
+    precoTrimestralNum: 75000,
+    precoAnualNum: 270000,
+    desc: 'Ideal para pequenas empresas, prestadores de serviços e negócios em início de atividade.',
+    features: ['Até 5 Utilizadores', 'Facturação Comercial AGT & SAF-T', 'Gestão de Clientes e Fornecedores', '14 Dias de Teste Gratuito']
   },
   { 
-    id: 'soft', 
-    name: 'Soft', 
-    faturacao: '30.000.000,00', 
-    funcionarios: 'Ilimitado', 
-    basePriceAnual: 110000, 
-    anuidadeExibida: '66.000,00',
-    precoMensal: '11.000,00',
-    precoTrimestral: '31.900,00',
-    desc: 'Equilíbrio ideal para empresas em fase de expansão no mercado angolano.',
-    features: ['Funcionários Ilimitados', 'Facturação AGT & SAF-T Completo', 'Gestão de Stocks & Inventários', 'Recursos Humanos & Salários'],
+    id: 'standard', 
+    name: 'Standard', 
+    faturacao: '50.000.000,00', 
+    funcionarios: '15', 
+    basePriceAnual: 660000, 
+    anuidadeExibida: '594.000,00',
+    precoMensal: '55.000,00',
+    precoTrimestral: '165.000,00',
+    precoMensalNum: 55000,
+    precoTrimestralNum: 165000,
+    precoAnualNum: 594000,
+    desc: 'Equilíbrio ideal para empresas em expansão que necessitam de controlo comercial e recursos humanos.',
+    features: ['Até 15 Utilizadores', 'Facturação AGT & SAF-T Completo', 'Gestão de Stocks & Inventários', 'Recursos Humanos & Salários']
+  },
+  { 
+    id: 'profissional', 
+    name: 'Profissional', 
+    faturacao: '200.000.000,00', 
+    funcionarios: '50', 
+    basePriceAnual: 780000, 
+    anuidadeExibida: '702.000,00',
+    precoMensal: '65.000,00',
+    precoTrimestral: '195.000,00',
+    precoMensalNum: 65000,
+    precoTrimestralNum: 195000,
+    precoAnualNum: 702000,
+    desc: 'Potência total para médias e grandes empresas com múltiplos departamentos e requisitos avançados da AGT.',
+    features: ['Até 50 Utilizadores', 'Todos os Módulos Base', 'Gestão Multi-Armazém e Stocks', 'Contabilidade e PGC Angola', 'Auditoria Fiscal AGT Avançada'],
     isPopular: true
   },
   { 
-    id: 'silver', 
-    name: 'Silver', 
-    faturacao: '100.000.000,00', 
-    funcionarios: 'Ilimitado', 
-    basePriceAnual: 290000, 
-    anuidadeExibida: '174.000,00',
-    precoMensal: '29.000,00',
-    precoTrimestral: '84.100,00',
-    desc: 'Controlo financeiro rigoroso e gestão multi-armazém para médias empresas.',
-    features: ['Funcionários Ilimitados', 'Gestão Multi-Armazém e Stocks', 'Contabilidade e PGC Angola', 'Gestão Financeira e Tesouraria']
-  },
-  { 
-    id: 'gold', 
-    name: 'Gold', 
-    faturacao: '200.000.000,00', 
-    funcionarios: 'Ilimitado', 
-    basePriceAnual: 590000, 
-    anuidadeExibida: '354.000,00',
-    precoMensal: '59.000,00',
-    precoTrimestral: '171.100,00',
-    desc: 'Potência máxima e conformidade fiscal robusta para empresas consolidadas.',
-    features: ['Funcionários Ilimitados', 'Todas as Funcionalidades Base', 'Gestão de Frotas & Viaturas', 'Auditoria Fiscal AGT Avançada']
-  },
-  { 
-    id: 'platine', 
-    name: 'Platine', 
-    faturacao: '350.000.000,00', 
-    funcionarios: 'Ilimitado', 
-    basePriceAnual: 890000, 
-    anuidadeExibida: '534.000,00',
-    precoMensal: '89.000,00',
-    precoTrimestral: '258.100,00',
-    desc: 'Solução completa para médias e grandes operações empresariais.',
-    features: ['Funcionários Ilimitados', 'Ecossistema ERP Completo', 'Acesso Multi-Utilizador', 'Suporte Prioritário Especializado']
-  },
-  { 
-    id: 'corporative', 
-    name: 'Corporative', 
+    id: 'enterprise', 
+    name: 'Enterprise', 
     faturacao: 'Ilimitado', 
     funcionarios: 'Ilimitado', 
-    basePriceAnual: 1190000, 
-    anuidadeExibida: '714.000,00',
-    precoMensal: '119.000,00',
-    precoTrimestral: '345.100,00',
-    desc: 'A solução definitiva sem limites de faturação para grandes corporações.',
-    features: ['Facturação & Funcionários Ilimitados', 'Todos os 12 Módulos Base Incluídos', 'Relatórios Fiscais & SAF-T Ilimitados', 'SLA de Atendimento Garantido']
+    basePriceAnual: 1800000, 
+    anuidadeExibida: '1.620.000,00',
+    precoMensal: '150.000,00',
+    precoTrimestral: '450.000,00',
+    precoMensalNum: 150000,
+    precoTrimestralNum: 450000,
+    precoAnualNum: 1620000,
+    desc: 'A solução definitiva para grandes corporações, grupos empresariais e operações com alto volume de dados.',
+    features: ['Utilizadores Ilimitados', 'Facturação & Funcionários Ilimitados', 'Todos os 12 Módulos Base Incluídos', 'Integração API Dedicada', 'SLA de Atendimento Garantido']
   },
 ];
 
+export const LICENSE_PLANS = DEFAULT_LICENSE_PLANS;
+
+// Mapeamento de compatibilidade para registos antigos sem quebrar dados existentes
+export function normalizePlanName(raw: string | null | undefined): 'Básico' | 'Standard' | 'Profissional' | 'Enterprise' {
+  if (!raw) return 'Profissional';
+  const s = String(raw).trim().toLowerCase();
+  if (s.includes('basic') || s.includes('básic') || s.includes('light') || s.includes('start')) return 'Básico';
+  if (s.includes('stand') || s.includes('soft') || s.includes('med')) return 'Standard';
+  if (s.includes('enter') || s.includes('plat') || s.includes('corp')) return 'Enterprise';
+  if (s.includes('prof') || s.includes('silv') || s.includes('gold') || s.includes('pro') || s.includes('avanc')) return 'Profissional';
+  if (s === 'trial') return 'Básico';
+  return 'Profissional';
+}
+
 export const SPECIAL_MODULES: SpecialModule[] = [
-  { id: 'seguranca_privada', name: 'Modulo Segurança Privada', basePriceAnual: 6000, anuidadeExibida: '3.600,00' },
-  { id: 'eventos', name: 'Modulo Eventos', basePriceAnual: 6000, anuidadeExibida: '3.600,00' },
-  { id: 'orcamentos', name: 'Modulo Orçamentos', basePriceAnual: 6000, anuidadeExibida: '3.600,00' },
-  { id: 'pos', name: 'POS (Posto vendas)', basePriceAnual: 6000, anuidadeExibida: '3.600,00' },
-  { id: 'transitarios', name: 'Modulo Transitarios e Navegação', basePriceAnual: 6000, anuidadeExibida: '3.600,00' },
-  { id: 'agencia_viagens', name: 'Modulo Agencia de Viagens', basePriceAnual: 12000, anuidadeExibida: '7.200,00' },
-  { id: 'mini_site', name: 'Mini Site', basePriceAnual: 6000, anuidadeExibida: '3.600,00' },
+  { id: 'seguranca_privada', name: 'Módulo Segurança Privada', basePriceAnual: 6000, anuidadeExibida: '3.600,00' },
+  { id: 'eventos', name: 'Módulo Eventos', basePriceAnual: 6000, anuidadeExibida: '3.600,00' },
+  { id: 'orcamentos', name: 'Módulo Orçamentos', basePriceAnual: 6000, anuidadeExibida: '3.600,00' },
+  { id: 'pos', name: 'POS (Posto de Vendas)', basePriceAnual: 6000, anuidadeExibida: '3.600,00' },
+  { id: 'transitarios', name: 'Módulo Transitários e Navegação', basePriceAnual: 6000, anuidadeExibida: '3.600,00' },
+  { id: 'agencia_viagens', name: 'Módulo Agência de Viagens', basePriceAnual: 12000, anuidadeExibida: '7.200,00' },
+  { id: 'mini_site', name: 'Mini Site Comercial', basePriceAnual: 6000, anuidadeExibida: '3.600,00' },
   { id: 'stand_automovel', name: 'Stand Automóvel', basePriceAnual: 6000, anuidadeExibida: '3.600,00' },
   { id: 'gestao_igreja', name: 'Gestão de Igreja', basePriceAnual: 6000, anuidadeExibida: '3.600,00' },
   { id: 'agronegocio', name: 'Agronegócio', basePriceAnual: 6000, anuidadeExibida: '3.600,00' },
@@ -124,25 +127,24 @@ export const SPECIAL_MODULES: SpecialModule[] = [
 ];
 
 export const PAYMENT_OPTIONS: PaymentOption[] = [
-  { id: 'anual', label: 'Pagamento Anual [ 40% Desconto ]', discountRate: 0.40, installments: 1 },
-  { id: '2_vezes', label: 'Pagamento em 2 vezes [ 3% Desconto ]', discountRate: 0.03, installments: 2 },
-  { id: '4_vezes', label: 'Pagamento em 4 vezes [ 1% Desconto ]', discountRate: 0.01, installments: 4 },
-  { id: '12_vezes', label: 'Pagamento em 12 vezes', discountRate: 0.00, installments: 12 },
+  { id: 'mensal', label: 'Pagamento Mensal', discountRate: 0.00, installments: 1 },
+  { id: 'trimestral', label: 'Pagamento Trimestral', discountRate: 0.00, installments: 3 },
+  { id: 'anual', label: 'Pagamento Anual [ 10% Desconto ]', discountRate: 0.10, installments: 12 },
 ];
 
 export const BASE_MODULES_LIST: string[] = [
-  'Modulo de Configuração',
-  'Modulo de Administração',
-  'Modulo Facturação/Clientes',
-  'Modulo de Fornecedores',
-  'Modulo de Contabilidade',
-  'Modulo de Gestão Financeira',
-  'Modulo de Recursos Humanos',
-  'Modulo de Secretaria',
-  'Modulo de Tesouraria',
-  'Modulo de Stock',
-  'Modulo de Gestão de Viaturas',
-  'Modulo de Salários e INSS',
+  'Módulo de Configuração',
+  'Módulo de Administração',
+  'Módulo Facturação/Clientes',
+  'Módulo de Fornecedores',
+  'Módulo de Contabilidade',
+  'Módulo de Gestão Financeira',
+  'Módulo de Recursos Humanos',
+  'Módulo de Secretaria',
+  'Módulo de Tesouraria',
+  'Módulo de Stock & Armazéns',
+  'Módulo de Gestão de Viaturas',
+  'Módulo de Salários e INSS',
 ];
 
 interface LicensingPricingCalculatorProps {
@@ -165,13 +167,51 @@ export const LicensingPricingCalculator: React.FC<LicensingPricingCalculatorProp
   onProceedToRegister,
   compact = false
 }) => {
-  const [selectedPlanId, setSelectedPlanId] = useState<string>('light');
+  const [plans, setPlans] = useState<LicensePlan[]>(DEFAULT_LICENSE_PLANS);
+  const [selectedPlanId, setSelectedPlanId] = useState<string>('profissional');
   const [selectedModules, setSelectedModules] = useState<string[]>([]);
-  const [selectedPaymentId, setSelectedPaymentId] = useState<string>('anual');
+  const [selectedPaymentId, setSelectedPaymentId] = useState<string>('mensal');
+
+  // Buscar planos atualizados da base de dados Supabase via API
+  useEffect(() => {
+    let isMounted = true;
+    fetch('/api/planos')
+      .then(res => {
+        if (!res.ok) throw new Error('Falha ao carregar planos');
+        return res.json();
+      })
+      .then(data => {
+        if (isMounted && Array.isArray(data) && data.length > 0) {
+          const mapped: LicensePlan[] = data.map((p: any) => ({
+            id: p.id || p.codigo?.toLowerCase() || 'profissional',
+            name: p.nome || 'Profissional',
+            faturacao: p.limite_faturacao || 'Ilimitado',
+            funcionarios: p.limite_usuarios || 'Ilimitado',
+            basePriceAnual: Number(p.preco_anual) || 702000,
+            anuidadeExibida: Number(p.preco_anual || 0).toLocaleString('pt-AO', { minimumFractionDigits: 2 }),
+            precoMensal: Number(p.preco_mensal || 0).toLocaleString('pt-AO', { minimumFractionDigits: 2 }),
+            precoTrimestral: Number(p.preco_trimestral || 0).toLocaleString('pt-AO', { minimumFractionDigits: 2 }),
+            precoMensalNum: Number(p.preco_mensal) || 0,
+            precoTrimestralNum: Number(p.preco_trimestral) || 0,
+            precoAnualNum: Number(p.preco_anual) || 0,
+            desc: p.descricao || '',
+            features: Array.isArray(p.funcionalidades) ? p.funcionalidades : (Array.isArray(p.modulos) ? p.modulos : []),
+            isPopular: p.destaque ?? false
+          }));
+          setPlans(mapped);
+        }
+      })
+      .catch(() => {
+        // Fallback robusto para os 4 planos oficiais padrão
+        if (isMounted) setPlans(DEFAULT_LICENSE_PLANS);
+      });
+
+    return () => { isMounted = false; };
+  }, []);
 
   const selectedPlan = useMemo(() => {
-    return LICENSE_PLANS.find(p => p.id === selectedPlanId) || LICENSE_PLANS[0];
-  }, [selectedPlanId]);
+    return plans.find(p => p.id === selectedPlanId) || plans.find(p => p.id === 'profissional') || plans[0];
+  }, [plans, selectedPlanId]);
 
   const selectedPayment = useMemo(() => {
     return PAYMENT_OPTIONS.find(p => p.id === selectedPaymentId) || PAYMENT_OPTIONS[0];
@@ -185,33 +225,40 @@ export const LicensingPricingCalculator: React.FC<LicensingPricingCalculatorProp
     );
   };
 
-  // Cálculos financeiros com precisão
+  // Cálculos financeiros com precisão SEM IVA
   const calculations = useMemo(() => {
-    // 1. Preço base da licença
-    const baseLicenca = selectedPlan.basePriceAnual;
+    // 1. Determina preço da licença base consoante a modalidade de pagamento selecionada
+    let baseLicenca = selectedPlan.precoMensalNum;
+    if (selectedPayment.id === 'trimestral') {
+      baseLicenca = selectedPlan.precoTrimestralNum;
+    } else if (selectedPayment.id === 'anual') {
+      baseLicenca = selectedPlan.precoAnualNum;
+    }
 
-    // 2. Preço base dos módulos especiais selecionados
+    // 2. Preço dos módulos especiais (proporcional à modalidade)
     const baseModulos = selectedModules.reduce((acc, modId) => {
       const mod = SPECIAL_MODULES.find(m => m.id === modId);
-      return acc + (mod ? mod.basePriceAnual : 0);
+      const anualPrice = mod ? mod.basePriceAnual : 0;
+      if (selectedPayment.id === 'mensal') return acc + Math.round(anualPrice / 12);
+      if (selectedPayment.id === 'trimestral') return acc + Math.round(anualPrice / 4);
+      return acc + anualPrice;
     }, 0);
 
     const totalBaseBruto = baseLicenca + baseModulos;
 
     // 3. Desconto de periodicidade
-    const discountRate = selectedPayment.discountRate;
-    const valorDesconto = totalBaseBruto * discountRate;
+    const valorDesconto = 0; // Já embutido nos preços oficiais da base de dados
 
     // 4. Total Líquido
-    const totalLiquido = totalBaseBruto - valorDesconto;
+    const totalLiquido = totalBaseBruto;
 
-    // 5. IVA (Isento / Sem incidência de IVA conforme regra comercial)
+    // 5. IVA: RIGOROSAMENTE SEM IVA (0,00 AOA)
     const iva14 = 0;
 
-    // 6. Total a Pagar (Sem IVA)
+    // 6. Total a Pagar
     const totalAPagar = totalLiquido;
 
-    // 7. Valor por Prestação
+    // 7. Prestações
     const installments = selectedPayment.installments;
     const valorPorPrestacao = totalAPagar / installments;
 
@@ -220,7 +267,7 @@ export const LicensingPricingCalculator: React.FC<LicensingPricingCalculatorProp
       baseModulos,
       totalBaseBruto,
       valorDesconto,
-      discountPercent: Math.round(discountRate * 100),
+      discountPercent: selectedPayment.id === 'anual' ? 10 : 0,
       totalLiquido,
       iva14,
       totalAPagar,
@@ -260,29 +307,29 @@ export const LicensingPricingCalculator: React.FC<LicensingPricingCalculatorProp
             Seleccione a Licença Pretendida
           </h2>
           <p className="text-xs sm:text-sm text-zinc-500 font-medium mt-1">
-            Escolha o pacote ideal para a sua empresa. Apenas o plano Light é limitado a 10 colaboradores; todos os restantes possuem colaboradores ilimitados.
+            Escolha o pacote ideal para a sua empresa entre os 4 planos comerciais oficiais: Básico, Standard, Profissional e Enterprise.
           </p>
         </div>
         <div className="flex items-center gap-3 shrink-0">
-          <div className="bg-[#0066cc] text-white px-3.5 py-1 rounded-full text-xs font-black uppercase tracking-wider shadow-sm">
-            AOA
+          <div className="bg-[#003366] text-white px-3.5 py-1 rounded-full text-xs font-black uppercase tracking-wider shadow-sm">
+            AOA (Kz)
           </div>
-          <div className="text-[11px] font-bold text-zinc-600 uppercase tracking-widest bg-zinc-100 px-3 py-1 rounded-md border border-zinc-200">
-            Sem Incidência de IVA (Isento)
+          <div className="text-[11px] font-bold text-emerald-700 uppercase tracking-widest bg-emerald-50 px-3 py-1 rounded-md border border-emerald-200">
+            Valores Sem IVA
           </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         
-        {/* COLUNA DA ESQUERDA: Seleção de Licença, Módulos e Pagamento (7 colunas) */}
+        {/* COLUNA DA ESQUERDA: Seleção de Licença, Modalidade e Módulos */}
         <div className="lg:col-span-7 space-y-8">
           
-          {/* Tabela de Licenças */}
+          {/* Tabela dos 4 Planos Oficiais */}
           <div>
             <div className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider flex justify-between mb-1.5 px-2">
-              <span>Limites Máximos Anuais</span>
-              <span>Valores em AOA</span>
+              <span>Planos Oficiais do Sistema</span>
+              <span>Preço Conforme Modalidade</span>
             </div>
             <div className="overflow-x-auto border border-zinc-200 rounded-lg">
               <table className="w-full text-left border-collapse text-xs">
@@ -290,13 +337,19 @@ export const LicensingPricingCalculator: React.FC<LicensingPricingCalculatorProp
                   <tr className="bg-zinc-100 text-zinc-700 border-b border-zinc-200">
                     <th className="py-2.5 px-3 font-bold">Licença</th>
                     <th className="py-2.5 px-3 font-bold text-right">Facturação</th>
-                    <th className="py-2.5 px-3 font-bold text-center">Funcionários</th>
-                    <th className="py-2.5 px-3 font-bold text-right">Anuidade</th>
+                    <th className="py-2.5 px-3 font-bold text-center">Utilizadores</th>
+                    <th className="py-2.5 px-3 font-bold text-right">
+                      {selectedPayment.id === 'mensal' ? 'Preço Mensal' : selectedPayment.id === 'trimestral' ? 'Preço Trimestral' : 'Preço Anual'}
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
-                  {LICENSE_PLANS.map((plan) => {
+                  {plans.map((plan) => {
                     const isSelected = selectedPlanId === plan.id;
+                    const priceToShow = selectedPayment.id === 'mensal' 
+                      ? plan.precoMensal 
+                      : (selectedPayment.id === 'trimestral' ? plan.precoTrimestral : plan.anuidadeExibida);
+
                     return (
                       <tr 
                         key={plan.id}
@@ -316,9 +369,14 @@ export const LicensingPricingCalculator: React.FC<LicensingPricingCalculatorProp
                             className="w-4 h-4 text-blue-600 focus:ring-blue-500 cursor-pointer"
                           />
                           <span className="font-bold text-sm text-[#003366]">{plan.name}</span>
+                          {plan.isPopular && (
+                            <span className="text-[9px] font-black uppercase bg-[#003366] text-white px-2 py-0.5 rounded">
+                              Recomendado
+                            </span>
+                          )}
                         </td>
                         <td className="py-2.5 px-3 text-right whitespace-nowrap text-zinc-600">
-                          {plan.faturacao}
+                          {plan.faturacao} AOA
                         </td>
                         <td className="py-2.5 px-3 text-center whitespace-nowrap font-medium">
                           {plan.funcionarios === 'Ilimitado' ? (
@@ -331,8 +389,8 @@ export const LicensingPricingCalculator: React.FC<LicensingPricingCalculatorProp
                             </span>
                           )}
                         </td>
-                        <td className="py-2.5 px-3 text-right font-bold whitespace-nowrap text-zinc-800">
-                          {plan.anuidadeExibida}
+                        <td className="py-2.5 px-3 text-right font-black whitespace-nowrap text-[#003366]">
+                          {priceToShow} AOA
                         </td>
                       </tr>
                     );
@@ -341,14 +399,59 @@ export const LicensingPricingCalculator: React.FC<LicensingPricingCalculatorProp
               </table>
             </div>
             <p className="text-[10px] text-zinc-400 font-medium mt-1 text-right italic">
-              * Valores de anuidade incluem 40% de desconto e 14% de IVA.
+              * Valores comerciais sem IVA. Dados obtidos da base de dados central IMATEC.
             </p>
           </div>
 
-          {/* Sub-secção: Seleccione Modulos Especiais */}
+          {/* Sub-secção: Modalidades de Pagamento (Mensal, Trimestral, Anual) */}
+          <div className="pt-2 border-t border-zinc-200">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-black text-zinc-800 uppercase tracking-wider">
+                Modalidade de Pagamento
+              </h3>
+              <span className="text-[10px] text-zinc-400 font-bold">
+                Selecione o ciclo de faturação
+              </span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+              {PAYMENT_OPTIONS.map((opt) => {
+                const isSelected = selectedPaymentId === opt.id;
+                let valorExemplo = selectedPlan.precoMensal;
+                if (opt.id === 'trimestral') valorExemplo = selectedPlan.precoTrimestral;
+                if (opt.id === 'anual') valorExemplo = selectedPlan.anuidadeExibida;
+
+                return (
+                  <label 
+                    key={opt.id}
+                    className={`flex flex-col p-3 rounded-lg cursor-pointer border transition-all ${
+                      isSelected 
+                        ? 'border-[#003366] bg-blue-50/60 shadow-sm' 
+                        : 'border-zinc-200 hover:bg-zinc-50 bg-white text-zinc-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <input 
+                        type="radio" 
+                        name="payment_option"
+                        checked={isSelected}
+                        onChange={() => setSelectedPaymentId(opt.id)}
+                        className="w-4 h-4 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                      />
+                      <span className="font-black text-[#003366] text-xs uppercase">{opt.label}</span>
+                    </div>
+                    <span className="text-[11px] font-bold text-zinc-800 mt-1 pl-6">
+                      {valorExemplo} AOA
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Sub-secção: Módulos Especiais */}
           <div className="pt-2 border-t border-zinc-200">
             <h3 className="text-sm font-black text-zinc-800 uppercase tracking-wider mb-4 flex items-center gap-2">
-              Seleccione Modulos Especiais
+              Módulos Especiais Opcionais
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
               {SPECIAL_MODULES.map((mod) => {
@@ -374,39 +477,8 @@ export const LicensingPricingCalculator: React.FC<LicensingPricingCalculatorProp
                       </span>
                     </div>
                     <span className="font-bold text-zinc-800 text-[11px] ml-2 shrink-0">
-                      {mod.anuidadeExibida}
+                      {mod.anuidadeExibida} AOA
                     </span>
-                  </label>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Sub-secção: Pagamento */}
-          <div className="pt-2 border-t border-zinc-200">
-            <h3 className="text-base font-black text-zinc-800 mb-4">
-              Pagamento
-            </h3>
-            <div className="space-y-2.5 text-xs">
-              {PAYMENT_OPTIONS.map((opt) => {
-                const isSelected = selectedPaymentId === opt.id;
-                return (
-                  <label 
-                    key={opt.id}
-                    className={`flex items-center gap-3 p-2.5 rounded-lg cursor-pointer border transition-all ${
-                      isSelected 
-                        ? 'border-blue-500 bg-blue-50/60 font-bold text-blue-900 shadow-sm' 
-                        : 'border-zinc-100 hover:bg-zinc-50 text-zinc-700'
-                    }`}
-                  >
-                    <input 
-                      type="radio" 
-                      name="payment_option"
-                      checked={isSelected}
-                      onChange={() => setSelectedPaymentId(opt.id)}
-                      className="w-4 h-4 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                    />
-                    <span>{opt.label}</span>
                   </label>
                 );
               })}
@@ -415,17 +487,17 @@ export const LicensingPricingCalculator: React.FC<LicensingPricingCalculatorProp
 
         </div>
 
-        {/* COLUNA DA DIREITA: Resultado e Módulos Incluídos (5 colunas) */}
+        {/* COLUNA DA DIREITA: Resultado e Módulos Incluídos */}
         <div className="lg:col-span-5 space-y-6">
           
           {/* Caixa de Resultado Financeiro */}
           <div className="bg-white border border-zinc-200 rounded-xl p-5 shadow-sm space-y-4">
             <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
-              <h3 className="text-xl font-black text-blue-600 tracking-tight">
-                Resultado
+              <h3 className="text-xl font-black text-[#003366] tracking-tight">
+                Resumo da Subscrição
               </h3>
               <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">
-                Moeda: AOA (Kz)
+                Moeda: AOA
               </span>
             </div>
 
@@ -434,19 +506,19 @@ export const LicensingPricingCalculator: React.FC<LicensingPricingCalculatorProp
               {/* Linha Licença Base */}
               <div className="flex justify-between items-start">
                 <div>
-                  <span className="font-bold text-zinc-800 block text-sm">
-                    Licença Base {selectedPlan.name}
+                  <span className="font-black text-zinc-800 block text-sm">
+                    Licença {selectedPlan.name} ({selectedPayment.label})
                   </span>
                   <span className="text-[10px] text-zinc-400 font-medium">
-                    Inclui todos os módulos normais
+                    Inclui todos os módulos base do ERP
                   </span>
                 </div>
-                <span className="font-bold text-zinc-800 text-sm">
-                  {formatKz(calculations.baseLicenca)}
+                <span className="font-black text-zinc-800 text-sm">
+                  {formatKz(calculations.baseLicenca)} AOA
                 </span>
               </div>
 
-              {/* Módulos especiais adicionados (se houver) */}
+              {/* Módulos especiais adicionados */}
               {calculations.baseModulos > 0 && (
                 <div className="flex justify-between items-start pt-1 text-zinc-600">
                   <div>
@@ -458,19 +530,7 @@ export const LicensingPricingCalculator: React.FC<LicensingPricingCalculatorProp
                     </span>
                   </div>
                   <span className="font-bold text-zinc-800">
-                    {formatKz(calculations.baseModulos)}
-                  </span>
-                </div>
-              )}
-
-              {/* Linha Desconto */}
-              {calculations.valorDesconto > 0 && (
-                <div className="flex justify-between items-center text-emerald-600 font-bold border-t border-dashed border-zinc-100 pt-2">
-                  <span>
-                    Desconto Anuidade ({selectedPayment.installments === 1 ? 'Anual' : `${selectedPayment.installments}x`} {calculations.discountPercent}%)
-                  </span>
-                  <span>
-                    - {formatKz(calculations.valorDesconto)}
+                    {formatKz(calculations.baseModulos)} AOA
                   </span>
                 </div>
               )}
@@ -478,25 +538,19 @@ export const LicensingPricingCalculator: React.FC<LicensingPricingCalculatorProp
               {/* Total Líquido */}
               <div className="flex justify-between items-center text-zinc-700 font-medium pt-1 border-t border-zinc-100">
                 <span>Total Líquido</span>
-                <span className="font-bold">{formatKz(calculations.totalLiquido)}</span>
+                <span className="font-bold">{formatKz(calculations.totalLiquido)} AOA</span>
               </div>
 
-              {/* IVA (Isento / Sem IVA) */}
+              {/* IVA: Sem IVA */}
               <div className="flex justify-between items-center text-zinc-700 font-medium">
-                <span>IVA (Isento / Sem IVA)</span>
+                <span>IVA (Sem Incidência / Isento)</span>
                 <span className="font-bold text-emerald-600">0,00 AOA</span>
               </div>
 
               {/* Total a Pagar */}
               <div className="flex justify-between items-center text-[#003366] text-base font-black pt-3 border-t-2 border-zinc-200">
                 <span>Total a pagar</span>
-                <span className="text-lg">{formatKz(calculations.totalAPagar)}</span>
-              </div>
-
-              {/* Total Prestações */}
-              <div className="flex justify-between items-center text-zinc-900 font-black text-xs pt-1">
-                <span>Total ({calculations.installments} prestações x )</span>
-                <span className="text-sm text-blue-700">{formatKz(calculations.valorPorPrestacao)}</span>
+                <span className="text-xl font-black text-[#003366]">{formatKz(calculations.totalAPagar)} AOA</span>
               </div>
 
             </div>
@@ -521,7 +575,7 @@ export const LicensingPricingCalculator: React.FC<LicensingPricingCalculatorProp
           <div className="bg-zinc-50 border border-zinc-200 rounded-xl p-5 text-xs">
             <h4 className="font-black text-zinc-800 text-sm mb-3 pb-2 border-b border-zinc-200 flex items-center gap-2">
               <ShieldCheck size={16} className="text-[#00D17F]" />
-              Licença Base inclui:
+              Módulos Incluídos na Licença {selectedPlan.name}:
             </h4>
             <div className="grid grid-cols-1 gap-1.5 text-zinc-600 font-medium">
               {BASE_MODULES_LIST.map((modName) => (
@@ -544,4 +598,5 @@ export const LicensingPricingCalculator: React.FC<LicensingPricingCalculatorProp
     </div>
   );
 };
+
 export default LicensingPricingCalculator;

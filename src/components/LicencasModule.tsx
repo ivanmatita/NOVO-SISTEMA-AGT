@@ -114,18 +114,25 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
 
       // Se a lista estiver vazia para a empresa, usar dados frescos do config-empresa
       if ((!Array.isArray(mergedList) || mergedList.length === 0) && configEmpRes?.id) {
+        const trialInicio = configEmpRes.trial_inicio || configEmpRes.data_inicio_licenca || new Date().toISOString();
+        const trialFim = configEmpRes.trial_fim || configEmpRes.data_expiracao_licenca || new Date(new Date(trialInicio).getTime() + 14 * 24 * 60 * 60 * 1000).toISOString();
         mergedList = [{
           empresa_id: configEmpRes.empresa_id || configEmpRes.id,
           nome_empresa: configEmpRes.nome_empresa,
-          tipo_licenca: configEmpRes.plano || 'Profissional',
-          plano: configEmpRes.plano || 'Profissional',
-          status_licenca: configEmpRes.status_licenca,
-          licenca_ativa: configEmpRes.licenca_ativa,
-          ativo: configEmpRes.ativo,
-          data_inicio: configEmpRes.data_inicio_licenca || new Date().toISOString(),
-          data_fim: configEmpRes.data_expiracao_licenca,
-          valor_licenca: configEmpRes.valor_licenca || 65000,
-          ativado_por: 'SuperAdmin CRM'
+          tipo_licenca: configEmpRes.plano || 'Light',
+          tipo_plano: configEmpRes.plano || 'Light',
+          plano: configEmpRes.plano || 'Light',
+          status_licenca: configEmpRes.status_licenca || 'TRIAL',
+          estado: configEmpRes.status_licenca === 'TRIAL' ? 'Em Teste Gratuito' : (configEmpRes.status_licenca || 'Ativa'),
+          licenca_ativa: configEmpRes.licenca_ativa ?? true,
+          ativo: configEmpRes.ativo ?? true,
+          data_inicio: trialInicio,
+          data_fim: trialFim,
+          trial_inicio: trialInicio,
+          trial_fim: trialFim,
+          dias_trial: 14,
+          valor_licenca: configEmpRes.valor_licenca || 0,
+          ativado_por: 'Sistema IMATEC (14 Dias Grátis)'
         }];
       }
 
@@ -166,45 +173,63 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
   const safeOcorrencias = Array.isArray(ocorrencias) ? ocorrencias : [];
   const safeComprovativos = Array.isArray(comprovativos) ? comprovativos : [];
 
+  const nowMs = Date.now();
+  const defaultTrialFim = new Date(nowMs + 14 * 24 * 60 * 60 * 1000).toISOString();
+
   // Active Company License computation
   const myLicense = safeLicencas.find(l => l && String(l.empresa_id) === String(empresaId)) || safeLicencas[0] || {
     id: 'lic-default',
     empresa_id: empresaId,
-    tipo_licenca: userProfile?.pacote_licenca || 'Profissional',
-    plano: 'Mensal',
-    status_licenca: 'EXPIRADA',
-    licenca_ativa: false,
-    ativo: false,
+    tipo_licenca: userProfile?.pacote_licenca || 'Light',
+    tipo_plano: userProfile?.pacote_licenca || 'Light',
+    plano: 'Anual',
+    status_licenca: 'TRIAL',
+    estado: 'Em Teste Gratuito',
+    licenca_ativa: true,
+    ativo: true,
     data_inicio: new Date().toISOString(),
-    data_fim: new Date().toISOString(),
-    valor_licenca: 65000,
-    ativado_por: 'Administrador do Sistema CRM'
+    data_fim: defaultTrialFim,
+    trial_inicio: new Date().toISOString(),
+    trial_fim: defaultTrialFim,
+    dias_trial: 14,
+    valor_licenca: 0,
+    ativado_por: 'Sistema IMATEC (14 Dias Grátis)'
   };
 
+  const effectiveDataFim = myLicense.data_fim || myLicense.trial_fim || myLicense.data_expiracao_licenca || myLicense.data_expiracao;
+  const effectiveDataInicio = myLicense.data_inicio || myLicense.trial_inicio || myLicense.data_inicio_licenca || myLicense.created_at;
+
   const calculateDaysRemaining = (endDateStr: string) => {
-    if (!endDateStr) return 0;
+    if (!endDateStr) return 14;
     const end = new Date(endDateStr).getTime();
-    const now = new Date().getTime();
+    const now = Date.now();
     const diff = end - now;
     return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
   };
 
-  const daysRemaining = calculateDaysRemaining(myLicense.data_fim);
+  const daysRemaining = calculateDaysRemaining(effectiveDataFim);
   const rawStatus = String(myLicense.status_licenca || myLicense.estado || '').toUpperCase();
   const isSuspendedOrDeactivated = ['SUSPENSA', 'BLOQUEADA', 'DESATIVADA', 'INATIVA', 'CANCELADA', 'EXPIRADA', 'VENCIDA'].includes(rawStatus) || 
                                   myLicense.licenca_ativa === false || 
                                   myLicense.ativo === false;
-  const isExplicitlyActive = ['ACTIVA', 'ACTIVE', 'ATIVA', 'ATIVO'].includes(rawStatus) && (myLicense.licenca_ativa !== false) && (myLicense.ativo !== false);
   
-  const isExpired = isSuspendedOrDeactivated || (daysRemaining === 0 && !rawStatus.includes('TRIAL'));
-  const isLicenseActive = isExplicitlyActive && !isExpired && (daysRemaining > 0 || !myLicense.data_fim);
-  const displayStatus = isLicenseActive ? 'LICENÇA ACTIVA' : 'LICENÇA EXPIRADA';
-  const isExpiringSoon = isLicenseActive && daysRemaining <= 15;
+  // Reconhece TRIAL e planos ativos como válidos
+  const isExplicitlyActive = ['ACTIVA', 'ACTIVE', 'ATIVA', 'ATIVO', 'TRIAL', 'EM_TESTE', 'TESTE GRATUITO', 'EM TESTE GRATUITO'].includes(rawStatus) || !rawStatus;
+  
+  // A licença SÓ expira se foi explicitamente suspensa OU se a data de expiração/fim foi ultrapassada no tempo real (após os 14 dias de trial)
+  const isTimeExpired = effectiveDataFim ? (Date.now() > new Date(effectiveDataFim).getTime()) : false;
+  const isExpired = isSuspendedOrDeactivated || (isTimeExpired && daysRemaining === 0);
+  
+  const isLicenseActive = isExplicitlyActive && !isExpired;
+  const displayStatus = isLicenseActive 
+    ? (rawStatus.includes('TRIAL') || rawStatus.includes('TESTE') ? 'TESTE GRATUITO (14 DIAS)' : 'LICENÇA ACTIVA') 
+    : 'LICENÇA EXPIRADA';
+  const isExpiringSoon = isLicenseActive && daysRemaining <= 5;
 
   const stats = [
-    { label: 'Licenças Ativas', value: safeLicencas.filter(l => l && (['ATIVA', 'ACTIVA', 'ACTIVE'].includes(String(l.status_licenca || l.estado).toUpperCase()) && l.licenca_ativa !== false && l.ativo !== false)).length, icon: ShieldCheck, color: 'text-emerald-600' },
+    { label: 'Licenças Ativas', value: safeLicencas.filter(l => l && (['ATIVA', 'ACTIVA', 'ACTIVE', 'TRIAL', 'EM_TESTE', 'TESTE GRATUITO', 'EM TESTE GRATUITO'].includes(String(l.status_licenca || l.estado).toUpperCase()) && l.licenca_ativa !== false && l.ativo !== false)).length, icon: ShieldCheck, color: 'text-emerald-600' },
     { label: 'Pendentes de Validação', value: safeLicencas.filter(l => l && (String(l.status_licenca || l.estado).toLowerCase().includes('pendente'))).length, icon: Clock, color: 'text-amber-600' },
-    { label: 'Vencidas / Expiradas', value: safeLicencas.filter(l => l && (['SUSPENSA', 'EXPIRADA', 'VENCIDA', 'BLOQUEADA', 'DESATIVADA'].includes(String(l.status_licenca || l.estado).toUpperCase()) || l.licenca_ativa === false || l.ativo === false)).length, icon: AlertOctagon, color: 'text-rose-600' },
+    { label: 'Vencidas / Expiradas', value: safeLicencas.filter(l => l && (['SUSPENSA', 'EXPIRADA', 'VENCIDA', 'BLOQUEADA', 'DESATIVADA'].includes(String(l.status_licenca || l.estado).toUpperCase()) || (l.licenca_ativa === false && !String(l.status_licenca || '').toUpperCase().includes('TRIAL')) || l.ativo === false)).length, icon: AlertOctagon, color: 'text-rose-600' },
     { label: 'Receita Licenciamento', value: safeLicencas.filter(l => l && (['ATIVA', 'ACTIVA', 'ACTIVE'].includes(String(l.status_licenca || l.estado).toUpperCase()) && l.licenca_ativa !== false && l.ativo !== false)).reduce((acc, curr) => acc + Number(curr.valor_licenca || 0), 0).toLocaleString() + ' AOA', icon: BadgeCent, color: 'text-[#003366]' },
   ];
 
@@ -476,12 +501,12 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
                         </td>
                         <td className="px-6 py-4">
                           <span className={`px-2.5 py-1 text-[9px] font-black uppercase tracking-widest rounded ${
-                            lic.status_licenca === 'activa' || lic.status_licenca === 'active' ? 'bg-emerald-100 text-emerald-700' :
+                            lic.status_licenca === 'activa' || lic.status_licenca === 'active' || String(lic.status_licenca).toLowerCase() === 'trial' ? 'bg-emerald-100 text-emerald-700' :
                             lic.status_licenca === 'pendente' ? 'bg-amber-100 text-amber-700' :
-                            lic.status_licenca === 'vencida' ? 'bg-rose-100 text-rose-700' :
+                            lic.status_licenca === 'vencida' || lic.status_licenca === 'expirada' ? 'bg-rose-100 text-rose-700' :
                             'bg-zinc-100 text-zinc-500'
                           }`}>
-                            {lic.status_licenca}
+                            {String(lic.status_licenca).toUpperCase() === 'TRIAL' ? 'TESTE GRATUITO (14 DIAS)' : (lic.status_licenca || 'ACTIVA')}
                           </span>
                         </td>
                         <td className="px-6 py-4 text-zinc-600 font-medium">

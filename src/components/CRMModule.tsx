@@ -499,13 +499,15 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
       };
     }
 
-    const duracaoTotais = Number(comp.duracao_dias) || 30;
-    const dataInicio = comp.data_inicio ? new Date(comp.data_inicio) : null;
-    const dataFim = comp.data_fim ? new Date(comp.data_fim) : null;
+    const duracaoTotais = Number(comp.duracao_dias || (comp as any).dias_trial) || 14;
+    const rawDataInicio = comp.data_inicio || (comp as any).trial_inicio || (comp as any).data_inicio_licenca || (comp as any).created_at;
+    const rawDataFim = comp.data_fim || (comp as any).trial_fim || (comp as any).data_expiracao_licenca || (comp as any).data_expiracao;
+    const dataInicio = rawDataInicio ? new Date(rawDataInicio) : null;
+    const dataFim = rawDataFim ? new Date(rawDataFim) : null;
     const agora = new Date();
 
     const statusUpper = String(comp.status_licenca || '').toUpperCase();
-    const isAtiva = ['ACTIVE', 'ACTIVA', 'ATIVA', 'ATIVO', 'TRIAL', 'EM_TESTE'].includes(statusUpper);
+    const isAtiva = ['ACTIVE', 'ACTIVA', 'ATIVA', 'ATIVO', 'TRIAL', 'EM_TESTE', 'TESTE GRATUITO'].includes(statusUpper);
     const isPendente = statusUpper === 'PENDENTE' || statusUpper === 'AGUARDANDO ATIVAÇÃO' || (!dataInicio && !isAtiva);
 
     let diasDecorridos = 0;
@@ -517,13 +519,14 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
       diasRestantes = Math.max(0, Math.ceil((dataFim.getTime() - agora.getTime()) / (1000 * 60 * 60 * 24)));
       percentualUtilizado = Math.min(100, Math.max(0, (diasDecorridos / duracaoTotais) * 100));
     } else {
-      // Default period calculation if dates are missing
-      diasRestantes = 30;
-      percentualUtilizado = 10;
+      // Se não houver datas cadastradas, conceder o padrão de 14 dias de Trial
+      diasRestantes = 14;
+      percentualUtilizado = 0;
     }
 
     let statusNormalizado = statusUpper || 'TRIAL';
-    if (isAtiva && diasRestantes === 0 && dataFim && agora > dataFim) {
+    // Só expira se a data de expiração foi efetivamente ultrapassada no tempo real (após 14 dias)
+    if (isAtiva && diasRestantes === 0 && dataFim && agora.getTime() > dataFim.getTime()) {
       statusNormalizado = 'EXPIRADA';
     }
 

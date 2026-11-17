@@ -1451,8 +1451,8 @@ app.use((req, res, next) => {
 
       const valorDesconto = subtotalBruto * taxaDesconto;
       const valorLiquido = subtotalBruto - valorDesconto;
-      const valorIva = valorLiquido * 0.14; // IVA 14%
-      const valorTotalContratado = valorLiquido + valorIva;
+      const valorIva = 0; // SEM IVA / ISENTO DE INCIDÊNCIA DE IVA (Conforme regra comercial)
+      const valorTotalContratado = valorLiquido;
 
       // Período oficial do Trial (14 dias de teste gratuito)
       const trialStartDate = new Date();
@@ -9768,7 +9768,14 @@ app.use((req, res, next) => {
         telefone: companyRegistry?.telefone || configSettings?.telefone || '',
         endereco: companyRegistry?.endereco || companyRegistry?.localizacao || configSettings?.endereco || '',
         provincia: companyRegistry?.provincia || configSettings?.provincia || '',
-        municipio: companyRegistry?.municipio || configSettings?.municipio || ''
+        municipio: companyRegistry?.municipio || configSettings?.municipio || '',
+        plano: companyRegistry?.plano || configSettings?.plano || 'Light',
+        status_licenca: companyRegistry?.status_licenca || configSettings?.status_licenca || 'TRIAL',
+        licenca_ativa: companyRegistry?.licenca_ativa ?? configSettings?.licenca_ativa ?? true,
+        trial_inicio: companyRegistry?.trial_inicio || configSettings?.trial_inicio || null,
+        trial_fim: companyRegistry?.trial_fim || configSettings?.trial_fim || null,
+        data_expiracao_licenca: companyRegistry?.data_expiracao_licenca || configSettings?.data_expiracao_licenca || companyRegistry?.trial_fim || null,
+        logo_url: companyRegistry?.logo_url || configSettings?.logo_url || companyRegistry?.logo || null
       };
 
       return res.json(consolidated);
@@ -10018,7 +10025,46 @@ app.use((req, res, next) => {
 
     const { data, error } = await query.order('created_at', { ascending: false });
     if (error) return res.status(500).json({ error: error.message });
-    res.json(data);
+
+    // Se a consulta retornar vazia e não for superadmin (ou for para uma empresa específica),
+    // buscar os dados reais da tabela empresas (Trial de 14 dias ou subscrição ativa)
+    if ((!data || data.length === 0) && authCtx.empresaId) {
+      const { data: comp } = await supabaseAdmin
+        .from('empresas')
+        .select('*')
+        .eq('id', authCtx.empresaId)
+        .maybeSingle();
+
+      if (comp) {
+        const trialInicio = comp.trial_inicio || comp.data_inicio_licenca || comp.created_at || new Date().toISOString();
+        const trialFim = comp.trial_fim || comp.data_expiracao_licenca || new Date(new Date(trialInicio).getTime() + 14 * 24 * 60 * 60 * 1000).toISOString();
+        const fallbackLic = [{
+          id: `lic-${comp.id}`,
+          empresa_id: comp.id,
+          nome_empresa: comp.nome_empresa || comp.nome,
+          tipo_licenca: comp.plano || 'Light',
+          tipo_plano: comp.plano || 'Light',
+          plano: comp.plano || 'Light',
+          status_licenca: comp.status_licenca || 'TRIAL',
+          estado: comp.status_licenca === 'TRIAL' ? 'Em Teste Gratuito' : (comp.status_licenca || 'Ativa'),
+          licenca_ativa: comp.licenca_ativa ?? true,
+          ativo: comp.ativo ?? true,
+          trial_inicio: trialInicio,
+          trial_fim: trialFim,
+          dias_trial: 14,
+          data_inicio: trialInicio,
+          data_fim: trialFim,
+          data_expiracao: trialFim,
+          valor_licenca: comp.valor_licenca || 0,
+          ativado_por: 'Sistema IMATEC (14 Dias Grátis)',
+          created_at: comp.created_at || trialInicio,
+          historico_licencas: []
+        }];
+        return res.json(fallbackLic);
+      }
+    }
+
+    res.json(data || []);
   });
 
   app.post("/api/licencas/solicitar", async (req, res) => {

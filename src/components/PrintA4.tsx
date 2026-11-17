@@ -182,7 +182,7 @@ const PrintA4: React.FC<PrintA4Props> = ({
   const getConfig = (tipo: string) => graphicConfigs.find(c => c.tipo === tipo && c.ativo);
   const logoConfig = getConfig('logotipo');
   const watermarkConfig = getConfig('marca_dagua');
-  const logoSrc = logoConfig?.url_imagem || companyData?.logo_url || companyData?.logo;
+  const logoSrc = logoConfig?.url_imagem || companyData?.logo_url || companyData?.logo || (companyData as any)?.anexo_image_url;
   const watermarkSrc = watermarkConfig?.url_imagem || companyData?.watermark_url;
 
   const isFinal = !isDraft && invoice.is_certified;
@@ -799,17 +799,21 @@ const PrintA4: React.FC<PrintA4Props> = ({
                       {logoSrc ? (
                         <img
                           src={logoSrc}
-                          alt="Logo"
-                          className="max-h-16 max-w-[200px] object-contain"
+                          alt={companyName}
+                          className="max-h-16 max-w-[220px] object-contain"
                         />
                       ) : (
-                        <div className="flex items-center gap-2">
-                          <div className="w-10 h-10 rounded bg-[#003366] text-white flex items-center justify-center font-black text-xs">
-                            AGT
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 rounded bg-[#003366] text-white flex items-center justify-center font-black text-sm uppercase shadow-xs shrink-0">
+                            {companyName ? companyName.substring(0, 2).toUpperCase() : 'EP'}
                           </div>
-                          <div className="text-left leading-none">
-                            <div className="font-black text-[#003366] text-xs uppercase tracking-tight">ADMINISTRAÇÃO GERAL</div>
-                            <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mt-0.5">TRIBUTÁRIA</div>
+                          <div className="text-left leading-tight">
+                            <div className="font-black text-[#003366] text-sm uppercase tracking-tight">
+                              {companyName}
+                            </div>
+                            <div className="text-[10px] font-mono font-bold text-zinc-500 tracking-wider mt-0.5">
+                              NIF: {companyNif}
+                            </div>
                           </div>
                         </div>
                       )}

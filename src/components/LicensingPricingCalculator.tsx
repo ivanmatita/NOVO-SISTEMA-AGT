@@ -40,9 +40,9 @@ export const LICENSE_PLANS: LicensePlan[] = [
     faturacao: '10.000.000,00', 
     funcionarios: '10', 
     basePriceAnual: 50000, 
-    anuidadeExibida: '34.200,00',
-    precoMensal: '5.700,00',
-    precoTrimestral: '16.530,00',
+    anuidadeExibida: '30.000,00',
+    precoMensal: '5.000,00',
+    precoTrimestral: '14.500,00',
     desc: 'Ideal para pequenos negócios, startups e profissionais liberais.',
     features: ['Até 10 Funcionários', 'Facturação Comercial AGT & SAF-T', 'Gestão de Clientes e Fornecedores', '14 Dias de Teste Gratuito']
   },
@@ -52,9 +52,9 @@ export const LICENSE_PLANS: LicensePlan[] = [
     faturacao: '30.000.000,00', 
     funcionarios: 'Ilimitado', 
     basePriceAnual: 110000, 
-    anuidadeExibida: '75.240,00',
-    precoMensal: '12.540,00',
-    precoTrimestral: '36.366,00',
+    anuidadeExibida: '66.000,00',
+    precoMensal: '11.000,00',
+    precoTrimestral: '31.900,00',
     desc: 'Equilíbrio ideal para empresas em fase de expansão no mercado angolano.',
     features: ['Funcionários Ilimitados', 'Facturação AGT & SAF-T Completo', 'Gestão de Stocks & Inventários', 'Recursos Humanos & Salários'],
     isPopular: true
@@ -65,9 +65,9 @@ export const LICENSE_PLANS: LicensePlan[] = [
     faturacao: '100.000.000,00', 
     funcionarios: 'Ilimitado', 
     basePriceAnual: 290000, 
-    anuidadeExibida: '198.360,00',
-    precoMensal: '33.060,00',
-    precoTrimestral: '95.874,00',
+    anuidadeExibida: '174.000,00',
+    precoMensal: '29.000,00',
+    precoTrimestral: '84.100,00',
     desc: 'Controlo financeiro rigoroso e gestão multi-armazém para médias empresas.',
     features: ['Funcionários Ilimitados', 'Gestão Multi-Armazém e Stocks', 'Contabilidade e PGC Angola', 'Gestão Financeira e Tesouraria']
   },
@@ -77,9 +77,9 @@ export const LICENSE_PLANS: LicensePlan[] = [
     faturacao: '200.000.000,00', 
     funcionarios: 'Ilimitado', 
     basePriceAnual: 590000, 
-    anuidadeExibida: '403.560,00',
-    precoMensal: '67.260,00',
-    precoTrimestral: '195.054,00',
+    anuidadeExibida: '354.000,00',
+    precoMensal: '59.000,00',
+    precoTrimestral: '171.100,00',
     desc: 'Potência máxima e conformidade fiscal robusta para empresas consolidadas.',
     features: ['Funcionários Ilimitados', 'Todas as Funcionalidades Base', 'Gestão de Frotas & Viaturas', 'Auditoria Fiscal AGT Avançada']
   },
@@ -89,9 +89,9 @@ export const LICENSE_PLANS: LicensePlan[] = [
     faturacao: '350.000.000,00', 
     funcionarios: 'Ilimitado', 
     basePriceAnual: 890000, 
-    anuidadeExibida: '608.760,00',
-    precoMensal: '101.460,00',
-    precoTrimestral: '294.234,00',
+    anuidadeExibida: '534.000,00',
+    precoMensal: '89.000,00',
+    precoTrimestral: '258.100,00',
     desc: 'Solução completa para médias e grandes operações empresariais.',
     features: ['Funcionários Ilimitados', 'Ecossistema ERP Completo', 'Acesso Multi-Utilizador', 'Suporte Prioritário Especializado']
   },
@@ -101,26 +101,26 @@ export const LICENSE_PLANS: LicensePlan[] = [
     faturacao: 'Ilimitado', 
     funcionarios: 'Ilimitado', 
     basePriceAnual: 1190000, 
-    anuidadeExibida: '813.960,00',
-    precoMensal: '135.660,00',
-    precoTrimestral: '393.414,00',
+    anuidadeExibida: '714.000,00',
+    precoMensal: '119.000,00',
+    precoTrimestral: '345.100,00',
     desc: 'A solução definitiva sem limites de faturação para grandes corporações.',
     features: ['Facturação & Funcionários Ilimitados', 'Todos os 12 Módulos Base Incluídos', 'Relatórios Fiscais & SAF-T Ilimitados', 'SLA de Atendimento Garantido']
   },
 ];
 
 export const SPECIAL_MODULES: SpecialModule[] = [
-  { id: 'seguranca_privada', name: 'Modulo Segurança Privada', basePriceAnual: 6000, anuidadeExibida: '4.104,00' },
-  { id: 'eventos', name: 'Modulo Eventos', basePriceAnual: 6000, anuidadeExibida: '4.104,00' },
-  { id: 'orcamentos', name: 'Modulo Orçamentos', basePriceAnual: 6000, anuidadeExibida: '4.104,00' },
-  { id: 'pos', name: 'POS (Posto vendas)', basePriceAnual: 6000, anuidadeExibida: '4.104,00' },
-  { id: 'transitarios', name: 'Modulo Transitarios e Navegação', basePriceAnual: 6000, anuidadeExibida: '4.104,00' },
-  { id: 'agencia_viagens', name: 'Modulo Agencia de Viagens', basePriceAnual: 12000, anuidadeExibida: '8.208,00' },
-  { id: 'mini_site', name: 'Mini Site', basePriceAnual: 6000, anuidadeExibida: '4.104,00' },
-  { id: 'stand_automovel', name: 'Stand Automóvel', basePriceAnual: 6000, anuidadeExibida: '4.104,00' },
-  { id: 'gestao_igreja', name: 'Gestão de Igreja', basePriceAnual: 6000, anuidadeExibida: '4.104,00' },
-  { id: 'agronegocio', name: 'Agronegócio', basePriceAnual: 6000, anuidadeExibida: '4.104,00' },
-  { id: 'farmacia', name: 'Farmácia', basePriceAnual: 6000, anuidadeExibida: '4.104,00' },
+  { id: 'seguranca_privada', name: 'Modulo Segurança Privada', basePriceAnual: 6000, anuidadeExibida: '3.600,00' },
+  { id: 'eventos', name: 'Modulo Eventos', basePriceAnual: 6000, anuidadeExibida: '3.600,00' },
+  { id: 'orcamentos', name: 'Modulo Orçamentos', basePriceAnual: 6000, anuidadeExibida: '3.600,00' },
+  { id: 'pos', name: 'POS (Posto vendas)', basePriceAnual: 6000, anuidadeExibida: '3.600,00' },
+  { id: 'transitarios', name: 'Modulo Transitarios e Navegação', basePriceAnual: 6000, anuidadeExibida: '3.600,00' },
+  { id: 'agencia_viagens', name: 'Modulo Agencia de Viagens', basePriceAnual: 12000, anuidadeExibida: '7.200,00' },
+  { id: 'mini_site', name: 'Mini Site', basePriceAnual: 6000, anuidadeExibida: '3.600,00' },
+  { id: 'stand_automovel', name: 'Stand Automóvel', basePriceAnual: 6000, anuidadeExibida: '3.600,00' },
+  { id: 'gestao_igreja', name: 'Gestão de Igreja', basePriceAnual: 6000, anuidadeExibida: '3.600,00' },
+  { id: 'agronegocio', name: 'Agronegócio', basePriceAnual: 6000, anuidadeExibida: '3.600,00' },
+  { id: 'farmacia', name: 'Farmácia', basePriceAnual: 6000, anuidadeExibida: '3.600,00' },
 ];
 
 export const PAYMENT_OPTIONS: PaymentOption[] = [
@@ -205,11 +205,11 @@ export const LicensingPricingCalculator: React.FC<LicensingPricingCalculatorProp
     // 4. Total Líquido
     const totalLiquido = totalBaseBruto - valorDesconto;
 
-    // 5. IVA 14%
-    const iva14 = totalLiquido * 0.14;
+    // 5. IVA (Isento / Sem incidência de IVA conforme regra comercial)
+    const iva14 = 0;
 
-    // 6. Total a Pagar
-    const totalAPagar = totalLiquido + iva14;
+    // 6. Total a Pagar (Sem IVA)
+    const totalAPagar = totalLiquido;
 
     // 7. Valor por Prestação
     const installments = selectedPayment.installments;
@@ -268,7 +268,7 @@ export const LicensingPricingCalculator: React.FC<LicensingPricingCalculatorProp
             AOA
           </div>
           <div className="text-[11px] font-bold text-zinc-600 uppercase tracking-widest bg-zinc-100 px-3 py-1 rounded-md border border-zinc-200">
-            IVA 14% Incluído
+            Sem Incidência de IVA (Isento)
           </div>
         </div>
       </div>
@@ -481,10 +481,10 @@ export const LicensingPricingCalculator: React.FC<LicensingPricingCalculatorProp
                 <span className="font-bold">{formatKz(calculations.totalLiquido)}</span>
               </div>
 
-              {/* IVA 14% */}
+              {/* IVA (Isento / Sem IVA) */}
               <div className="flex justify-between items-center text-zinc-700 font-medium">
-                <span>IVA 14%</span>
-                <span className="font-bold">{formatKz(calculations.iva14)}</span>
+                <span>IVA (Isento / Sem IVA)</span>
+                <span className="font-bold text-emerald-600">0,00 AOA</span>
               </div>
 
               {/* Total a Pagar */}

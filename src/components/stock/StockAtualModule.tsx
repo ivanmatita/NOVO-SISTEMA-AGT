@@ -21,6 +21,7 @@ interface StockAtualModuleProps {
   onOpenTransfer?: (product: Product) => void;
   onViewProductDetail?: (product: Product) => void;
   onViewStockReport?: (product: Product) => void;
+  onNewProduct?: () => void;
 }
 
 export const StockAtualModule: React.FC<StockAtualModuleProps> = ({
@@ -34,6 +35,7 @@ export const StockAtualModule: React.FC<StockAtualModuleProps> = ({
   onOpenTransfer,
   onViewProductDetail,
   onViewStockReport,
+  onNewProduct,
 }) => {
   const { user } = useAuth();
   const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>('all');
@@ -224,30 +226,27 @@ export const StockAtualModule: React.FC<StockAtualModuleProps> = ({
   };
 
   return (
-    <div className="space-y-6 font-sans">
-      
-
+    <div className="space-y-3 font-sans">
 
       {/* ────────────────────────────────────────────────────────────────────────── */}
-      {/* 2. SELEÇÃO OBRIGATÓRIA DO ARMAZÉM & PAINEL DE CONTROLO DE STOCK           */}
+      {/* 1. BARRA DE CONTROLO COMPACTA & SELEÇÃO DE ARMAZÉM                         */}
       {/* ────────────────────────────────────────────────────────────────────────── */}
-      <div className="bg-white border border-zinc-200 p-5 rounded-xl shadow-xs space-y-4">
+      <div className="bg-white border border-zinc-200 rounded-xl shadow-xs p-3 space-y-2.5">
         
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-zinc-100">
+        {/* Linha 1: Armazém, Filtros Rápidos, Pesquisa e Ações */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
           
-          {/* Seletor de Armazém com Destaque Forte */}
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-            <label className="text-xs font-black text-[#003366] uppercase tracking-wider flex items-center gap-1.5 shrink-0">
-              <Building2 size={16} className="text-blue-600" />
-              <span>Armazém Seleccionado [Obrigatório]:</span>
-            </label>
-            <div className="relative">
+          {/* Seletor de Armazém e Filtros */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-2 bg-blue-50/80 border border-blue-200 px-3 py-1.5 rounded-lg text-xs font-bold text-[#003366] shrink-0">
+              <Building2 size={15} className="text-blue-600 shrink-0" />
+              <span className="text-[10px] font-black uppercase tracking-wider text-blue-900 shrink-0">Armazém:</span>
               <select
                 value={selectedWarehouseId}
                 onChange={(e) => setSelectedWarehouseId(e.target.value)}
-                className="bg-zinc-50 hover:bg-zinc-100/80 border-2 border-[#003366] text-[#003366] text-xs font-black uppercase tracking-wider px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer min-w-[240px]"
+                className="bg-transparent text-xs font-black text-[#003366] uppercase tracking-wider focus:outline-none cursor-pointer pr-1"
               >
-                <option value="all">TODOS OS ARMAZÉNS (VISÃO GERAL)</option>
+                <option value="all">TODOS OS ARMAZÉNS</option>
                 {warehouses.map(w => (
                   <option key={w.id} value={w.id}>
                     📦 {w.name?.toUpperCase()} {w.localidade ? `— ${w.localidade}` : ''}
@@ -255,102 +254,159 @@ export const StockAtualModule: React.FC<StockAtualModuleProps> = ({
                 ))}
               </select>
             </div>
-            {onManageWarehouses && (
+
+            {/* Filtros de Estado */}
+            <div className="flex items-center gap-1 bg-zinc-100 p-0.5 rounded-lg border border-zinc-200">
               <button
                 type="button"
-                onClick={onManageWarehouses}
-                className="px-3 py-2 text-xs font-bold text-zinc-600 hover:text-[#003366] bg-zinc-100 hover:bg-zinc-200 rounded-lg transition-colors flex items-center gap-1.5 shrink-0"
+                onClick={() => setFilterStatus('all')}
+                className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded transition-all cursor-pointer ${
+                  filterStatus === 'all'
+                    ? 'bg-white text-[#003366] shadow-2xs'
+                    : 'text-zinc-600 hover:text-zinc-900'
+                }`}
               >
-                <Home size={14} />
-                <span>Gerir Armazéns</span>
+                Todos ({consolidatedItems.length})
               </button>
-            )}
+              <button
+                type="button"
+                onClick={() => setFilterStatus('positive')}
+                className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded transition-all cursor-pointer ${
+                  filterStatus === 'positive'
+                    ? 'bg-emerald-600 text-white shadow-2xs'
+                    : 'text-zinc-600 hover:text-zinc-900'
+                }`}
+              >
+                Disponível
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterStatus('low')}
+                className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded transition-all cursor-pointer ${
+                  filterStatus === 'low'
+                    ? 'bg-amber-600 text-white shadow-2xs'
+                    : 'text-zinc-600 hover:text-zinc-900'
+                }`}
+              >
+                Baixo
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterStatus('negative')}
+                className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded transition-all cursor-pointer ${
+                  filterStatus === 'negative'
+                    ? 'bg-rose-600 text-white shadow-2xs'
+                    : 'text-zinc-600 hover:text-zinc-900'
+                }`}
+              >
+                Esgotado
+              </button>
+            </div>
           </div>
 
-          {/* Botões de Ações Rápidas */}
-          <div className="flex items-center gap-2 shrink-0">
+          {/* Pesquisa e Botões de Ação */}
+          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+            <div className="relative flex-1 sm:w-64">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400" size={13} />
+              <input
+                type="text"
+                placeholder="Pesquisar código, artigo, doc..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-8 pr-3 py-1.5 bg-zinc-50 border border-zinc-200 text-xs font-medium text-zinc-800 focus:outline-none focus:border-[#003366] focus:bg-white rounded-lg shadow-2xs transition-colors"
+              />
+            </div>
+
+            {onNewProduct && (
+              <button
+                type="button"
+                onClick={onNewProduct}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-[#003366] hover:bg-[#002244] text-white text-xs font-bold uppercase tracking-wider rounded-lg shadow-2xs transition-all cursor-pointer shrink-0"
+              >
+                <Plus size={13} />
+                <span>Novo Artigo</span>
+              </button>
+            )}
+
             {onNavigateToPurchases && (
               <button
                 type="button"
                 onClick={onNavigateToPurchases}
-                className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-black uppercase tracking-wider rounded-lg shadow-sm transition-all cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold uppercase tracking-wider rounded-lg shadow-2xs transition-all cursor-pointer shrink-0"
+                title="Aceder à Gestão de Compras"
               >
-                <ShoppingCart size={14} />
+                <ShoppingCart size={13} />
                 <span>Nova Compra</span>
               </button>
             )}
+
+            {onManageWarehouses && (
+              <button
+                type="button"
+                onClick={onManageWarehouses}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-bold uppercase tracking-wider rounded-lg border border-zinc-200 transition-colors shrink-0"
+                title="Gerir Armazéns"
+              >
+                <Home size={13} />
+                <span className="hidden sm:inline">Armazéns</span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={handleManualSync}
               disabled={loadingFresh}
-              className="flex items-center gap-1.5 px-3 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-bold uppercase tracking-wider rounded-lg border border-zinc-200 transition-all cursor-pointer disabled:opacity-50"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-bold rounded-lg border border-zinc-200 transition-all cursor-pointer disabled:opacity-50 shrink-0"
               title="Actualizar dados de stock e movimentos"
             >
-              <RefreshCw size={14} className={loadingFresh ? 'animate-spin text-blue-600' : ''} />
-              <span>{loadingFresh ? 'A actualizar...' : 'Actualizar'}</span>
+              <RefreshCw size={13} className={loadingFresh ? 'animate-spin text-blue-600' : ''} />
+              <span className="hidden md:inline">{loadingFresh ? 'A carregar...' : 'Actualizar'}</span>
             </button>
           </div>
 
         </div>
 
-        {/* ──────────────────────────────────────────────────────────────────────── */}
-        {/* CARDS DE CÁLCULOS AUTOMÁTICOS EM TEMPO REAL                             */}
-        {/* ──────────────────────────────────────────────────────────────────────── */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        {/* Linha 2: Fita Resumo Compacta de Cálculos e Métricas (Slim KPI Strip) */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 pt-2 border-t border-zinc-100">
           
-          <div className="bg-blue-50/60 border border-blue-200 p-3.5 rounded-lg">
-            <div className="text-[10px] font-bold text-blue-700 uppercase tracking-widest flex items-center gap-1 mb-1">
-              <Box size={13} />
-              <span>Artigos em Stock</span>
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50/50 border border-blue-100 rounded-lg">
+            <Box size={14} className="text-blue-600 shrink-0" />
+            <div className="min-w-0">
+              <div className="text-[9px] font-bold text-blue-700 uppercase tracking-wider">Artigos</div>
+              <div className="text-xs font-black text-[#003366] truncate">{metrics.totalArtigos}</div>
             </div>
-            <div className="text-xl font-black text-[#003366]">
-              {metrics.totalArtigos}
-            </div>
-            <div className="text-[10px] text-zinc-400 font-medium">Produtos registados</div>
           </div>
 
-          <div className="bg-emerald-50/60 border border-emerald-200 p-3.5 rounded-lg">
-            <div className="text-[10px] font-bold text-emerald-700 uppercase tracking-widest flex items-center gap-1 mb-1">
-              <TrendingUp size={13} />
-              <span>Total Entradas</span>
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50/50 border border-emerald-100 rounded-lg">
+            <TrendingUp size={14} className="text-emerald-600 shrink-0" />
+            <div className="min-w-0">
+              <div className="text-[9px] font-bold text-emerald-700 uppercase tracking-wider">Entradas</div>
+              <div className="text-xs font-black text-emerald-700 truncate">{metrics.totalEntradas.toLocaleString('pt-AO')}</div>
             </div>
-            <div className="text-xl font-black text-emerald-700">
-              {metrics.totalEntradas.toLocaleString('pt-AO')}
-            </div>
-            <div className="text-[10px] text-zinc-400 font-medium">Compras &amp; Entradas</div>
           </div>
 
-          <div className="bg-rose-50/60 border border-rose-200 p-3.5 rounded-lg">
-            <div className="text-[10px] font-bold text-rose-700 uppercase tracking-widest flex items-center gap-1 mb-1">
-              <TrendingDown size={13} />
-              <span>Total Saídas</span>
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-rose-50/50 border border-rose-100 rounded-lg">
+            <TrendingDown size={14} className="text-rose-600 shrink-0" />
+            <div className="min-w-0">
+              <div className="text-[9px] font-bold text-rose-700 uppercase tracking-wider">Saídas</div>
+              <div className="text-xs font-black text-rose-700 truncate">{metrics.totalSaidas.toLocaleString('pt-AO')}</div>
             </div>
-            <div className="text-xl font-black text-rose-700">
-              {metrics.totalSaidas.toLocaleString('pt-AO')}
-            </div>
-            <div className="text-[10px] text-zinc-400 font-medium">Vendas &amp; Despachos</div>
           </div>
 
-          <div className="bg-indigo-50/60 border border-indigo-200 p-3.5 rounded-lg">
-            <div className="text-[10px] font-bold text-indigo-700 uppercase tracking-widest flex items-center gap-1 mb-1">
-              <Package size={13} />
-              <span>Qtd Disponível</span>
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50/50 border border-indigo-100 rounded-lg">
+            <Package size={14} className="text-indigo-600 shrink-0" />
+            <div className="min-w-0">
+              <div className="text-[9px] font-bold text-indigo-700 uppercase tracking-wider">Disponível</div>
+              <div className="text-xs font-black text-indigo-700 truncate">{metrics.totalQtdDisponivel.toLocaleString('pt-AO')}</div>
             </div>
-            <div className="text-xl font-black text-indigo-700">
-              {metrics.totalQtdDisponivel.toLocaleString('pt-AO')}
-            </div>
-            <div className="text-[10px] text-zinc-400 font-medium">Stock Físico Real</div>
           </div>
 
-          <div className="bg-zinc-900 text-white p-3.5 rounded-lg border border-zinc-800 col-span-2 sm:col-span-1">
-            <div className="text-[10px] font-bold text-zinc-300 uppercase tracking-widest flex items-center gap-1 mb-1">
-              <Calculator size={13} className="text-emerald-400" />
-              <span>Valor Total Stock</span>
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-zinc-900 text-white rounded-lg col-span-2 sm:col-span-1">
+            <Calculator size={14} className="text-emerald-400 shrink-0" />
+            <div className="min-w-0">
+              <div className="text-[9px] font-bold text-zinc-300 uppercase tracking-wider">Valor Stock</div>
+              <div className="text-xs font-black text-emerald-400 truncate">{formatKz(metrics.totalValorStock)}</div>
             </div>
-            <div className="text-lg font-black text-emerald-400 truncate">
-              {formatKz(metrics.totalValorStock)}
-            </div>
-            <div className="text-[10px] text-zinc-400 font-medium">Qtd × Custo Unitário</div>
           </div>
 
         </div>
@@ -358,73 +414,10 @@ export const StockAtualModule: React.FC<StockAtualModuleProps> = ({
       </div>
 
       {/* ────────────────────────────────────────────────────────────────────────── */}
-      {/* 3. LISTAGEM DO STOCK ATUAL (15 COLUNAS COMPLETAS E REAIS)                  */}
+      {/* 2. TABELA DE STOCK ATUAL (IMEDIATAMENTE VISÍVEL NO TOPO)                   */}
       {/* ────────────────────────────────────────────────────────────────────────── */}
       <div className="bg-white border border-zinc-200 rounded-xl shadow-xs overflow-hidden">
         
-        {/* Barra de Filtros e Pesquisa da Tabela */}
-        <div className="p-4 bg-zinc-50 border-b border-zinc-200 flex flex-wrap items-center justify-between gap-3">
-          
-          <div className="relative flex-1 min-w-[240px] max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={15} />
-            <input
-              type="text"
-              placeholder="Pesquisar por Código, Nome, Fornecedor ou Doc..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 bg-white border border-zinc-300 text-xs font-medium text-zinc-800 focus:outline-none focus:border-[#003366] rounded-lg shadow-xs"
-            />
-          </div>
-
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <button
-              type="button"
-              onClick={() => setFilterStatus('all')}
-              className={`px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider rounded-md border transition-all ${
-                filterStatus === 'all'
-                  ? 'bg-[#003366] text-white border-[#003366]'
-                  : 'bg-white text-zinc-600 border-zinc-200 hover:bg-zinc-100'
-              }`}
-            >
-              Todos ({consolidatedItems.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setFilterStatus('positive')}
-              className={`px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider rounded-md border transition-all ${
-                filterStatus === 'positive'
-                  ? 'bg-emerald-600 text-white border-emerald-600'
-                  : 'bg-white text-zinc-600 border-zinc-200 hover:bg-zinc-100'
-              }`}
-            >
-              Stock Positivo
-            </button>
-            <button
-              type="button"
-              onClick={() => setFilterStatus('low')}
-              className={`px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider rounded-md border transition-all ${
-                filterStatus === 'low'
-                  ? 'bg-amber-600 text-white border-amber-600'
-                  : 'bg-white text-zinc-600 border-zinc-200 hover:bg-zinc-100'
-              }`}
-            >
-              Stock Baixo
-            </button>
-            <button
-              type="button"
-              onClick={() => setFilterStatus('negative')}
-              className={`px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider rounded-md border transition-all ${
-                filterStatus === 'negative'
-                  ? 'bg-rose-600 text-white border-rose-600'
-                  : 'bg-white text-zinc-600 border-zinc-200 hover:bg-zinc-100'
-              }`}
-            >
-              Esgotado / Negativo
-            </button>
-          </div>
-
-        </div>
-
         {/* Tabela de Dados Reais do Supabase */}
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-xs">

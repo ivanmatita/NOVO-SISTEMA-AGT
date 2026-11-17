@@ -32139,45 +32139,51 @@ const ProductList = ({
   ];
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 border border-zinc-200 shadow-sm">
-        <div>
-          <h2 className="text-xl font-bold text-[#003366] flex items-center gap-2 uppercase tracking-tight">
-            <Package size={24} /> Gestão de Stock & Inventário
-          </h2>
-          <p className="text-zinc-500 text-xs mt-1 uppercase font-bold tracking-wider">Controle total de entradas, saídas e transferências de mercadoria.</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
-            <input 
-              placeholder="Pesquisar produtos..." 
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 pr-4 py-2.5 bg-zinc-50 border border-zinc-200 rounded-none text-sm focus:outline-none focus:border-[#003366] w-64 font-medium" 
-            />
+    <div className="space-y-4">
+      {/* Cabeçalho Unificado e Compacto da Gestão de Stock */}
+      <div className="bg-white border border-zinc-200 rounded-xl shadow-2xs overflow-hidden">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-5 py-3 border-b border-zinc-100">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-blue-50 text-[#003366] flex items-center justify-center shrink-0">
+              <Package size={18} />
+            </div>
+            <div>
+              <h2 className="text-sm sm:text-base font-black text-[#003366] uppercase tracking-tight leading-none">
+                Gestão de Stock & Inventário
+              </h2>
+              <p className="text-zinc-400 text-[10px] sm:text-[11px] font-medium mt-0.5">
+                Controlo em tempo real de armazéns, entradas de compras, saídas e inventário físico.
+              </p>
+            </div>
           </div>
-          <button onClick={() => { setEditingProduct(null); setShowForm(true); }} className="bg-[#003366] hover:bg-[#002244] text-white font-bold px-6 py-2.5 rounded-none flex items-center gap-2 transition-all shadow-sm text-sm uppercase tracking-widest">
-            <Plus size={18} /> Novo Produto
-          </button>
+          
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => { setEditingProduct(null); setShowForm(true); }} 
+              className="bg-[#003366] hover:bg-[#002244] text-white font-bold px-3.5 py-1.5 rounded-lg flex items-center gap-1.5 transition-all shadow-2xs text-xs uppercase tracking-wider cursor-pointer"
+            >
+              <Plus size={14} /> Novo Produto
+            </button>
+          </div>
         </div>
-      </div>
 
-      <div className="flex gap-8 border-b border-zinc-200 bg-white px-6">
-        {tabs.map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-2 pb-4 text-[10px] font-black uppercase tracking-widest transition-all relative ${
-              activeTab === tab.id 
-                ? 'text-[#003366] border-b-2 border-[#003366]' 
-                : 'text-zinc-400 hover:text-zinc-600'
-            }`}
-          >
-            <tab.icon size={14} className={activeTab === tab.id ? 'text-[#003366]' : 'text-zinc-300'} />
-            {tab.label}
-          </button>
-        ))}
+        {/* Abas de Navegação Compactas */}
+        <div className="flex items-center gap-1.5 px-4 py-1.5 bg-zinc-50/70 overflow-x-auto">
+          {tabs.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                activeTab === tab.id 
+                  ? 'bg-white text-[#003366] shadow-2xs border border-zinc-200' 
+                  : 'text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100/60'
+              }`}
+            >
+              <tab.icon size={13} className={activeTab === tab.id ? 'text-[#003366]' : 'text-zinc-400'} />
+              <span>{tab.label}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       {activeTab === 'warehouse' ? (

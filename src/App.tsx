@@ -25,6 +25,7 @@ import GestaoFinanceiraModule from './components/GestaoFinanceiraModule';
 import { PurchaseDocumentScannerModal } from './components/purchases/PurchaseDocumentScannerModal';
 import { GestaoComprasList, CompraDoc } from './components/purchases/GestaoComprasList';
 import { GestaoComprasForm } from './components/purchases/GestaoComprasForm';
+import { StockAtualModule } from './components/stock/StockAtualModule';
 
 
 import ProjectManagementModule from './components/ProjectManagementModule';
@@ -542,6 +543,13 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack, employ
   onRefreshEmployees?: () => void
 }) => {
   const [activeTab, setActiveTab] = useState<'finance' | 'invoices' | 'stock' | 'employees'>('finance');
+  useEffect(() => {
+    const handleNavPurchases = () => {
+      setActiveTab('purchases');
+    };
+    window.addEventListener('navigate_to_purchases', handleNavPurchases);
+    return () => window.removeEventListener('navigate_to_purchases', handleNavPurchases);
+  }, []);
   const [staffSearch, setStaffSearch] = useState('');
   const [movingEmployee, setMovingEmployee] = useState<Employee | null>(null);
 
@@ -2911,7 +2919,7 @@ const isPublicMiniSite = (): boolean => {
   return search.includes('site=') || hash.startsWith('#/site/') || hash.startsWith('#site/') || path.startsWith('/site/');
 };
 
-// ??? REQUISITO SUPREMO: Verificação rigorosa e infalível de Administrador Autorizado da IMATEC
+// ??? REQUISITO SUPREMO: Verificaï¿½ï¿½o rigorosa e infalï¿½vel de Administrador Autorizado da IMATEC
 const isImatecAuthorizedAdmin = (user: any, companyData?: any): boolean => {
   if (!user) return false;
   const userEmail = String(user.email || '').toLowerCase().trim();
@@ -2923,7 +2931,7 @@ const isImatecAuthorizedAdmin = (user: any, companyData?: any): boolean => {
   const isImatecCompany = currentNif === '5002123665' || user?.empresa_id === '2ebafa88-9a6e-4243-b127-b146410815eb';
   
   if (!isImatecCompany) {
-    // Empresas clientes NUNCA têm acesso ao CRM global, independentemente do cargo
+    // Empresas clientes NUNCA tï¿½m acesso ao CRM global, independentemente do cargo
     return false;
   }
 
@@ -29013,11 +29021,15 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
         onSuccess={(savedData) => {
           setIsCreating(false);
           fetchPurchases();
+          if (typeof fetchProducts === 'function') fetchProducts();
+          if (typeof doLoadStockMovements === 'function') doLoadStockMovements();
+          window.dispatchEvent(new CustomEvent('refresh_stock'));
           window.dispatchEvent(new CustomEvent('refresh_purchases'));
           if (createType === 'Pagamento' && savedData) {
             setCompletedReceipt(savedData);
           }
         }}
+        onNavigateToStock={() => setActiveTab('products')}
         caixas={caixas}
         initialData={createData}
         fixedDocumentType={createType}
@@ -29253,6 +29265,7 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
           caixas={caixas}
           fiscalYear={fiscalYear}
           onScanQr={() => setIsMainScannerOpen(true)}
+          onNavigateToStock={() => setActiveTab('products')}
           onNewPurchase={() => handleStartCreate(null, undefined)}
           onEditPurchase={(doc) => {
             if (doc.id) {
@@ -32170,190 +32183,32 @@ const ProductList = ({
       {activeTab === 'warehouse' ? (
         <WarehouseModule onRefresh={onRefresh} />
       ) : activeTab === 'stock' ? (
-        <div className="space-y-4">
-          <div className="flex items-center gap-2 bg-white p-4 border border-zinc-200">
-            <div className="flex-1 flex gap-2">
-              <button 
-                onClick={() => setActiveTab('warehouse')}
-                className="px-4 py-2 text-[10px] font-black uppercase tracking-widest bg-zinc-800 text-white hover:bg-zinc-900 shadow-md flex items-center gap-2 border border-zinc-800"
-              >
-                <Home size={14} /> ArmazÃ©ns
-              </button>
-              <button 
-                onClick={() => setStockFilter('all')}
-                className={`px-4 py-2 text-[10px] font-bold uppercase tracking-widest border ${stockFilter === 'all' ? 'bg-[#003366] text-white border-[#003366]' : 'bg-zinc-50 text-zinc-500 border-zinc-200'}`}
-              >
-                Todos
-              </button>
-              <button 
-                onClick={() => setStockFilter('positive')}
-                className={`px-4 py-2 text-[10px] font-bold uppercase tracking-widest border ${stockFilter === 'positive' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-zinc-50 text-zinc-500 border-zinc-200'}`}
-              >
-                Stock Positivo
-              </button>
-              <button 
-                onClick={() => setStockFilter('negative')}
-                className={`px-4 py-2 text-[10px] font-bold uppercase tracking-widest border ${stockFilter === 'negative' ? 'bg-red-600 text-white border-red-600' : 'bg-zinc-50 text-zinc-500 border-zinc-200'}`}
-              >
-                Stock Negativo
-              </button>
-              <button 
-                onClick={() => setStockFilter('low')}
-                className={`px-4 py-2 text-[10px] font-bold uppercase tracking-widest border ${stockFilter === 'low' ? 'bg-amber-500 text-white border-amber-500' : 'bg-zinc-50 text-zinc-500 border-zinc-200'}`}
-              >
-                Stock Baixo
-              </button>
-            </div>
-            <div className="flex items-center gap-2">
-              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">ArmazÃ©m:</label>
-              <select 
-                value={warehouseFilter}
-                onChange={(e) => setWarehouseFilter(e.target.value)}
-                className="bg-zinc-50 border border-zinc-200 text-[10px] font-bold uppercase tracking-widest px-3 py-2 focus:outline-none focus:border-[#003366]"
-              >
-                <option value="all">Todos os ArmazÃ©ns</option>
-                {warehouses.map(w => (
-                  <option key={w.id} value={w.id}>{w.name}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm overflow-x-auto">
-            <table className="w-full text-left border-collapse min-w-[1000px]">
-              <thead>
-                <tr className="bg-[#003366] text-white text-[10px] font-black uppercase tracking-widest border-b border-zinc-200">
-                  <th className="px-6 py-4">Imagem</th>
-                  <th className="px-6 py-4">Ver</th>
-                  <th className="px-6 py-4">ArtÂº NÂº</th>
-                  <th className="px-6 py-4">DescriÃ§Ã£o</th>
-                  <th className="px-6 py-4">NÃºmero</th>
-                  <th className="px-6 py-4">SÃ©rie</th>
-                  <th className="px-6 py-4 text-center">Entradas</th>
-                  <th className="px-6 py-4 text-center">SaÃ­das</th>
-                  <th className="px-6 py-4 text-center">Stock Total</th>
-                  <th className="px-6 py-4 text-center">RelatÃ³rio</th>
-                  <th className="px-6 py-4 text-right">PreÃ§o</th>
-                  <th className="px-6 py-4 text-right">AÃ§Ãµes</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100">
-                {filteredProducts.map((p) => {
-                  const entries = (stockMovements ?? []).filter(m => m.product_id === p.id && (m.type === 'entry' || m.type === 'adjustment_plus')).reduce((sum, m) => sum + m.quantity, 0);
-                  const exits = (stockMovements ?? []).filter(m => m.product_id === p.id && (m.type === 'exit' || m.type === 'adjustment_minus')).reduce((sum, m) => sum + m.quantity, 0);
-                  const isNegative = p.stock_quantity < 0;
-                  const isLow = p.stock_quantity <= (p.min_stock || 0);
-
-                  return (
-                    <tr key={p.id} className="hover:bg-zinc-50 transition-colors text-xs group border-b border-zinc-50">
-                      <td className="px-6 py-4">
-                        <label className="cursor-pointer block" title="Carregar Imagem">
-                          <input 
-                            type="file" 
-                            className="hidden" 
-                            accept="image/*" 
-                            onChange={(e) => handleQuickImageUpload(p.id, e.target.files?.[0])}
-                          />
-                          <div className="w-10 h-10 bg-zinc-100 flex items-center justify-center overflow-hidden border border-zinc-200 hover:border-[#003366] transition-all relative group/img">
-                            {p.image_url ? (
-                              <img src={p.image_url} alt={p.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                            ) : (
-                              <Package size={20} className="text-zinc-300" />
-                            )}
-                            <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity">
-                              <Upload size={14} className="text-white" />
-                            </div>
-                          </div>
-                        </label>
-                      </td>
-                      <td className="px-6 py-4">
-                        <button 
-                          onClick={() => { setSelectedProduct(p); setShowProductDetailModal(true); }}
-                          className="p-2 bg-zinc-100 text-[#003366] hover:bg-zinc-200 transition-all"
-                        >
-                          <Eye size={14} />
-                        </button>
-                      </td>
-                      <td className="px-6 py-4 text-zinc-500 font-mono text-[10px]">{p.referente || '---'}</td>
-                      <td className="px-6 py-4">
-                        <div className="font-bold text-zinc-900">{p.name}</div>
-                        <div className="text-[9px] text-zinc-400 uppercase font-black tracking-tighter">{p.category || 'Sem categoria'}</div>
-                      </td>
-                      <td className="px-6 py-4 text-zinc-500 font-medium">{p.barcode || p.id}</td>
-                      <td className="px-6 py-4 text-zinc-500 font-medium">{p.tipologia || '---'}</td>
-                      <td className="px-6 py-4 text-center text-emerald-600 font-bold">
-                        {(stockMovements ?? []).filter(m => 
-                          m.product_id === p.id && 
-                          (warehouseFilter === 'all' || m.warehouse_id === Number(warehouseFilter) || m.to_warehouse_id === Number(warehouseFilter)) &&
-                          (m.type === 'entry' || m.type === 'adjustment_plus' || (m.type === 'transfer' && m.to_warehouse_id === Number(warehouseFilter)))
-                        ).reduce((sum, m) => sum + m.quantity, 0)}
-                      </td>
-                      <td className="px-6 py-4 text-center text-red-600 font-bold">
-                        {(stockMovements ?? []).filter(m => 
-                          m.product_id === p.id && 
-                          (warehouseFilter === 'all' || m.warehouse_id === Number(warehouseFilter)) &&
-                          (m.type === 'exit' || m.type === 'adjustment_minus' || (m.type === 'transfer' && m.warehouse_id === Number(warehouseFilter)))
-                        ).reduce((sum, m) => sum + m.quantity, 0)}
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <span className={`px-3 py-1 font-black rounded-none ${isNegative ? 'text-red-600 bg-red-50' : isLow ? 'text-amber-600 bg-amber-50' : 'text-[#003366] bg-zinc-50'}`}>
-                          {p.stock_quantity} {p.unit}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <button 
-                          onClick={() => { setSelectedProduct(p); setShowStockReportModal(true); }}
-                          className="text-[#003366] hover:underline font-bold text-[10px] uppercase tracking-widest"
-                        >
-                          Ver RelatÃ³rio
-                        </button>
-                      </td>
-                      <td className="px-6 py-4 text-right font-black text-[#003366]">
-                        {new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'AOA' }).format(p.price || 0)}
-                      </td>
-                      <td className="px-6 py-4 text-right whitespace-nowrap">
-                        <div className="flex justify-end gap-2">
-                          <button 
-                            onClick={(e) => { e.stopPropagation(); setEditingProduct(p); setShowForm(true); }}
-                            className="w-8 h-8 flex items-center justify-center bg-white border border-zinc-200 text-[#003366] hover:bg-[#003366] hover:text-white transition-all rounded shadow-sm"
-                            title="Editar Produto"
-                          >
-                            <Edit size={14} />
-                          </button>
-                          <button 
-                            onClick={(e) => { e.stopPropagation(); handleDeleteProduct(p.id); }}
-                            className="w-8 h-8 flex items-center justify-center bg-white border border-zinc-200 text-red-600 hover:bg-red-600 hover:text-white transition-all rounded shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                            title="Eliminar Produto"
-                            disabled={loading}
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                          <button 
-                            onClick={(e) => { e.stopPropagation(); setSelectedProduct(p); setShowAdjustmentModal(true); }}
-                            className="w-8 h-8 flex items-center justify-center bg-white border border-zinc-200 text-[#003366] hover:bg-[#003366] hover:text-white transition-all rounded shadow-sm"
-                            title="Ajuste de Stock"
-                          >
-                            <Settings size={14} />
-                          </button>
-                          <button 
-                            onClick={(e) => { e.stopPropagation(); setSelectedProduct(p); setShowTransferModal(true); }}
-                            className="w-8 h-8 flex items-center justify-center bg-white border border-zinc-200 text-amber-600 hover:bg-amber-600 hover:text-white transition-all rounded shadow-sm"
-                            title="Transferir Produto"
-                          >
-                            <Truck size={14} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            {filteredProducts.length === 0 && (
-              <div className="p-12 text-center text-zinc-400 text-sm font-medium">Nenhum produto encontrado no stock.</div>
-            )}
-          </div>
-        </div>
+        <StockAtualModule
+          products={products}
+          stockMovements={stockMovements}
+          warehouses={warehouses}
+          onRefresh={onRefresh}
+          onNavigateToPurchases={() => {
+            window.dispatchEvent(new CustomEvent('navigate_to_purchases'));
+          }}
+          onManageWarehouses={() => setActiveTab('warehouse')}
+          onOpenAdjustment={(prod) => {
+            setSelectedProduct(prod);
+            setShowAdjustmentModal(true);
+          }}
+          onOpenTransfer={(prod) => {
+            setSelectedProduct(prod);
+            setShowTransferModal(true);
+          }}
+          onViewProductDetail={(prod) => {
+            setSelectedProduct(prod);
+            setShowProductDetailModal(true);
+          }}
+          onViewStockReport={(prod) => {
+            setSelectedProduct(prod);
+            setShowStockReportModal(true);
+          }}
+        />
       ) : activeTab === 'movements' ? (
         <div className="bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm">
           <table className="w-full text-left border-collapse">
@@ -35878,8 +35733,8 @@ export default function App() {
                                 <div className="w-20 h-20 bg-red-50 text-red-600 rounded-full flex items-center justify-center">
                                   <ShieldAlert size={40} />
                                 </div>
-                                <h2 className="text-2xl font-black text-[#003366] uppercase tracking-tighter">Acesso Exclusivo à IMATEC</h2>
-                                <p className="text-zinc-500 max-w-md">O módulo CRM é reservado exclusivamente à equipa administrativa da IMATEC SOFTWARE. Empresas clientes não possuem acesso a esta área.</p>
+                                <h2 className="text-2xl font-black text-[#003366] uppercase tracking-tighter">Acesso Exclusivo ï¿½ IMATEC</h2>
+                                <p className="text-zinc-500 max-w-md">O mï¿½dulo CRM ï¿½ reservado exclusivamente ï¿½ equipa administrativa da IMATEC SOFTWARE. Empresas clientes nï¿½o possuem acesso a esta ï¿½rea.</p>
                                 <button 
                                   onClick={() => setActiveTab('dashboard')}
                                   className="px-6 py-2.5 bg-[#003366] text-white text-xs font-bold uppercase tracking-widest hover:bg-[#002244] transition-colors"

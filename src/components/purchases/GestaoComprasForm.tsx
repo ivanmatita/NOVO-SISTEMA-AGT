@@ -131,6 +131,7 @@ interface Props {
   initialStep?: 1 | 2 | 3;
   onBack: () => void;
   onSuccess: (savedData?: any) => void;
+  onNavigateToStock?: () => void;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -191,6 +192,7 @@ export const GestaoComprasForm: React.FC<Props> = ({
   initialStep,
   onBack,
   onSuccess,
+  onNavigateToStock,
 }) => {
   const { user } = useAuth();
   const isEditing = !!(initialData?.id);
@@ -556,8 +558,47 @@ export const GestaoComprasForm: React.FC<Props> = ({
     setForm(f => ({ ...f, itens: f.itens.filter((_, i) => i !== idx) }));
   };
 
-  // ── Stock Movement & Products Integration ────────────────────────────────
+  // ── Stock Movement & Products Integration (Unificada e Idempotente) ──────────
   const processStockMovements = async (doc: any, itens: LineItem[], empresaId: string, isUpdate: boolean) => {
+    // 1. Tentar sincronização atómica e idempotente via Servidor (SupabaseAdmin + RLS bypass seguro)
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const syncRes = await fetch('/api/stock/sync-purchase', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token || ''}`
+        },
+        body: JSON.stringify({
+          empresa_id: empresaId,
+          purchaseId: doc?.id,
+          numeroDocumento: form.numero_documento,
+          tipoDocumento: form.tipo_documento,
+          fornecedorNome: form.fornecedor_nome,
+          dataDocumento: form.data_documento || form.data_valor,
+          ano,
+          itens: itens.map(it => ({
+            descricao: it.descricao,
+            name: it.descricao,
+            quantidade: it.quantidade,
+            valor_unitario: it.valor_unitario,
+            armazem_id: it.armazem_id,
+            warehouse_id: it.armazem_id,
+            unidade: it.unidade
+          }))
+        })
+      });
+
+      if (syncRes.ok) {
+        console.log('[GestaoComprasForm] Stock sincronizado com sucesso via Servidor.');
+        window.dispatchEvent(new CustomEvent('refresh_stock'));
+        return; // SUCESSO: Não executa o loop local para evitar DUPLO INCREMENTO!
+      }
+    } catch (backendSyncErr) {
+      console.warn('[GestaoComprasForm] backend sync warning, a tentar fallback local:', backendSyncErr);
+    }
+
+    // 2. Fallback Local caso o servidor esteja offline
     for (const item of itens) {
       if (!item.armazem_id) continue;
       const desc = (item.descricao || '').trim();
@@ -568,12 +609,13 @@ export const GestaoComprasForm: React.FC<Props> = ({
         let prevStock = 0;
         let newStock = 0;
 
-        // Verificar se produto existe no catálogo da empresa por name ou nome
+        // Limpar sanitizando descrição
+        const cleanDesc = desc.replace(/[,%]/g, ' ').trim();
         const { data: prods } = await supabase
           .from('produtos')
           .select('id, name, nome, stock_quantity, stock, stock_atual, preco_compra, cost_price, warehouse_id, armazem_id')
           .eq('empresa_id', empresaId)
-          .or(`name.ilike.${desc},nome.ilike.${desc}`)
+          .or(`name.ilike.%${cleanDesc}%,nome.ilike.%${cleanDesc}%`)
           .limit(1);
 
         const wNum = Number(item.armazem_id);
@@ -585,7 +627,6 @@ export const GestaoComprasForm: React.FC<Props> = ({
           prevStock = Number(prod.stock_quantity ?? prod.stock ?? prod.stock_atual ?? 0);
           newStock = round2(prevStock + item.quantidade);
 
-          // Atualizar o stock e preços do produto no catálogo
           const updateData: any = {
             stock_quantity: newStock,
             stock: newStock,
@@ -607,7 +648,6 @@ export const GestaoComprasForm: React.FC<Props> = ({
             .eq('id', prod.id)
             .eq('empresa_id', empresaId);
         } else {
-          // Criar o produto diretamente no catálogo com as informações preenchidas
           const insertData: any = {
             empresa_id: empresaId,
             name: desc,
@@ -676,7 +716,6 @@ export const GestaoComprasForm: React.FC<Props> = ({
 
           if (movErr) {
             console.warn('[GestaoComprasForm] mov insert fallback:', movErr);
-            // Fallback com colunas essenciais
             await supabase
               .from('movimentacoes_stock')
               .insert([{
@@ -698,6 +737,8 @@ export const GestaoComprasForm: React.FC<Props> = ({
         console.warn('[GestaoComprasForm] stock movement warning:', stockErr);
       }
     }
+
+    window.dispatchEvent(new CustomEvent('refresh_stock'));
   };
 
   // ── Amortização Ativos (Meios Fixos) ──────────────────────────────────────
@@ -973,6 +1014,17 @@ export const GestaoComprasForm: React.FC<Props> = ({
               <span className="ml-2 px-2 py-0.5 bg-amber-100 text-amber-800 text-[10px] font-bold border border-amber-300">
                 EDIÇÃO
               </span>
+            )}
+            {onNavigateToStock && (
+              <button
+                type="button"
+                onClick={onNavigateToStock}
+                className="ml-3 flex items-center gap-1.5 px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-black uppercase tracking-wider transition-all shadow-xs rounded-none border border-blue-500 cursor-pointer"
+                title="Consultar Stock e Inventário"
+              >
+                <Package size={13} />
+                <span>VER STOCK</span>
+              </button>
             )}
           </div>
 

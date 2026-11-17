@@ -95,6 +95,7 @@ interface Props {
   onEmitCreditNote?: (doc: CompraDoc) => void;
   onDeletePurchase?: (doc: CompraDoc) => void;
   onScanQr?: () => void;
+  onNavigateToStock?: () => void;
   companyData?: any;
 }
 
@@ -590,6 +591,7 @@ export const GestaoComprasList: React.FC<Props> = ({
   onEmitCreditNote,
   onDeletePurchase,
   onScanQr,
+  onNavigateToStock,
   companyData
 }) => {
   const { user } = useAuth();
@@ -947,6 +949,18 @@ export const GestaoComprasList: React.FC<Props> = ({
           >
             <RefreshCw size={14} />
           </button>
+
+          {onNavigateToStock && (
+            <button
+              type="button"
+              onClick={onNavigateToStock}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-black uppercase tracking-wider transition-all shadow-sm border border-blue-500 cursor-pointer"
+              title="Consultar Gestão de Stock & Inventário"
+            >
+              <Package size={14} />
+              VER STOCK
+            </button>
+          )}
 
           <button
             onClick={onNewPurchase}

@@ -8367,11 +8367,264 @@ app.use((req, res, next) => {
     saveData();
     res.json(newMovement);
   });
-  app.get("/api/stock/movements", (req, res) => {
-    const { empresa_id } = req.query;
+  app.get("/api/stock/movements", async (req, res) => {
+    const authCtx = await getAuthUserContext(req);
+    const empresa_id = (authCtx?.empresaId || req.query.empresa_id || '').toString();
     const year = Number(req.query.year) || new Date().getFullYear();
-    if (empresa_id) return res.json(stockMovements.filter(m => String(m.empresa_id) === String(empresa_id) && (!m.created_at || new Date(m.created_at).getFullYear() === year)));
-    res.json([]);
+    const warehouse_id = req.query.warehouse_id ? req.query.warehouse_id.toString() : null;
+
+    if (!empresa_id) return res.json([]);
+
+    try {
+      if (supabaseAdmin) {
+        let query = supabaseAdmin
+          .from('movimentacoes_stock')
+          .select('*')
+          .eq('empresa_id', empresa_id)
+          .order('created_at', { ascending: false });
+
+        if (warehouse_id && warehouse_id !== 'all') {
+          // Permite filtrar por armazem_id ou warehouse_id
+          const numW = Number(warehouse_id);
+          if (!isNaN(numW) && numW > 0) {
+            query = query.or(`armazem_id.eq.${warehouse_id},warehouse_id.eq.${numW}`);
+          } else {
+            query = query.eq('armazem_id', warehouse_id);
+          }
+        }
+
+        const { data, error } = await query;
+        if (!error && data) {
+          return res.json(data);
+        }
+      }
+    } catch (err: any) {
+      console.warn('[SERVER-STOCK] Erro ao buscar movimentos no Supabase:', err.message);
+    }
+
+    // Fallback in-memory
+    let mem = stockMovements.filter(m => String(m.empresa_id) === String(empresa_id) && (!m.created_at || new Date(m.created_at).getFullYear() === year));
+    if (warehouse_id && warehouse_id !== 'all') {
+      mem = mem.filter(m => String(m.warehouse_id) === String(warehouse_id) || String(m.armazem_id) === String(warehouse_id));
+    }
+    res.json(mem);
+  });
+
+  // ── SINCRONIZAÇÃO ATÓMICA E IDEMPOTENTE: COMPRA → ENTRADA EM STOCK ──────────
+  app.post("/api/stock/sync-purchase", async (req, res) => {
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) {
+      return res.status(401).json({ error: "Sessão inválida. Por favor, inicie sessão novamente." });
+    }
+
+    const tenantCheck = await resolveTenantEmpresaId(req, req.body.empresa_id);
+    if (!tenantCheck.empresaId) {
+      return res.status(tenantCheck.status || 403).json({ error: tenantCheck.error || "Acesso negado: Violação de tenant." });
+    }
+    const empresa_id = tenantCheck.empresaId;
+
+    if (!supabaseAdmin) {
+      return res.status(500).json({ error: "Supabase Admin não disponível." });
+    }
+
+    const { purchaseId, numeroDocumento, tipoDocumento, fornecedorNome, dataDocumento, ano, itens } = req.body;
+
+    if (!Array.isArray(itens) || itens.length === 0) {
+      return res.json({ success: true, message: "Sem itens para processar stock." });
+    }
+
+    const docRef = (purchaseId || numeroDocumento || '').toString();
+    const docNum = (numeroDocumento || '').toString();
+    const docData = dataDocumento || new Date().toISOString();
+    const docAno = Number(ano) || new Date().getFullYear();
+
+    try {
+      console.log(`[STOCK-SYNC] Iniciando sincronização da compra ${docNum} (ID: ${docRef}) para empresa ${empresa_id}`);
+
+      // 1. ESTORNO E LIMPEZA IDEMPOTENTE: Reverter quantidades anteriores desta compra se for edição
+      if (docRef) {
+        const { data: oldMovs } = await supabaseAdmin
+          .from('movimentacoes_stock')
+          .select('id, product_id, quantity, quantidade')
+          .eq('empresa_id', empresa_id)
+          .or(`reference_id.eq.${docRef},reference_id.eq.${docNum},referencia.eq.${docNum}`);
+
+        if (Array.isArray(oldMovs) && oldMovs.length > 0) {
+          console.log(`[STOCK-SYNC] Estornando ${oldMovs.length} movimentos anteriores para evitar duplicação em edição.`);
+          for (const oldM of oldMovs) {
+            const oldQtd = Number(oldM.quantity || oldM.quantidade || 0);
+            if (oldM.product_id && oldQtd > 0) {
+              const { data: curProd } = await supabaseAdmin
+                .from('produtos')
+                .select('id, stock_quantity, stock, stock_atual')
+                .eq('id', oldM.product_id)
+                .maybeSingle();
+
+              if (curProd) {
+                const currentStock = Number(curProd.stock_quantity ?? curProd.stock ?? curProd.stock_atual ?? 0);
+                const revertedStock = Math.max(0, Math.round((currentStock - oldQtd) * 100) / 100);
+                await supabaseAdmin
+                  .from('produtos')
+                  .update({
+                    stock_quantity: revertedStock,
+                    stock: revertedStock,
+                    stock_atual: revertedStock,
+                    estoque_atual: revertedStock
+                  })
+                  .eq('id', curProd.id);
+              }
+            }
+          }
+
+          // Remover os registos históricos anteriores desta compra
+          await supabaseAdmin
+            .from('movimentacoes_stock')
+            .delete()
+            .eq('empresa_id', empresa_id)
+            .or(`reference_id.eq.${docRef},reference_id.eq.${docNum},referencia.eq.${docNum}`);
+        }
+      }
+
+      const results: any[] = [];
+
+      for (const item of itens) {
+        const rawDesc = (item.descricao || item.name || '').trim();
+        const armId = (item.armazem_id || item.warehouse_id || '').toString();
+        const qtd = Number(item.quantidade ?? item.quantity ?? 1);
+        const precoUnit = Number(item.valor_unitario ?? item.unit_price ?? item.cost_price ?? 0);
+
+        if (!rawDesc || qtd <= 0) continue;
+
+        // Sanitização segura para PostgREST: remover vírgulas para evitar quebra do .or()
+        const cleanDesc = rawDesc.replace(/[,%]/g, ' ').trim();
+
+        const numWarehouse = Number(armId);
+        const hasNumW = !isNaN(numWarehouse) && numWarehouse > 0;
+
+        // 2. Localizar produto por Nome ou Código na tabela 'produtos' da empresa
+        const { data: prods } = await supabaseAdmin
+          .from('produtos')
+          .select('id, name, nome, codigo, stock_quantity, stock, stock_atual, cost_price, preco_compra, warehouse_id, armazem_id')
+          .eq('empresa_id', empresa_id)
+          .or(`name.ilike.%${cleanDesc}%,nome.ilike.%${cleanDesc}%`)
+          .limit(1);
+
+        let prodId: string;
+        let prevStock = 0;
+        let newStock = qtd;
+
+        if (prods && prods.length > 0) {
+          const prod = prods[0];
+          prodId = prod.id;
+          prevStock = Number(prod.stock_quantity ?? prod.stock ?? prod.stock_atual ?? 0);
+          newStock = Math.round((prevStock + qtd) * 100) / 100;
+
+          const updateProd: any = {
+            stock_quantity: newStock,
+            stock: newStock,
+            stock_atual: newStock,
+            estoque_atual: newStock,
+            cost_price: precoUnit,
+            preco_compra: precoUnit,
+            preco_custo: precoUnit,
+            unit: item.unidade || 'UN',
+            unidade: item.unidade || 'UN',
+            updated_at: new Date().toISOString()
+          };
+          if (armId) updateProd.armazem_id = armId;
+          if (hasNumW) updateProd.warehouse_id = numWarehouse;
+
+          await supabaseAdmin
+            .from('produtos')
+            .update(updateProd)
+            .eq('id', prod.id)
+            .eq('empresa_id', empresa_id);
+        } else {
+          // Criar novo produto no catálogo oficial
+          const insertProd: any = {
+            empresa_id: empresa_id,
+            name: rawDesc,
+            nome: rawDesc,
+            codigo: item.codigo || item.code || null,
+            code: item.codigo || item.code || null,
+            stock_quantity: qtd,
+            stock: qtd,
+            stock_atual: qtd,
+            estoque_atual: qtd,
+            cost_price: precoUnit,
+            preco_compra: precoUnit,
+            preco_custo: precoUnit,
+            price: Math.round(precoUnit * 1.3 * 100) / 100,
+            preco_venda: Math.round(precoUnit * 1.3 * 100) / 100,
+            unit: item.unidade || 'UN',
+            unidade: item.unidade || 'UN',
+            tipo: 'Produto',
+            is_active: true,
+            ativo: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          };
+          if (armId) insertProd.armazem_id = armId;
+          if (hasNumW) insertProd.warehouse_id = numWarehouse;
+
+          const { data: newProd, error: newProdErr } = await supabaseAdmin
+            .from('produtos')
+            .insert([insertProd])
+            .select('id, stock_quantity')
+            .single();
+
+          if (newProdErr || !newProd) {
+            console.error('[STOCK-SYNC] Erro ao criar produto:', newProdErr?.message);
+            continue;
+          }
+          prodId = newProd.id;
+          prevStock = 0;
+          newStock = qtd;
+        }
+
+        // 3. Inserir Movimento de Entrada Oficial
+        const movData: any = {
+          empresa_id: empresa_id,
+          product_id: prodId,
+          produto_id: prodId,
+          type: 'entry',
+          tipo: 'entrada',
+          quantity: qtd,
+          quantidade: qtd,
+          unit_price: precoUnit,
+          previous_stock: prevStock,
+          current_stock: newStock,
+          armazem_id: armId || null,
+          warehouse_id: hasNumW ? numWarehouse : null,
+          reference_id: docRef,
+          referencia: docNum,
+          description: `Entrada Compra: ${docNum || 'Doc'} - ${fornecedorNome || 'Fornecedor'}`,
+          ano: docAno,
+          created_at: docData,
+          created_by: authCtx?.userId || 'sistema',
+          created_by_nome: authCtx?.name || 'Operador',
+          created_by_username: authCtx?.username || 'operador'
+        };
+
+        const { data: movRes, error: movErr } = await supabaseAdmin
+          .from('movimentacoes_stock')
+          .insert([movData])
+          .select()
+          .maybeSingle();
+
+        if (movErr) {
+          console.error('[STOCK-SYNC] Erro ao registar movimento:', movErr.message);
+        } else {
+          results.push(movRes || movData);
+        }
+      }
+
+      console.log(`[STOCK-SYNC] Sincronização concluída com sucesso: ${results.length} movimentos registados.`);
+      return res.json({ success: true, count: results.length, movements: results });
+    } catch (syncErr: any) {
+      console.error('[STOCK-SYNC] Erro crítico:', syncErr.message);
+      return res.status(500).json({ error: `Erro na sincronização de stock: ${syncErr.message}` });
+    }
   });
   // ==============================================================================
   // GESTÃO DE SEGURANÇA PRIVADA (SUPABASE CRUD & TENANT ISOLATION)

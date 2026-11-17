@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import {
-  ShoppingCart, Package, Building2, Calculator, ArrowDown,
+  ShoppingCart, Package, Building2, Calculator,
   Search, Filter, RefreshCw, Plus, ArrowRightLeft, SlidersHorizontal,
   FileText, Eye, AlertTriangle, CheckCircle2, ShieldAlert, Download,
   Layers, ChevronRight, Home, TrendingUp, TrendingDown, Clock, Box
@@ -39,7 +39,6 @@ export const StockAtualModule: React.FC<StockAtualModuleProps> = ({
   const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'positive' | 'negative' | 'low'>('all');
-  const [activeFlowSection, setActiveFlowSection] = useState<'flow' | 'details'>('flow');
   const [loadingFresh, setLoadingFresh] = useState<boolean>(false);
 
   // Armazém selecionado atualmente (ou todos)
@@ -227,84 +226,7 @@ export const StockAtualModule: React.FC<StockAtualModuleProps> = ({
   return (
     <div className="space-y-6 font-sans">
       
-      {/* ────────────────────────────────────────────────────────────────────────── */}
-      {/* 1. SEÇÕES E BOTÕES CONFORME A IMAGEM ANEXADA (media_1794908848750_8bde0116.png) */}
-      {/* ────────────────────────────────────────────────────────────────────────── */}
-      <div className="bg-white border border-zinc-200 shadow-sm p-6 sm:p-8 rounded-xl space-y-3">
-        
-        {/* Bloco 1: GESTÃO DE COMPRAS (Azul Claro) */}
-        <button
-          type="button"
-          onClick={onNavigateToPurchases}
-          className="w-full bg-[#F0F5FF] hover:bg-[#E5EEFF] border border-[#D6E4FF] hover:border-[#ADC8FF] p-4 sm:p-5 rounded-xl flex flex-col items-center justify-center text-center transition-all shadow-xs cursor-pointer group"
-          title="Clique para aceder à Gestão de Compras"
-        >
-          <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center mb-2 group-hover:scale-105 transition-transform">
-            <ShoppingCart className="text-blue-600" size={22} />
-          </div>
-          <span className="text-sm sm:text-base font-black text-zinc-800 uppercase tracking-wide group-hover:text-blue-700 transition-colors">
-            GESTÃO DE COMPRAS
-          </span>
-          <span className="text-xs text-zinc-500 font-medium mt-0.5">
-            Registo do documento e dos produtos adquiridos
-          </span>
-        </button>
 
-        {/* Seta Verde 1 */}
-        <div className="flex justify-center items-center py-0.5">
-          <ArrowDown className="text-emerald-600 animate-bounce" size={20} />
-        </div>
-
-        {/* Bloco 2: MOVIMENTO DE ENTRADA (Verde Claro) */}
-        <div className="w-full bg-[#F0FDF4] border border-[#DCFCE7] p-4 sm:p-5 rounded-xl flex flex-col items-center justify-center text-center shadow-xs">
-          <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center mb-2">
-            <Package className="text-emerald-600" size={22} />
-          </div>
-          <span className="text-sm sm:text-base font-black text-zinc-800 uppercase tracking-wide">
-            MOVIMENTO DE ENTRADA
-          </span>
-          <span className="text-xs text-zinc-500 font-medium mt-0.5">
-            Registo real da quantidade no armazém seleccionado
-          </span>
-        </div>
-
-        {/* Seta Verde 2 */}
-        <div className="flex justify-center items-center py-0.5">
-          <ArrowDown className="text-emerald-600 animate-bounce" size={20} />
-        </div>
-
-        {/* Bloco 3: GESTÃO DE STOCK & INVENTÁRIO (Azul Claro) */}
-        <div className="w-full bg-[#F0F5FF] border border-[#D6E4FF] p-4 sm:p-5 rounded-xl flex flex-col items-center justify-center text-center shadow-xs">
-          <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center mb-2">
-            <Building2 className="text-blue-600" size={22} />
-          </div>
-          <span className="text-sm sm:text-base font-black text-zinc-800 uppercase tracking-wide">
-            GESTÃO DE STOCK & INVENTÁRIO
-          </span>
-          <span className="text-xs text-zinc-500 font-medium mt-0.5">
-            Stock Atual, quantidades, custos e movimentações
-          </span>
-        </div>
-
-        {/* Seta Verde 3 */}
-        <div className="flex justify-center items-center py-0.5">
-          <ArrowDown className="text-emerald-600 animate-bounce" size={20} />
-        </div>
-
-        {/* Bloco 4: CÁLCULOS AUTOMÁTICOS (Verde Claro) */}
-        <div className="w-full bg-[#F0FDF4] border border-[#DCFCE7] p-4 sm:p-5 rounded-xl flex flex-col items-center justify-center text-center shadow-xs">
-          <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center mb-2">
-            <Calculator className="text-emerald-600" size={22} />
-          </div>
-          <span className="text-sm sm:text-base font-black text-zinc-800 uppercase tracking-wide">
-            CÁLCULOS AUTOMÁTICOS
-          </span>
-          <span className="text-xs text-zinc-500 font-medium mt-0.5">
-            Entradas – Saídas ± Ajustamentos
-          </span>
-        </div>
-
-      </div>
 
       {/* ────────────────────────────────────────────────────────────────────────── */}
       {/* 2. SELEÇÃO OBRIGATÓRIA DO ARMAZÉM & PAINEL DE CONTROLO DE STOCK           */}

@@ -26,6 +26,7 @@ import { PurchaseDocumentScannerModal } from './components/purchases/PurchaseDoc
 import { GestaoComprasList, CompraDoc } from './components/purchases/GestaoComprasList';
 import { GestaoComprasForm } from './components/purchases/GestaoComprasForm';
 import { StockAtualModule } from './components/stock/StockAtualModule';
+import { StockProductPicker } from './components/stock/StockProductPicker';
 
 
 import ProjectManagementModule from './components/ProjectManagementModule';
@@ -26461,6 +26462,47 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
 
   // AGT Item Modal state
   const [isAgtItemModalOpen, setIsAgtItemModalOpen] = useState(false);
+  const [showStockPicker, setShowStockPicker] = useState(false);
+
+  // Saída automática de stock após emissão de venda
+  const dispatchStockExit = async (savedDoc: any) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const docItems = savedDoc?.items || savedDoc?.itens || [];
+      if (!docItems.length) return;
+      const empresaId = user?.empresa_id || (user as any)?.company_id;
+      if (!empresaId) return;
+      
+      const payload = {
+        empresa_id: empresaId,
+        documentId: savedDoc?.id,
+        numeroDocumento: savedDoc?.invoice_number || savedDoc?.numero_documento,
+        tipoDocumento: savedDoc?.document_type || savedDoc?.tipo_documento,
+        clienteNome: savedDoc?.client_name || savedDoc?.cliente_nome,
+        dataDocumento: savedDoc?.date || savedDoc?.data_emissao || new Date().toISOString().slice(0,10),
+        itens: docItems.map((it: any) => ({
+          descricao: it.description || it.descricao || '',
+          product_id: it.product_id || it.produto_id || null,
+          quantidade: Number(it.quantity || it.quantidade || 1),
+          valor_unitario: Number(it.unit_price || it.valor_unitario || 0),
+          armazem_id: it.warehouse_id || it.armazem_id || null,
+          tipo: it.tipologia || it.tipo_artigo || 'Produto',
+        })),
+      };
+
+      await fetch('/api/stock/exit-sale', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + (session?.access_token || ''),
+        },
+        body: JSON.stringify(payload),
+      });
+      window.dispatchEvent(new CustomEvent('refresh_stock'));
+    } catch (e) {
+      console.warn('[InvoiceForm] Stock exit (non-critical):', e);
+    }
+  };
   const [editingAgtItemIndex, setEditingAgtItemIndex] = useState<number | null>(null);
   const [editingAgtItemData, setEditingAgtItemData] = useState<AgtItemData | null>(null);
   const [clientNifSearch, setClientNifSearch] = useState(initialData?.client_nif || (initialData as any)?.customer_tax_id || (initialData as any)?.nif || '');
@@ -27245,7 +27287,18 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
         <div className="bg-white border border-zinc-200 p-3.5 rounded-none shadow-sm space-y-3">
           <div className="flex justify-between items-center border-b border-zinc-100 pb-2">
             <h3 className="text-xs font-bold text-[#0f2a4a] uppercase tracking-wide">Bens e serviços</h3>
-            <button
+            {!isCertified && (
+                <button
+                  type="button"
+                  onClick={() => setShowStockPicker(true)}
+                  className="bg-emerald-700 text-white px-3 py-1.5 font-semibold flex items-center gap-1.5 hover:bg-emerald-800 transition-all text-xs rounded-none"
+                  title="Seleccionar produto do stock"
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8l1 12a2 2 0 002 2h8a2 2 0 002-2l1-12"/></svg>
+                  Stock
+                </button>
+              )}
+              <button
               type="button"
               disabled={isCertified}
               onClick={() => {
@@ -27414,6 +27467,34 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
       </form>
 
       {/* AgtItemModal */}
+      {showStockPicker && (
+        <StockProductPicker
+          isOpen={showStockPicker}
+          onClose={() => setShowStockPicker(false)}
+          warehouses={warehouses}
+          onSelect={(prod) => {
+            const taxDefault = activeTaxes.length > 0 ? activeTaxes[0] : null;
+            const newItem = {
+              description: prod.name || (prod as any).nome || '',
+              quantity: 1,
+              unit_price: Number((prod as any).price ?? (prod as any).preco_venda ?? 0),
+              total: Number((prod as any).price ?? (prod as any).preco_venda ?? 0),
+              tipologia: 'Mercadoria',
+              desconto: 0,
+              tipo_artigo: 'produto',
+              tax: taxDefault ? taxDefault.nome + ' (' + taxDefault.taxa + '%)' : 'IVA - 0%',
+              tax_id: taxDefault ? taxDefault.id : null,
+              referencia: (prod as any).referencia || (prod as any).reference || '',
+              unidade_medida: (prod as any).unit || (prod as any).unidade || 'QUANTIDADE (Qtd)',
+              warehouse_id: prod.warehouse_id || (prod as any).armazem_id,
+              armazem_id: (prod as any).armazem_id || prod.warehouse_id,
+              product_id: prod.id,
+              comprimento: 0, largura: 0, altura: 0,
+            };
+            setItems(prev => [...prev, newItem]);
+          }}
+        />
+      )}
       {isAgtItemModalOpen && (
         <AgtItemModal
           isOpen={isAgtItemModalOpen}
@@ -27645,6 +27726,7 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
           console.error('[CreatePurchase] Erro ao registrar saída no caixa:', movErr);
         }
       }
+      dispatchStockExit(data).catch(() => {});
       onSuccess(data);
     } catch (err: any) { alert('Erro ao registar compra: ' + (err.message || err)); }
     finally { setLoading(false); }

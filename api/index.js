@@ -24,6 +24,7 @@ import reportsHandler from './_handlers/reports.js';
 import accountingHandler from './_handlers/accounting.js';
 import userActivitiesHandler from './_handlers/user-activities.js';
 import stockSyncHandler from './_handlers/stock-sync.js';
+import stockExitHandler from './_handlers/stock-exit.js';
 
 export default async function handler(req, res) {
   setCORS(res);
@@ -123,6 +124,11 @@ export default async function handler(req, res) {
   // 12.5. Stock — Sincronização Automática Compras → Stock (Idempotente)
   if (pathname.startsWith('/api/stock')) {
     return stockSyncHandler(req, res);
+  }
+
+  // 12.6. Stock Saída — Vendas e verificação de disponibilidade
+  if (pathname.startsWith('/api/stock/exit-sale') || pathname.startsWith('/api/stock/check-stock')) {
+    return stockExitHandler(req, res);
   }
 
   // 13. Relatórios Fiscais e de Gestão (Profit & Loss / Proveitos e Custos)

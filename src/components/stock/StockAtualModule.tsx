@@ -6,6 +6,7 @@ import {
   Layers, ChevronRight, Home, TrendingUp, TrendingDown, Clock, Box
 } from 'lucide-react';
 import { Product, Warehouse, StockMovement } from '../../types';
+import { StockEntradasReport } from './StockEntradasReport';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { toast } from 'react-hot-toast';
@@ -42,6 +43,7 @@ export const StockAtualModule: React.FC<StockAtualModuleProps> = ({
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'positive' | 'negative' | 'low'>('all');
   const [loadingFresh, setLoadingFresh] = useState<boolean>(false);
+  const [activeReportTab, setActiveReportTab] = useState<'stock' | 'relatorios'>('stock');
 
   // Armazém selecionado atualmente (ou todos)
   const currentWarehouse = useMemo(() => {

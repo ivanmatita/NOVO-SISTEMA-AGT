@@ -263,7 +263,7 @@ export const LoginPage: React.FC = () => {
 
         const selectedPlanObj = licensingPlans.find(p => p.id === regSelectedPlan);
         const finalPlanName = simulatorSelection ? `Licença ${simulatorSelection.planName}` : (selectedPlanObj?.name || regSelectedPlan);
-        const finalPlanPrice = simulatorSelection ? `${simulatorSelection.totalAPagar.toLocaleString('pt-AO', { minimumFractionDigits: 2 })} AOA` : (selectedPlanObj?.price || '0');
+        const finalPlanPrice = simulatorSelection ? `${simulatorSelection.totalAPagar.toLocaleString('pt-AO', { minimumFractionDigits: 2 })} AOA` : ((selectedPlanObj as any)?.price || '0');
         
         await register({
           nome_empresa: regCompanyName.trim(),

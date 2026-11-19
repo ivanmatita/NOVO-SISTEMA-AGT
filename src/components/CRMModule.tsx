@@ -1468,8 +1468,8 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
 
         {/* SUB-ABA 2: GESTÃO DA LICENÇA (PARÂMETROS CONSOLIDADOS DO CRM) */}
         {companySubTab === 'licenca' && (() => {
-          const normPlan = normalizeOfficialPlan(selectedCompany.plano);
-          const precoContratado = Number((selectedCompany as any).preco_contratado || selectedCompany.valor_licenca || (normPlan === 'Básico' ? 25000 : normPlan === 'Standard' ? 55000 : normPlan === 'Enterprise' ? 150000 : 65000));
+          const normPlan = (typeof (window as any).normalizeOfficialPlan === "function" ? (window as any).normalizeOfficialPlan(selectedCompany.plano) : (selectedCompany.plano || "Básico"));
+          const precoContratado = Number((selectedCompany as any).preco_contratado || (selectedCompany as any).valor_licenca || (normPlan === 'Básico' ? 25000 : normPlan === 'Standard' ? 55000 : normPlan === 'Enterprise' ? 150000 : 65000));
           const modalidadeContratada = (selectedCompany as any).modalidade_pagamento || (selectedCompany as any).periodicidade_pagamento || 'Mensal';
           const statusPagamento = (selectedCompany as any).status_pagamento || (lic.isAtiva ? 'Regularizado / Ativo' : 'Pendente de Regularização');
           const lastUpgrade = companyHistorico.find(h => String(h.acao || '').toUpperCase().includes('UPGRADE') || String(h.acao || '').toUpperCase().includes('DOWNGRADE') || String(h.descricao || '').includes('Plano anterior'));
@@ -1516,7 +1516,7 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                 {/* 4. Preço Contratado */}
                 <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-xs">
                   <span className="text-[9px] font-black text-emerald-700 uppercase tracking-widest block">Preço Contratado (Sem IVA)</span>
-                  <span className="text-sm font-mono font-black text-emerald-800 mt-1 block">{formatKz(precoContratado)} AOA</span>
+                  <span className="text-sm font-mono font-black text-emerald-800 mt-1 block">{(Number(precoContratado).toLocaleString("pt-AO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }))} AOA</span>
                 </div>
 
                 {/* 5. Modalidade de Pagamento */}

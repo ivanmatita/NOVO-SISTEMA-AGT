@@ -547,7 +547,7 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack, employ
   const [activeTab, setActiveTab] = useState<'finance' | 'invoices' | 'stock' | 'employees'>('finance');
   useEffect(() => {
     const handleNavPurchases = () => {
-      setActiveTab('purchases');
+      setActiveTab('finance' as any); // navega para compras via hash/redirect
     };
     window.addEventListener('navigate_to_purchases', handleNavPurchases);
     return () => window.removeEventListener('navigate_to_purchases', handleNavPurchases);
@@ -27479,7 +27479,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
               unidade_medida: (prod as any).unit || (prod as any).unidade || 'QUANTIDADE (Qtd)',
               warehouse_id: prod.warehouse_id || (prod as any).armazem_id,
               armazem_id: (prod as any).armazem_id || prod.warehouse_id,
-              product_id: prod.id,
+              product_id: Number(prod.id) || (prod.id as any),
               comprimento: 0, largura: 0, altura: 0,
             };
             setItems(prev => [...prev, newItem]);
@@ -27519,8 +27519,8 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
               total: lineTotal,
               tipo_artigo: data.tipo_operacao || 'produto',
               unidade_medida: data.unidade_medida || 'UN',
-              product_id: data.product_id,
-              warehouse_id: data.warehouse_id || data.armazem_id,
+              product_id: data.product_id !== undefined ? Number(data.product_id) : undefined,
+              warehouse_id: data.warehouse_id || data.armazem_id ? Number(data.warehouse_id || data.armazem_id) : undefined,
               armazem_id: data.armazem_id || data.warehouse_id,
               referencia: data.referencia,
             };
@@ -29098,15 +29098,15 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
         onSuccess={(savedData) => {
           setIsCreating(false);
           fetchPurchases();
-          if (typeof fetchProducts === 'function') fetchProducts();
-          if (typeof doLoadStockMovements === 'function') doLoadStockMovements();
+          if (typeof (window as any).refreshProducts === 'function') (window as any).refreshProducts();
+          window.dispatchEvent(new CustomEvent('stock_data_refresh'));
           window.dispatchEvent(new CustomEvent('refresh_stock'));
           window.dispatchEvent(new CustomEvent('refresh_purchases'));
           if (createType === 'Pagamento' && savedData) {
             setCompletedReceipt(savedData);
           }
         }}
-        onNavigateToStock={() => setActiveTab('products')}
+        onNavigateToStock={() => { window.dispatchEvent(new CustomEvent('navigate_to_stock')); }}
         caixas={caixas}
         initialData={createData}
         fixedDocumentType={createType}
@@ -29342,7 +29342,7 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
           caixas={caixas}
           fiscalYear={fiscalYear}
           onScanQr={() => setIsMainScannerOpen(true)}
-          onNavigateToStock={() => setActiveTab('products')}
+          onNavigateToStock={() => { window.dispatchEvent(new CustomEvent('navigate_to_stock')); }}
           onNewPurchase={() => handleStartCreate(null, undefined)}
           onEditPurchase={(doc) => {
             if (doc.id) {
@@ -32354,7 +32354,7 @@ const ProductList = ({
           stockMovements={stockMovements}
           warehouses={warehouses}
           companyData={companyData}
-          fiscalYear={fiscalYear}
+          fiscalYear={Number(fiscalYear)}
           onRefresh={onRefresh}
         />
       ) : activeTab === 'price_table' ? (
@@ -35880,7 +35880,7 @@ export default function App() {
                                   suppliers={suppliers}
                                   products={products}
                                   onNavigateToSales={() => { setActiveTab('electronic_invoices'); setIsCreatingInvoice(true); setSelectedDocument(null); setFixedDocumentType(undefined); }}
-                                  onNavigateToStock={() => setActiveTab('products')}
+                                  onNavigateToStock={() => { window.dispatchEvent(new CustomEvent('navigate_to_stock')); }}
                                   onNavigateToCaixa={() => setActiveTab('financial')}
                                   onEmitirFatura={handleEmitirFaturaFromPedido}
                                   fiscalYear={fiscalYear}
@@ -35895,7 +35895,7 @@ export default function App() {
                                   suppliers={suppliers}
                                   products={products}
                                   onNavigateToSales={() => { setActiveTab('electronic_invoices'); setIsCreatingInvoice(true); setSelectedDocument(null); setFixedDocumentType(undefined); }}
-                                  onNavigateToStock={() => setActiveTab('products')}
+                                  onNavigateToStock={() => { window.dispatchEvent(new CustomEvent('navigate_to_stock')); }}
                                   onNavigateToCaixa={() => setActiveTab('financial')}
                                   onEmitirFatura={handleEmitirFaturaFromPedido}
                                   onNavigateToPOS={(activity) => {

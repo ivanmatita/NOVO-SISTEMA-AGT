@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Plus } from 'lucide-react';
+import { ArrowLeft, Plus, Package } from 'lucide-react';
+import { StockProductPicker } from './stock/StockProductPicker';
 
 export interface AgtItemData {
   id?: string | number;
@@ -9,6 +10,9 @@ export interface AgtItemData {
   description: string;
   referencia?: string;
   unidade_medida?: string;
+  warehouse_id?: string | number;
+  armazem_id?: string | number;
+  tipo_artigo?: string;
   unit_price: number;
   desconto?: number;
   preco_com_desconto?: number;
@@ -29,6 +33,7 @@ interface AgtItemModalProps {
   initialItem?: AgtItemData | null;
   products?: any[];
   activeTaxes?: any[];
+  warehouses?: any[];
   onClose: () => void;
   onSave: (item: AgtItemData) => void;
 }
@@ -38,6 +43,7 @@ export const AgtItemModal: React.FC<AgtItemModalProps> = ({
   initialItem,
   products = [],
   activeTaxes = [],
+  warehouses = [],
   onClose,
   onSave
 }) => {
@@ -54,6 +60,10 @@ export const AgtItemModal: React.FC<AgtItemModalProps> = ({
   const [temIsencao, setTemIsencao] = useState<boolean>(initialItem?.tem_isencao || false);
   const [codigoImposto, setCodigoImposto] = useState(initialItem?.codigo_imposto || 'IS_1');
   const [taxaImposto, setTaxaImposto] = useState<number>(initialItem?.taxa_imposto ?? 1);
+  const [showStockPicker, setShowStockPicker] = useState<boolean>(false);
+  const [selectedProductId, setSelectedProductId] = useState<string | number | undefined>(initialItem?.product_id);
+  const [selectedWarehouseId, setSelectedWarehouseId] = useState<string | number | undefined>((initialItem as any)?.warehouse_id);
+  const [referencia, setReferencia] = useState<string>(initialItem?.referencia || '');
 
   useEffect(() => {
     if (initialItem) {
@@ -69,6 +79,9 @@ export const AgtItemModal: React.FC<AgtItemModalProps> = ({
       setTemIsencao(initialItem.tem_isencao || false);
       setCodigoImposto(initialItem.codigo_imposto || 'IS_1');
       setTaxaImposto(initialItem.taxa_imposto ?? 1);
+      setSelectedProductId(initialItem.product_id);
+      setSelectedWarehouseId((initialItem as any).warehouse_id);
+      setReferencia(initialItem.referencia || '');
     } else {
       handleClear();
     }
@@ -88,6 +101,20 @@ export const AgtItemModal: React.FC<AgtItemModalProps> = ({
     setTemIsencao(false);
     setCodigoImposto('IS_1');
     setTaxaImposto(1);
+    setSelectedProductId(undefined);
+    setSelectedWarehouseId(undefined);
+    setReferencia('');
+  };
+
+  const handleSelectStockProduct = (prod: any) => {
+    setDescription(prod.name || prod.nome || '');
+    setUnitPrice(Number(prod.price ?? prod.preco_venda ?? 0));
+    setUnidadeMedida(prod.unit || prod.unidade || 'QUANTIDADE (Qtd)');
+    setQuantity(1);
+    setSelectedProductId(prod.id);
+    setSelectedWarehouseId(prod.warehouse_id || prod.armazem_id);
+    setReferencia(prod.referencia || prod.reference || prod.codigo || '');
+    setShowStockPicker(false);
   };
 
   if (!isOpen) return null;
@@ -130,11 +157,15 @@ export const AgtItemModal: React.FC<AgtItemModalProps> = ({
 
     const item: AgtItemData = {
       id: initialItem?.id,
-      product_id: initialItem?.product_id,
+      product_id: selectedProductId || initialItem?.product_id,
       tipo_operacao: tipoOperacao,
       quantity: Number(quantity) || 1,
       description: description.trim(),
+      referencia: referencia || initialItem?.referencia,
       unidade_medida: unidadeMedida,
+      warehouse_id: selectedWarehouseId,
+      armazem_id: selectedWarehouseId,
+      tipo_artigo: selectedProductId ? 'produto' : 'servico',
       unit_price: Number(unitPrice) || 0,
       desconto: Number(desconto) || 0,
       preco_com_desconto: precoComDesconto,
@@ -237,11 +268,22 @@ export const AgtItemModal: React.FC<AgtItemModalProps> = ({
             </div>
           </div>
 
-          {/* Row 2: Descrição */}
+          {/* Row 2: Descrição com Seletor de Stock Integrado Exclusivamente Aqui */}
           <div className="space-y-2">
-            <label className="text-xs font-bold text-zinc-700">
-              Descrição <span className="text-red-500">*</span>
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-zinc-700">
+                Descrição <span className="text-red-500">*</span>
+              </label>
+              <button
+                type="button"
+                onClick={() => setShowStockPicker(true)}
+                className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded text-[11px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                title="Seleccionar produto do stock disponível"
+              >
+                <Package size={13} className="text-emerald-700" />
+                <span>Buscar do Stock</span>
+              </button>
+            </div>
             <div className="relative">
               <textarea
                 rows={3}
@@ -494,6 +536,16 @@ export const AgtItemModal: React.FC<AgtItemModalProps> = ({
           )}
         </form>
       </div>
+
+      {/* Modal de Seleção de Produtos do Stock */}
+      {showStockPicker && (
+        <StockProductPicker
+          isOpen={showStockPicker}
+          onClose={() => setShowStockPicker(false)}
+          onSelect={handleSelectStockProduct}
+          warehouses={warehouses}
+        />
+      )}
     </div>
   );
 };

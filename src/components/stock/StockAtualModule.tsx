@@ -3,10 +3,11 @@ import {
   ShoppingCart, Package, Building2, Calculator,
   Search, Filter, RefreshCw, Plus, ArrowRightLeft, SlidersHorizontal,
   FileText, Eye, AlertTriangle, CheckCircle2, ShieldAlert, Download,
-  Layers, ChevronRight, Home, TrendingUp, TrendingDown, Clock, Box
+  Layers, ChevronRight, ChevronLeft, Home, TrendingUp, TrendingDown, Clock, Box, Pencil
 } from 'lucide-react';
 import { Product, Warehouse, StockMovement } from '../../types';
 import { StockEntradasReport } from './StockEntradasReport';
+import { ProductIndividualStockReport } from './ProductIndividualStockReport';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { toast } from 'react-hot-toast';
@@ -22,6 +23,7 @@ interface StockAtualModuleProps {
   onOpenTransfer?: (product: Product) => void;
   onViewProductDetail?: (product: Product) => void;
   onViewStockReport?: (product: Product) => void;
+  onEditProduct?: (product: Product) => void;
   onNewProduct?: () => void;
 }
 
@@ -36,6 +38,7 @@ export const StockAtualModule: React.FC<StockAtualModuleProps> = ({
   onOpenTransfer,
   onViewProductDetail,
   onViewStockReport,
+  onEditProduct,
   onNewProduct,
 }) => {
   const { user } = useAuth();
@@ -43,7 +46,11 @@ export const StockAtualModule: React.FC<StockAtualModuleProps> = ({
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'positive' | 'negative' | 'low'>('all');
   const [loadingFresh, setLoadingFresh] = useState<boolean>(false);
-  const [activeReportTab, setActiveReportTab] = useState<'stock' | 'relatorios'>('stock');
+  const [selectedProductForReport, setSelectedProductForReport] = useState<Product | null>(null);
+  
+  // Paginação
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(25);
 
   // Armazém selecionado atualmente (ou todos)
   const currentWarehouse = useMemo(() => {
@@ -59,6 +66,11 @@ export const StockAtualModule: React.FC<StockAtualModuleProps> = ({
     window.addEventListener('refresh_stock', handleRefreshEvent);
     return () => window.removeEventListener('refresh_stock', handleRefreshEvent);
   }, [onRefresh]);
+
+  // Resetar paginação ao filtrar ou pesquisar
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, filterStatus, selectedWarehouseId, pageSize]);
 
   // Função para verificar se um movimento pertence ao armazém selecionado
   const movementMatchesWarehouse = (m: StockMovement, wId: string) => {
@@ -98,21 +110,18 @@ export const StockAtualModule: React.FC<StockAtualModuleProps> = ({
         .filter(m => m.type === 'adjustment_minus' || (m as any).tipo === 'ajuste_negativo')
         .reduce((sum, m) => sum + Number(m.quantity || (m as any).quantidade || 0), 0);
 
-      // Quantidade Inicial (da primeira movimentação de entrada ou do cadastro inicial)
+      // Quantidade Inicial
       const sortedMovements = [...prodMovements].sort((a, b) => 
         new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime()
       );
       const firstEntry = sortedMovements.find(m => m.type === 'entry' || (m as any).tipo === 'entrada');
       const lastMovement = sortedMovements[sortedMovements.length - 1];
 
-      // Quantidade Total de Entradas = Entradas + Ajustes Positivos
       const totalEntradas = entradasMov;
       const totalSaidas = saidasMov;
 
       // FÓRMULA OFICIAL EXIGIDA:
       // Quantidade disponível = Total de entradas - Total de saídas + Ajustamentos positivos - Ajustamentos negativos
-      // stockBase: usa stock_quantity do produto quando não há entradas via movimentos
-      // (produto criado via compra com stock direto no registo, sem movimento de entrada registado)
       const prodArmazemId = (prod as any).armazem_id || prod.warehouse_id;
       const matchesBaseWarehouse = wId === 'all' || String(prodArmazemId) === String(wId);
 
@@ -129,54 +138,52 @@ export const StockAtualModule: React.FC<StockAtualModuleProps> = ({
 
       let qtdDisponivel = stockBase + entradasMov - totalSaidas + ajustesPositivos - ajustesNegativos;
 
-      // Se não houver movimentos de nenhum tipo e o armazém não coincide, zera o stock
       if (prodMovements.length === 0 && !matchesBaseWarehouse) {
         qtdDisponivel = 0;
       }
 
       // Custos e Valores
       const custoUnitario = Number(prod.cost_price || (prod as any).preco_compra || (prod as any).preco_custo || 0);
-      const custoTotalAquisicao = totalEntradas * custoUnitario;
+      const precoVenda = Number(prod.price || (prod as any).preco_venda || 0);
       const valorTotalStock = Math.max(0, qtdDisponivel) * custoUnitario;
 
       // Nome do Armazém correspondente
       const armazemObj = warehouses.find(w => String(w.id) === String(prodArmazemId || wId));
       const nomeArmazem = armazemObj ? armazemObj.name : (wId === 'all' ? (armazemObj?.name || 'Geral / Principal') : 'Armazém Selecionado');
 
-      // Informações da Compra de Origem
-      const docOrigem = (firstEntry as any)?.documento_origem || (firstEntry?.description?.includes('Compra') ? 'Factura Compra' : 'Registo Inicial');
       const docRef = firstEntry?.reference_id || (firstEntry as any)?.referencia || '—';
       const fornecedorNome = (firstEntry as any)?.fornecedor_nome || (firstEntry?.description?.split('-')[1]?.trim()) || 'Fornecedor Comercial';
-      const dataEntrada = firstEntry?.created_at ? new Date(firstEntry.created_at).toLocaleDateString('pt-AO') : (prod.created_at ? new Date(prod.created_at).toLocaleDateString('pt-AO') : '—');
-      const dataUltimaMov = lastMovement?.created_at ? new Date(lastMovement.created_at).toLocaleDateString('pt-AO') : dataEntrada;
 
-      // Determinar se o produto tem relevância no armazém selecionado
-      // Inclui produtos com stock_quantity > 0 no armazém base mesmo sem movimentos
       const hasPresenceInWarehouse = wId === 'all' || matchesBaseWarehouse || prodMovements.length > 0 || qtdDisponivel > 0;
+
+      const stockMin = Number(prod.min_stock || 0);
+      const stockMax = Number(prod.max_stock || 0);
+
+      const isLowStock = qtdDisponivel <= stockMin && qtdDisponivel > 0;
+      const isZeroOrNegative = qtdDisponivel <= 0;
 
       return {
         product: prod,
         hasPresence: hasPresenceInWarehouse,
         codigo: prod.codigo || (prod as any).code || (prod as any).barcode || `ART-${String(prod.id).substring(0, 5).toUpperCase()}`,
+        referencia: (prod as any).referencia || (prod as any).reference || '',
         nome: prod.name || (prod as any).nome || 'Produto sem nome',
+        descricao: prod.description || (prod as any).descricao || '—',
         categoria: prod.category || (prod as any).categoria || 'Geral',
+        unidade: prod.unit || (prod as any).unidade || 'UN',
         armazemNome: nomeArmazem,
-        dataEntrada,
-        docOrigem,
-        docRef,
-        fornecedorNome,
-        qtdInicialEntrada: firstEntry ? Number(firstEntry.quantity || (firstEntry as any).quantidade || 0) : (matchesBaseWarehouse ? Number(prod.stock_quantity || 0) : 0),
-        qtdTotalAdquirida: totalEntradas > 0 ? totalEntradas : (matchesBaseWarehouse ? Number(prod.stock_quantity || 0) : 0),
         qtdDisponivel,
-        qtdVendidaSaida: totalSaidas,
+        stockMin,
+        stockMax,
+        precoVenda,
         custoUnitario,
-        custoTotalAquisicao,
         valorTotalStock,
-        dataUltimaMov,
-        tipoUltimaMov: lastMovement?.type === 'entry' ? 'Entrada' : (lastMovement?.type === 'exit' ? 'Saída' : (lastMovement?.type?.includes('adjustment') ? 'Ajuste' : 'Registo')),
-        isLowStock: qtdDisponivel <= (prod.min_stock || 0) && qtdDisponivel > 0,
-        isZeroOrNegative: qtdDisponivel <= 0,
-        hasMovements: prodMovements.length > 0
+        qtdTotalAdquirida: totalEntradas > 0 ? totalEntradas : (matchesBaseWarehouse ? Number(prod.stock_quantity || 0) : 0),
+        qtdVendidaSaida: totalSaidas,
+        isLowStock,
+        isZeroOrNegative,
+        docRef,
+        fornecedorNome
       };
     }).filter(item => item.hasPresence);
   }, [products, stockMovements, warehouses, selectedWarehouseId]);
@@ -184,18 +191,16 @@ export const StockAtualModule: React.FC<StockAtualModuleProps> = ({
   // Filtragem de busca e status
   const filteredList = useMemo(() => {
     return consolidatedItems.filter(item => {
-      // Busca por nome, código, fornecedor ou documento
       const q = searchTerm.toLowerCase().trim();
       const matchesSearch = !q || 
         item.nome.toLowerCase().includes(q) ||
+        item.descricao.toLowerCase().includes(q) ||
         item.codigo.toLowerCase().includes(q) ||
-        item.categoria.toLowerCase().includes(q) ||
-        item.docRef.toLowerCase().includes(q) ||
-        item.fornecedorNome.toLowerCase().includes(q);
+        item.referencia.toLowerCase().includes(q) ||
+        item.categoria.toLowerCase().includes(q);
 
       if (!matchesSearch) return false;
 
-      // Filtro de status
       if (filterStatus === 'positive') return item.qtdDisponivel > 0;
       if (filterStatus === 'negative') return item.qtdDisponivel <= 0;
       if (filterStatus === 'low') return item.isLowStock;
@@ -204,7 +209,14 @@ export const StockAtualModule: React.FC<StockAtualModuleProps> = ({
     });
   }, [consolidatedItems, searchTerm, filterStatus]);
 
-  // Totais e Métricas em Tempo Real para o armazém selecionado
+  // Paginação
+  const totalPages = Math.ceil(filteredList.length / pageSize) || 1;
+  const paginatedList = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredList.slice(start, start + pageSize);
+  }, [filteredList, currentPage, pageSize]);
+
+  // Totais e Métricas em Tempo Real
   const metrics = useMemo(() => {
     const totalQtdDisponivel = consolidatedItems.reduce((acc, it) => acc + Math.max(0, it.qtdDisponivel), 0);
     const totalValorStock = consolidatedItems.reduce((acc, it) => acc + Math.max(0, it.valorTotalStock), 0);
@@ -236,6 +248,20 @@ export const StockAtualModule: React.FC<StockAtualModuleProps> = ({
       setLoadingFresh(false);
     }
   };
+
+  // Se o utilizador clicou no relatório de um produto individual, exibe página independente
+  if (selectedProductForReport) {
+    return (
+      <ProductIndividualStockReport
+        product={selectedProductForReport}
+        stockMovements={stockMovements}
+        warehouses={warehouses}
+        onBack={() => setSelectedProductForReport(null)}
+        onEditProduct={onEditProduct}
+        onOpenAdjustment={onOpenAdjustment}
+      />
+    );
+  }
 
   return (
     <div className="space-y-3 font-sans">
@@ -322,7 +348,7 @@ export const StockAtualModule: React.FC<StockAtualModuleProps> = ({
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400" size={13} />
               <input
                 type="text"
-                placeholder="Pesquisar código, artigo, doc..."
+                placeholder="Pesquisar código, artigo, descrição..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-8 pr-3 py-1.5 bg-zinc-50 border border-zinc-200 text-xs font-medium text-zinc-800 focus:outline-none focus:border-[#003366] focus:bg-white rounded-lg shadow-2xs transition-colors"
@@ -352,224 +378,197 @@ export const StockAtualModule: React.FC<StockAtualModuleProps> = ({
               </button>
             )}
 
-            {onManageWarehouses && (
-              <button
-                type="button"
-                onClick={onManageWarehouses}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-bold uppercase tracking-wider rounded-lg border border-zinc-200 transition-colors shrink-0"
-                title="Gerir Armazéns"
-              >
-                <Home size={13} />
-                <span className="hidden sm:inline">Armazéns</span>
-              </button>
-            )}
-
             <button
               type="button"
               onClick={handleManualSync}
               disabled={loadingFresh}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-bold rounded-lg border border-zinc-200 transition-all cursor-pointer disabled:opacity-50 shrink-0"
-              title="Actualizar dados de stock e movimentos"
+              className="p-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-600 rounded-lg transition-colors cursor-pointer shrink-0"
+              title="Sincronizar dados com o Supabase"
             >
-              <RefreshCw size={13} className={loadingFresh ? 'animate-spin text-blue-600' : ''} />
-              <span className="hidden md:inline">{loadingFresh ? 'A carregar...' : 'Actualizar'}</span>
+              <RefreshCw size={14} className={loadingFresh ? 'animate-spin text-blue-600' : ''} />
             </button>
           </div>
 
         </div>
 
-        {/* Linha 2: Fita Resumo Compacta de Cálculos e Métricas (Slim KPI Strip) */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 pt-2 border-t border-zinc-100">
-          
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50/50 border border-blue-100 rounded-lg">
-            <Box size={14} className="text-blue-600 shrink-0" />
-            <div className="min-w-0">
-              <div className="text-[9px] font-bold text-blue-700 uppercase tracking-wider">Artigos</div>
-              <div className="text-xs font-black text-[#003366] truncate">{metrics.totalArtigos}</div>
+        {/* Linha 2: Resumo Rápido de Métricas em Cards Compactos */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-zinc-100 text-xs">
+          <div className="bg-zinc-50/70 p-2 rounded-lg border border-zinc-200/60 flex items-center justify-between">
+            <div>
+              <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block">Artigos em Stock</span>
+              <strong className="text-sm font-black text-zinc-800 font-mono">{metrics.totalArtigos}</strong>
             </div>
+            <Package size={18} className="text-zinc-400" />
           </div>
 
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50/50 border border-emerald-100 rounded-lg">
-            <TrendingUp size={14} className="text-emerald-600 shrink-0" />
-            <div className="min-w-0">
-              <div className="text-[9px] font-bold text-emerald-700 uppercase tracking-wider">Entradas</div>
-              <div className="text-xs font-black text-emerald-700 truncate">{metrics.totalEntradas.toLocaleString('pt-AO')}</div>
+          <div className="bg-emerald-50/50 p-2 rounded-lg border border-emerald-200/60 flex items-center justify-between">
+            <div>
+              <span className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider block">Total Disponível</span>
+              <strong className="text-sm font-black text-emerald-700 font-mono">{metrics.totalQtdDisponivel.toLocaleString('pt-AO')} un</strong>
             </div>
+            <TrendingUp size={18} className="text-emerald-500" />
           </div>
 
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-rose-50/50 border border-rose-100 rounded-lg">
-            <TrendingDown size={14} className="text-rose-600 shrink-0" />
-            <div className="min-w-0">
-              <div className="text-[9px] font-bold text-rose-700 uppercase tracking-wider">Saídas</div>
-              <div className="text-xs font-black text-rose-700 truncate">{metrics.totalSaidas.toLocaleString('pt-AO')}</div>
+          <div className="bg-rose-50/50 p-2 rounded-lg border border-rose-200/60 flex items-center justify-between">
+            <div>
+              <span className="text-[10px] text-rose-600 font-bold uppercase tracking-wider block">Total Saídas</span>
+              <strong className="text-sm font-black text-rose-700 font-mono">{metrics.totalSaidas.toLocaleString('pt-AO')} un</strong>
             </div>
+            <TrendingDown size={18} className="text-rose-500" />
           </div>
 
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50/50 border border-indigo-100 rounded-lg">
-            <Package size={14} className="text-indigo-600 shrink-0" />
-            <div className="min-w-0">
-              <div className="text-[9px] font-bold text-indigo-700 uppercase tracking-wider">Disponível</div>
-              <div className="text-xs font-black text-indigo-700 truncate">{metrics.totalQtdDisponivel.toLocaleString('pt-AO')}</div>
+          <div className="bg-blue-50/50 p-2 rounded-lg border border-blue-200/60 flex items-center justify-between">
+            <div>
+              <span className="text-[10px] text-blue-700 font-bold uppercase tracking-wider block">Valor Total Stock</span>
+              <strong className="text-sm font-black text-blue-900 font-mono">{formatKz(metrics.totalValorStock)}</strong>
             </div>
+            <Calculator size={18} className="text-blue-500" />
           </div>
-
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-zinc-900 text-white rounded-lg col-span-2 sm:col-span-1">
-            <Calculator size={14} className="text-emerald-400 shrink-0" />
-            <div className="min-w-0">
-              <div className="text-[9px] font-bold text-zinc-300 uppercase tracking-wider">Valor Stock</div>
-              <div className="text-xs font-black text-emerald-400 truncate">{formatKz(metrics.totalValorStock)}</div>
-            </div>
-          </div>
-
         </div>
 
       </div>
 
       {/* ────────────────────────────────────────────────────────────────────────── */}
-      {/* 2. TABELA DE STOCK ATUAL (IMEDIATAMENTE VISÍVEL NO TOPO)                   */}
+      {/* 2. TABELA PRINCIPAL DE STOCK ATUAL COM AS COLUNAS EXIGIDAS                */}
       {/* ────────────────────────────────────────────────────────────────────────── */}
       <div className="bg-white border border-zinc-200 rounded-xl shadow-xs overflow-hidden">
         
-        {/* Tabela de Dados Reais do Supabase */}
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
               <tr className="bg-[#003366] text-white text-[10px] font-black uppercase tracking-wider whitespace-nowrap">
-                <th className="py-3 px-3">Código</th>
                 <th className="py-3 px-3">Nome do Produto</th>
+                <th className="py-3 px-3">Descrição</th>
+                <th className="py-3 px-3">Código / Ref.</th>
                 <th className="py-3 px-3">Categoria</th>
+                <th className="py-3 px-3 text-center">Unidade</th>
                 <th className="py-3 px-3">Armazém</th>
-                <th className="py-3 px-3">Data Entrada</th>
-                <th className="py-3 px-3">Doc. Origem</th>
-                <th className="py-3 px-3">Nº Doc / Ref</th>
-                <th className="py-3 px-3">Fornecedor</th>
-                <th className="py-3 px-3 text-right">Qtd Inicial</th>
-                <th className="py-3 px-3 text-right">Qtd Adquirida</th>
-                <th className="py-3 px-3 text-right">Qtd Vendida</th>
-                <th className="py-3 px-3 text-right bg-[#002244]">Qtd Disponível</th>
-                <th className="py-3 px-3 text-right">Custo Unit.</th>
-                <th className="py-3 px-3 text-right">Custo Aquisição</th>
-                <th className="py-3 px-3 text-right bg-[#002244]">Valor Stock</th>
-                <th className="py-3 px-3 text-center">Última Mov.</th>
+                <th className="py-3 px-3 text-right bg-[#002244]">Qtd Actual</th>
+                <th className="py-3 px-3 text-right">Stock Mín.</th>
+                <th className="py-3 px-3 text-right">Stock Máx.</th>
+                <th className="py-3 px-3 text-right">Preço Venda</th>
+                <th className="py-3 px-3 text-right bg-[#002244]">Valor Total Stock</th>
+                <th className="py-3 px-3 text-center">Estado</th>
                 <th className="py-3 px-3 text-center">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-200 text-zinc-700">
-              {filteredList.map((item) => (
+              {paginatedList.map((item) => (
                 <tr 
                   key={item.product.id}
                   className="hover:bg-blue-50/40 transition-colors"
                 >
-                  {/* 1. Código */}
-                  <td className="py-2.5 px-3 font-mono font-bold text-zinc-500 whitespace-nowrap">
-                    {item.codigo}
-                  </td>
-
-                  {/* 2. Nome do Produto */}
+                  {/* 1. Nome do Produto */}
                   <td className="py-2.5 px-3 font-bold text-zinc-900 whitespace-nowrap">
-                    <div className="flex items-center gap-2">
-                      <span className="truncate max-w-[200px]" title={item.nome}>{item.nome}</span>
-                      {item.isLowStock && (
-                        <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 text-[9px] font-black uppercase rounded shrink-0">
-                          Baixo
-                        </span>
-                      )}
-                      {item.isZeroOrNegative && (
-                        <span className="px-1.5 py-0.5 bg-rose-100 text-rose-800 text-[9px] font-black uppercase rounded shrink-0">
-                          Esgotado
-                        </span>
-                      )}
-                    </div>
+                    <span className="truncate max-w-[220px] block" title={item.nome}>
+                      {item.nome}
+                    </span>
                   </td>
 
-                  {/* 3. Categoria */}
+                  {/* 2. Descrição */}
                   <td className="py-2.5 px-3 text-zinc-500 whitespace-nowrap">
+                    <span className="truncate max-w-[200px] block text-[11px]" title={item.descricao}>
+                      {item.descricao}
+                    </span>
+                  </td>
+
+                  {/* 3. Código ou referência comercial */}
+                  <td className="py-2.5 px-3 font-mono font-bold text-zinc-600 whitespace-nowrap text-[11px]">
+                    <div>{item.codigo}</div>
+                    {item.referencia && item.referencia !== item.codigo && (
+                      <span className="text-[10px] text-zinc-400 font-normal block">{item.referencia}</span>
+                    )}
+                  </td>
+
+                  {/* 4. Categoria */}
+                  <td className="py-2.5 px-3 text-zinc-600 whitespace-nowrap text-[11px]">
                     {item.categoria}
                   </td>
 
-                  {/* 4. Armazém */}
+                  {/* 5. Unidade de medida */}
+                  <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                    <span className="px-1.5 py-0.5 bg-zinc-100 text-zinc-700 font-mono text-[10px] font-bold rounded">
+                      {item.unidade}
+                    </span>
+                  </td>
+
+                  {/* 6. Armazém */}
                   <td className="py-2.5 px-3 whitespace-nowrap">
                     <span className="px-2 py-0.5 bg-zinc-100 text-[#003366] font-bold text-[10px] rounded border border-zinc-200">
                       {item.armazemNome}
                     </span>
                   </td>
 
-                  {/* 5. Data de Entrada */}
-                  <td className="py-2.5 px-3 text-zinc-500 whitespace-nowrap font-mono text-[11px]">
-                    {item.dataEntrada}
-                  </td>
-
-                  {/* 6. Documento de Origem */}
-                  <td className="py-2.5 px-3 text-zinc-600 whitespace-nowrap font-medium text-[11px]">
-                    {item.docOrigem}
-                  </td>
-
-                  {/* 7. Nº Documento / Ref */}
-                  <td className="py-2.5 px-3 font-mono font-bold text-zinc-700 whitespace-nowrap text-[11px]">
-                    {item.docRef}
-                  </td>
-
-                  {/* 8. Fornecedor */}
-                  <td className="py-2.5 px-3 text-zinc-600 whitespace-nowrap truncate max-w-[140px]" title={item.fornecedorNome}>
-                    {item.fornecedorNome}
-                  </td>
-
-                  {/* 9. Qtd Inicial Entrada */}
-                  <td className="py-2.5 px-3 text-right font-mono whitespace-nowrap text-zinc-500">
-                    {item.qtdInicialEntrada.toLocaleString('pt-AO')}
-                  </td>
-
-                  {/* 10. Qtd Total Adquirida */}
-                  <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-700 whitespace-nowrap">
-                    {item.qtdTotalAdquirida.toLocaleString('pt-AO')}
-                  </td>
-
-                  {/* 11. Qtd Vendida / Saída */}
-                  <td className="py-2.5 px-3 text-right font-mono text-rose-600 whitespace-nowrap">
-                    {item.qtdVendidaSaida.toLocaleString('pt-AO')}
-                  </td>
-
-                  {/* 12. Qtd Disponível Actual */}
+                  {/* 7. Quantidade Actual */}
                   <td className={`py-2.5 px-3 text-right font-mono font-black whitespace-nowrap text-xs ${
-                    item.qtdDisponivel > 0 ? 'bg-emerald-50/60 text-emerald-700' : 'bg-rose-50/60 text-rose-700'
+                    item.qtdDisponivel > 0 ? 'bg-emerald-50/70 text-emerald-800' : 'bg-rose-50/70 text-rose-800'
                   }`}>
                     {item.qtdDisponivel.toLocaleString('pt-AO')}
                   </td>
 
-                  {/* 13. Custo Unitário */}
-                  <td className="py-2.5 px-3 text-right font-mono whitespace-nowrap text-zinc-700">
-                    {item.custoUnitario.toLocaleString('pt-AO', { minimumFractionDigits: 2 })}
+                  {/* 8. Stock mínimo */}
+                  <td className="py-2.5 px-3 text-right font-mono text-zinc-500 whitespace-nowrap text-[11px]">
+                    {item.stockMin}
                   </td>
 
-                  {/* 14. Custo Total Aquisição */}
-                  <td className="py-2.5 px-3 text-right font-mono whitespace-nowrap text-zinc-500">
-                    {item.custoTotalAquisicao.toLocaleString('pt-AO', { minimumFractionDigits: 2 })}
+                  {/* 9. Stock máximo */}
+                  <td className="py-2.5 px-3 text-right font-mono text-zinc-500 whitespace-nowrap text-[11px]">
+                    {item.stockMax > 0 ? item.stockMax : '—'}
                   </td>
 
-                  {/* 15. Valor Total Stock */}
+                  {/* 10. Preço de venda */}
+                  <td className="py-2.5 px-3 text-right font-mono font-bold text-zinc-800 whitespace-nowrap">
+                    {item.precoVenda.toLocaleString('pt-AO', { minimumFractionDigits: 2 })} Kz
+                  </td>
+
+                  {/* 11. Valor total do stock */}
                   <td className="py-2.5 px-3 text-right font-mono font-black text-[#003366] bg-blue-50/40 whitespace-nowrap">
                     {item.valorTotalStock.toLocaleString('pt-AO', { minimumFractionDigits: 2 })} Kz
                   </td>
 
-                  {/* 16. Última Movimentação */}
+                  {/* 12. Estado do stock */}
                   <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                    <span className="text-[10px] text-zinc-500 font-mono block">{item.dataUltimaMov}</span>
-                    <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-tight">{item.tipoUltimaMov}</span>
+                    {item.isZeroOrNegative ? (
+                      <span className="px-2 py-0.5 bg-rose-100 text-rose-800 text-[10px] font-black uppercase rounded">
+                        Esgotado
+                      </span>
+                    ) : item.isLowStock ? (
+                      <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-[10px] font-black uppercase rounded">
+                        Baixo
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase rounded">
+                        Normal
+                      </span>
+                    )}
                   </td>
 
-                  {/* 17. Ações */}
+                  {/* 13. Ações */}
                   <td className="py-2.5 px-3 text-center whitespace-nowrap">
                     <div className="flex items-center justify-center gap-1">
-                      {onViewStockReport && (
+                      {/* Botão de Editar Produto Obrigatório */}
+                      {onEditProduct && (
                         <button
                           type="button"
-                          onClick={() => onViewStockReport(item.product)}
-                          className="p-1 bg-zinc-100 hover:bg-[#003366] text-zinc-600 hover:text-white rounded transition-colors"
-                          title="Relatório de Stock"
+                          onClick={() => onEditProduct(item.product)}
+                          className="p-1 bg-blue-50 hover:bg-[#003366] text-[#003366] hover:text-white rounded transition-colors"
+                          title="Editar Artigo"
                         >
-                          <FileText size={13} />
+                          <Pencil size={13} />
                         </button>
                       )}
+
+                      {/* Botão de Relatório Individual */}
+                      <button
+                        type="button"
+                        onClick={() => setSelectedProductForReport(item.product)}
+                        className="p-1 bg-zinc-100 hover:bg-[#003366] text-zinc-600 hover:text-white rounded transition-colors"
+                        title="Ver Relatório Detalhado do Artigo"
+                      >
+                        <FileText size={13} />
+                      </button>
+
+                      {/* Ajuste de Stock */}
                       {onOpenAdjustment && (
                         <button
                           type="button"
@@ -580,11 +579,13 @@ export const StockAtualModule: React.FC<StockAtualModuleProps> = ({
                           <SlidersHorizontal size={13} />
                         </button>
                       )}
+
+                      {/* Transferência entre Armazéns */}
                       {onOpenTransfer && (
                         <button
                           type="button"
                           onClick={() => onOpenTransfer(item.product)}
-                          className="p-1 bg-blue-50 hover:bg-blue-600 text-blue-700 hover:text-white rounded transition-colors"
+                          className="p-1 bg-purple-50 hover:bg-purple-600 text-purple-700 hover:text-white rounded transition-colors"
                           title="Transferência entre Armazéns"
                         >
                           <ArrowRightLeft size={13} />
@@ -598,7 +599,7 @@ export const StockAtualModule: React.FC<StockAtualModuleProps> = ({
 
               {filteredList.length === 0 && (
                 <tr>
-                  <td colSpan={17} className="py-16 text-center text-zinc-400 font-bold uppercase tracking-wider">
+                  <td colSpan={13} className="py-16 text-center text-zinc-400 font-bold uppercase tracking-wider">
                     <Box size={36} className="mx-auto text-zinc-300 mb-2" />
                     <span>Nenhum produto com entradas registadas para o armazém seleccionado.</span>
                     <p className="text-xs text-zinc-400 font-normal mt-1 lowercase first-letter:uppercase">
@@ -611,13 +612,56 @@ export const StockAtualModule: React.FC<StockAtualModuleProps> = ({
           </table>
         </div>
 
-        {/* Rodapé da Tabela */}
-        <div className="p-3 bg-zinc-50 border-t border-zinc-200 flex flex-wrap items-center justify-between text-xs text-zinc-500 font-medium">
-          <div>
-            A apresentar <strong className="text-zinc-800">{filteredList.length}</strong> de <strong className="text-zinc-800">{consolidatedItems.length}</strong> produtos registados.
+        {/* Rodapé da Tabela com Paginação */}
+        <div className="p-3 bg-zinc-50 border-t border-zinc-200 flex flex-wrap items-center justify-between gap-3 text-xs text-zinc-500 font-medium">
+          <div className="flex items-center gap-3">
+            <span>
+              A apresentar <strong className="text-zinc-800">{paginatedList.length}</strong> de <strong className="text-zinc-800">{filteredList.length}</strong> produtos filtrados.
+            </span>
+            <div className="flex items-center gap-1.5 text-[11px]">
+              <span>Itens por página:</span>
+              <select
+                value={pageSize}
+                onChange={(e) => setPageSize(Number(e.target.value))}
+                className="bg-white border border-zinc-300 rounded px-1.5 py-0.5 text-xs text-zinc-800 focus:outline-none cursor-pointer"
+              >
+                <option value={10}>10</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+            </div>
           </div>
+
+          {/* Controles de Paginação */}
+          {totalPages > 1 && (
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="p-1 rounded bg-white border border-zinc-200 text-zinc-600 hover:bg-zinc-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                title="Página Anterior"
+              >
+                <ChevronLeft size={14} />
+              </button>
+              <span className="px-2 text-[11px] font-bold text-zinc-700">
+                Página {currentPage} de {totalPages}
+              </span>
+              <button
+                type="button"
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="p-1 rounded bg-white border border-zinc-200 text-zinc-600 hover:bg-zinc-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                title="Próxima Página"
+              >
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          )}
+
           <div className="flex items-center gap-4 text-[11px]">
-            <span>Fórmula: <strong className="text-zinc-700">Entradas - Saídas ± Ajustamentos = Disponível</strong></span>
+            <span>Fórmula: <strong className="text-zinc-700">Entradas - Saídas ± Ajustes = Actual</strong></span>
             <span>Valor Total: <strong className="text-emerald-600 font-black">{formatKz(metrics.totalValorStock)}</strong></span>
           </div>
         </div>

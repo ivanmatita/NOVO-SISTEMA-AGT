@@ -184,7 +184,7 @@ export async function loadTenantProdutos(
     async () => {
       let query = supabase
         .from('produtos')
-        .select('id, name, nome, codigo, barcode, unit, unidade, price, preco, preco_venda, tipo, is_active, ativo')
+        .select('id, name, nome, codigo, barcode, unit, unidade, price, preco, preco_venda, cost_price, preco_compra, preco_custo, stock_quantity, stock, stock_atual, estoque_atual, min_stock, max_stock, armazem_id, warehouse_id, categoria, category, descricao, description, referencia, reference, tipo, is_active, ativo')
         .eq('empresa_id', empresaId);
 
       if (tipo === 'servico') {

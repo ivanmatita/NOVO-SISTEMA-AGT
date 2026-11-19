@@ -27,6 +27,7 @@ import { GestaoComprasList, CompraDoc } from './components/purchases/GestaoCompr
 import { GestaoComprasForm } from './components/purchases/GestaoComprasForm';
 import { StockAtualModule } from './components/stock/StockAtualModule';
 import { StockProductPicker } from './components/stock/StockProductPicker';
+import { StockEntradasReport } from './components/stock/StockEntradasReport';
 
 
 import ProjectManagementModule from './components/ProjectManagementModule';
@@ -27287,17 +27288,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
         <div className="bg-white border border-zinc-200 p-3.5 rounded-none shadow-sm space-y-3">
           <div className="flex justify-between items-center border-b border-zinc-100 pb-2">
             <h3 className="text-xs font-bold text-[#0f2a4a] uppercase tracking-wide">Bens e serviços</h3>
-            {!isCertified && (
-                <button
-                  type="button"
-                  onClick={() => setShowStockPicker(true)}
-                  className="bg-emerald-700 text-white px-3 py-1.5 font-semibold flex items-center gap-1.5 hover:bg-emerald-800 transition-all text-xs rounded-none"
-                  title="Seleccionar produto do stock"
-                >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8l1 12a2 2 0 002 2h8a2 2 0 002-2l1-12"/></svg>
-                  Stock
-                </button>
-              )}
+            
               <button
               type="button"
               disabled={isCertified}
@@ -27505,6 +27496,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
           }}
           initialItem={editingAgtItemData}
           activeTaxes={activeTaxes}
+          warehouses={warehouses}
           products={products}
           onSave={(data: AgtItemData) => {
             // Map AgtItemData fields to InvoiceItem schema
@@ -27527,6 +27519,10 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
               total: lineTotal,
               tipo_artigo: data.tipo_operacao || 'produto',
               unidade_medida: data.unidade_medida || 'UN',
+              product_id: data.product_id,
+              warehouse_id: data.warehouse_id || data.armazem_id,
+              armazem_id: data.armazem_id || data.warehouse_id,
+              referencia: data.referencia,
             };
 
             if (editingAgtItemIndex !== null) {
@@ -27759,7 +27755,7 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
       )}
 
       {isAgtItemModalOpen && (
-        <AgtItemModal isOpen={isAgtItemModalOpen} initialItem={editingAgtItemData} products={products} activeTaxes={activeTaxes}
+        <AgtItemModal isOpen={isAgtItemModalOpen} initialItem={editingAgtItemData} products={products} activeTaxes={activeTaxes} warehouses={warehouses}
           onClose={() => { setIsAgtItemModalOpen(false); setEditingAgtItemIndex(null); setEditingAgtItemData(null); }}
           onSave={handleSaveAgtItem} />
       )}
@@ -32239,7 +32235,8 @@ const ProductList = ({
             </div>
           </div>
           
-          <div className="flex items-center gap-2">
+          {activeTab === 'stock' && (
+            <div className="flex items-center gap-2">
             <button 
               onClick={() => { setEditingProduct(null); setShowForm(true); }} 
               className="bg-[#003366] hover:bg-[#002244] text-white font-bold px-3.5 py-1.5 rounded-lg flex items-center gap-1.5 transition-all shadow-2xs text-xs uppercase tracking-wider cursor-pointer"
@@ -32247,6 +32244,7 @@ const ProductList = ({
               <Plus size={14} /> Novo Produto
             </button>
           </div>
+          )}
         </div>
 
         {/* Abas de Navegação Compactas */}
@@ -32276,9 +32274,18 @@ const ProductList = ({
           stockMovements={stockMovements}
           warehouses={warehouses}
           onRefresh={onRefresh}
+          onEditProduct={(prod) => {
+            setEditingProduct(prod);
+            setShowForm(true);
+          }}
+          onNewProduct={() => {
+            setEditingProduct(null);
+            setShowForm(true);
+          }}
           onNavigateToPurchases={() => {
             window.dispatchEvent(new CustomEvent('navigate_to_purchases'));
           }}
+          
           onManageWarehouses={() => setActiveTab('warehouse')}
           onOpenAdjustment={(prod) => {
             setSelectedProduct(prod);
@@ -32343,12 +32350,10 @@ const ProductList = ({
           )}
         </div>
       ) : activeTab === 'reports' ? (
-        <StockSalesReport 
-          issuedDocuments={issuedDocuments}
+        <StockEntradasReport
           products={products}
           stockMovements={stockMovements}
           warehouses={warehouses}
-          user={user}
           companyData={companyData}
           fiscalYear={fiscalYear}
           onRefresh={onRefresh}

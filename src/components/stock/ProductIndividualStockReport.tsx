@@ -36,14 +36,14 @@ export const ProductIndividualStockReport: React.FC<ProductIndividualStockReport
 
   // Informações básicas do produto
   const nomeProduto = product.name || (product as any).nome || 'Artigo';
-  const codigoProduto = product.codigo || (product as any).code || (product as any).barcode || `ART-${String(product.id).substring(0, 5).toUpperCase()}`;
+  const codigoProduto = (product as any).codigo || (product as any).code || (product as any).barcode || `ART-${String(product.id).substring(0, 5).toUpperCase()}`;
   const refComercial = (product as any).referencia || (product as any).reference || '—';
   const categoriaProduto = product.category || (product as any).categoria || 'Geral';
   const unidadeMedida = product.unit || (product as any).unidade || 'UN';
   const precoCusto = Number(product.cost_price || (product as any).preco_compra || (product as any).preco_custo || 0);
   const precoVenda = Number(product.price || (product as any).preco_venda || 0);
   const stockMin = Number(product.min_stock || 0);
-  const stockMax = Number(product.max_stock || 0);
+  const stockMax = Number((product as any).max_stock || 0);
 
   // Filtrar todos os movimentos pertencentes a este produto ordenados cronologicamente
   const allProductMovements = useMemo(() => {

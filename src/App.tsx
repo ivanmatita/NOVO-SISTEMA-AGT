@@ -27722,8 +27722,7 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
           console.error('[CreatePurchase] Erro ao registrar saída no caixa:', movErr);
         }
       }
-      dispatchStockExit(data).catch(() => {});
-      onSuccess(data);
+            onSuccess(data);
     } catch (err: any) { alert('Erro ao registar compra: ' + (err.message || err)); }
     finally { setLoading(false); }
   };

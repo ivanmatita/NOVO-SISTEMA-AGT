@@ -157,7 +157,7 @@ export const StockAtualModule: React.FC<StockAtualModuleProps> = ({
       const hasPresenceInWarehouse = wId === 'all' || matchesBaseWarehouse || prodMovements.length > 0 || qtdDisponivel > 0;
 
       const stockMin = Number(prod.min_stock || 0);
-      const stockMax = Number(prod.max_stock || 0);
+      const stockMax = Number((prod as any).max_stock || 0);
 
       const isLowStock = qtdDisponivel <= stockMin && qtdDisponivel > 0;
       const isZeroOrNegative = qtdDisponivel <= 0;
@@ -165,10 +165,10 @@ export const StockAtualModule: React.FC<StockAtualModuleProps> = ({
       return {
         product: prod,
         hasPresence: hasPresenceInWarehouse,
-        codigo: prod.codigo || (prod as any).code || (prod as any).barcode || `ART-${String(prod.id).substring(0, 5).toUpperCase()}`,
+        codigo: (prod as any).codigo || (prod as any).code || (prod as any).barcode || `ART-${String(prod.id).substring(0, 5).toUpperCase()}`,
         referencia: (prod as any).referencia || (prod as any).reference || '',
         nome: prod.name || (prod as any).nome || 'Produto sem nome',
-        descricao: prod.description || (prod as any).descricao || '—',
+        descricao: (prod as any).description || (prod as any).descricao || '—',
         categoria: prod.category || (prod as any).categoria || 'Geral',
         unidade: prod.unit || (prod as any).unidade || 'UN',
         armazemNome: nomeArmazem,

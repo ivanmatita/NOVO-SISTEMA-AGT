@@ -84,11 +84,19 @@ export const StockAtualModule: React.FC<StockAtualModuleProps> = ({
     const wId = selectedWarehouseId;
 
     return products.map((prod) => {
-      // Filtrar movimentos deste produto para o armazém selecionado
-      const prodMovements = (stockMovements || []).filter(m => 
-        (String(m.product_id) === String(prod.id) || String((m as any).produto_id) === String(prod.id)) &&
-        movementMatchesWarehouse(m, wId)
-      );
+      // Filtrar movimentos deste produto por ID ou nome/descrição para o armazém selecionado
+      const prodNameNorm = String(prod.name || (prod as any).nome || '').trim().toLowerCase();
+      const prodCodeNorm = String((prod as any).codigo || (prod as any).code || '').trim().toLowerCase();
+      
+      const prodMovements = (stockMovements || []).filter(m => {
+        const matchesId = String(m.product_id) === String(prod.id) || 
+                          String((m as any).produto_id) === String(prod.id);
+        const movName = String(m.product_name || (m as any).nome_produto || (m as any).description || '').trim().toLowerCase();
+        const matchesName = Boolean(prodNameNorm && movName && (movName.includes(prodNameNorm) || prodNameNorm.includes(movName)));
+        const matchesCode = Boolean(prodCodeNorm && String((m as any).referencia || m.reference_id || '').toLowerCase().includes(prodCodeNorm));
+        
+        return (matchesId || matchesName || matchesCode) && movementMatchesWarehouse(m, wId);
+      });
 
       // Total de Entradas
       const entradasMov = prodMovements

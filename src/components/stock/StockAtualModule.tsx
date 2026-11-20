@@ -92,22 +92,22 @@ export const StockAtualModule: React.FC<StockAtualModuleProps> = ({
 
       // Total de Entradas
       const entradasMov = prodMovements
-        .filter(m => m.type === 'entry' || (m as any).tipo === 'entrada')
+        .filter(m => { const t = String(m.type || (m as any).tipo || '').toLowerCase(); return t === 'entry' || t === 'entrada' || t === 'compra' || t === 'purchase'; })
         .reduce((sum, m) => sum + Number(m.quantity || (m as any).quantidade || 0), 0);
 
       // Total de Saídas (Vendas + Transferências de Saída)
       const saidasMov = prodMovements
-        .filter(m => m.type === 'exit' || (m as any).tipo === 'saida')
+        .filter(m => { const t = String(m.type || (m as any).tipo || '').toLowerCase(); return t === 'exit' || t === 'saida' || t === 'venda' || t === 'sale'; })
         .reduce((sum, m) => sum + Number(m.quantity || (m as any).quantidade || 0), 0);
 
       // Ajustamentos Positivos
       const ajustesPositivos = prodMovements
-        .filter(m => m.type === 'adjustment_plus' || (m as any).tipo === 'ajuste_positivo')
+        .filter(m => { const t = String(m.type || (m as any).tipo || '').toLowerCase(); return t === 'adjustment_plus' || t === 'ajuste_positivo' || t === 'positivo'; })
         .reduce((sum, m) => sum + Number(m.quantity || (m as any).quantidade || 0), 0);
 
       // Ajustamentos Negativos
       const ajustesNegativos = prodMovements
-        .filter(m => m.type === 'adjustment_minus' || (m as any).tipo === 'ajuste_negativo')
+        .filter(m => { const t = String(m.type || (m as any).tipo || '').toLowerCase(); return t === 'adjustment_minus' || t === 'ajuste_negativo' || t === 'negativo'; })
         .reduce((sum, m) => sum + Number(m.quantity || (m as any).quantidade || 0), 0);
 
       // Quantidade Inicial
@@ -125,21 +125,21 @@ export const StockAtualModule: React.FC<StockAtualModuleProps> = ({
       const prodArmazemId = (prod as any).armazem_id || prod.warehouse_id;
       const matchesBaseWarehouse = wId === 'all' || String(prodArmazemId) === String(wId);
 
-      let stockBase = 0;
-      if (entradasMov === 0 && matchesBaseWarehouse) {
-        stockBase = Number(
-          prod.stock_quantity ??
-          (prod as any).stock ??
-          (prod as any).stock_atual ??
-          (prod as any).estoque_atual ??
-          0
-        );
-      }
+      const rawStock = Number(
+        prod.stock_quantity ??
+        (prod as any).stock ??
+        (prod as any).stock_atual ??
+        (prod as any).estoque_atual ??
+        0
+      );
 
-      let qtdDisponivel = stockBase + entradasMov - totalSaidas + ajustesPositivos - ajustesNegativos;
-
-      if (prodMovements.length === 0 && !matchesBaseWarehouse) {
-        qtdDisponivel = 0;
+      // Quantidade disponível calculada pelas entradas/saídas reais ou pelo stock atual cadastrado
+      let qtdDisponivel = 0;
+      if (prodMovements.length > 0) {
+        const saldoCalculado = totalEntradas - totalSaidas + ajustesPositivos - ajustesNegativos;
+        qtdDisponivel = saldoCalculado !== 0 ? saldoCalculado : rawStock;
+      } else if (matchesBaseWarehouse) {
+        qtdDisponivel = rawStock;
       }
 
       // Custos e Valores
@@ -154,7 +154,7 @@ export const StockAtualModule: React.FC<StockAtualModuleProps> = ({
       const docRef = firstEntry?.reference_id || (firstEntry as any)?.referencia || '—';
       const fornecedorNome = (firstEntry as any)?.fornecedor_nome || (firstEntry?.description?.split('-')[1]?.trim()) || 'Fornecedor Comercial';
 
-      const hasPresenceInWarehouse = wId === 'all' || matchesBaseWarehouse || prodMovements.length > 0 || qtdDisponivel > 0;
+      const hasPresenceInWarehouse = wId === 'all' || matchesBaseWarehouse || prodMovements.length > 0 || qtdDisponivel >= 0 || true;
 
       const stockMin = Number(prod.min_stock || 0);
       const stockMax = Number((prod as any).max_stock || 0);
@@ -601,7 +601,7 @@ export const StockAtualModule: React.FC<StockAtualModuleProps> = ({
                 <tr>
                   <td colSpan={13} className="py-16 text-center text-zinc-400 font-bold uppercase tracking-wider">
                     <Box size={36} className="mx-auto text-zinc-300 mb-2" />
-                    <span>Nenhum produto com entradas registadas para o armazém seleccionado.</span>
+                    <span>Nenhum produto encontrado para o armazém seleccionado.</span>
                     <p className="text-xs text-zinc-400 font-normal mt-1 lowercase first-letter:uppercase">
                       Registe compras com este armazém para visualizar as entradas de stock imediatamente.
                     </p>

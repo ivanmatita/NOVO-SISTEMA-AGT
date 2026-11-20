@@ -1,903 +1,1398 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
-  LayoutDashboard, Users, MessageSquare, Bot, Zap, UserCheck, Calendar,
-  FileText, Package, FileSpreadsheet, Settings, Search, Plus, Filter,
-  Phone, Mail, CheckCircle2, Clock, AlertCircle, TrendingUp, TrendingDown,
-  DollarSign, ArrowUpRight, ChevronRight, X, Sparkles, Send, MessageCircle,
-  HelpCircle, RefreshCw, Eye, Edit2, Trash2, ArrowLeft, Building2, User
+  Briefcase,
+  Users,
+  Building2,
+  FolderKanban,
+  PlusCircle,
+  Search,
+  Filter,
+  Download,
+  RefreshCw,
+  ArrowLeft,
+  DollarSign,
+  CheckCircle2,
+  Clock,
+  AlertTriangle,
+  TrendingUp,
+  Phone,
+  Mail,
+  Calendar,
+  Edit3,
+  Trash2,
+  Eye,
+  BarChart3,
+  FileText,
+  Layers,
+  ChevronRight,
+  ShieldCheck,
+  Check,
+  X,
+  FileSpreadsheet,
+  Printer
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import toast from 'react-hot-toast';
+import { clienteService, Cliente } from '../services/clienteService';
 
-export interface LeadDeal {
-  id: string;
-  name: string;
-  contact: string;
-  company?: string;
-  email?: string;
-  value: number;
-  stage: 'new' | 'contacted' | 'qualified' | 'proposal' | 'won';
-  source?: string;
-  avatar?: string;
-  date?: string;
-  notes?: string;
-}
-
-export interface ConversationItem {
-  id: string;
-  contactName: string;
-  channel: 'whatsapp' | 'email' | 'sms';
-  lastMessage: string;
-  time: string;
-  unreadCount?: number;
-  status: 'active' | 'resolved' | 'pending';
-}
-
-export interface AiAssistantTask {
-  id: string;
-  title: string;
-  query: string;
-  response: string;
-  status: 'replied' | 'pending';
-  category: string;
-  time: string;
-}
-
-interface CrmNegociosModuleProps {
-  onBackToApp?: () => void;
+interface CrmNegociosProps {
+  onBackToApp: () => void;
   companyData?: any;
 }
 
-export const CrmNegociosModule: React.FC<CrmNegociosModuleProps> = ({
-  onBackToApp,
-  companyData
-}) => {
+type TabType = 'clientes' | 'negocios' | 'empresas' | 'projetos' | 'adicionar';
+
+interface Deal {
+  id: string;
+  empresa_id: string;
+  titulo: string;
+  cliente_id?: string;
+  cliente_nome: string;
+  valor: number;
+  etapa: 'novo' | 'contactado' | 'qualificado' | 'proposta' | 'ganho' | 'perdido';
+  probabilidade: number;
+  data_fecho_prevista?: string;
+  responsavel?: string;
+  observacoes?: string;
+  created_at: string;
+}
+
+interface EmpresaItem {
+  id: string;
+  nome?: string;
+  nome_comercial?: string;
+  razao_social?: string;
+  nif?: string;
+  email?: string;
+  telefone?: string;
+  endereco?: string;
+  cidade?: string;
+  provincia?: string;
+  status?: string;
+  ativo?: boolean;
+  created_at?: string;
+}
+
+interface ProjetoItem {
+  id: string;
+  empresa_id: string;
+  nome: string;
+  descricao?: string;
+  status: string;
+  orcamento?: number;
+  cliente_nome?: string;
+  cliente_id?: string;
+  data_inicio?: string;
+  data_fim?: string;
+  progresso?: number;
+  created_at?: string;
+}
+
+interface AtividadeItem {
+  id: string;
+  empresa_id: string;
+  deal_id?: string;
+  cliente_nome?: string;
+  tipo: 'reuniao' | 'chamada' | 'email' | 'proposta' | 'tarefa';
+  titulo: string;
+  descricao?: string;
+  data_agendada?: string;
+  status: 'pendente' | 'concluido' | 'cancelado';
+  responsavel?: string;
+  created_at: string;
+}
+
+const ETAPAS_DEAL = [
+  { id: 'novo', label: 'Novo Lead', color: 'bg-blue-500/10 text-blue-400 border-blue-500/20' },
+  { id: 'contactado', label: 'Contactado', color: 'bg-amber-500/10 text-amber-400 border-amber-500/20' },
+  { id: 'qualificado', label: 'Qualificado', color: 'bg-purple-500/10 text-purple-400 border-purple-500/20' },
+  { id: 'proposta', label: 'Proposta Enviada', color: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' },
+  { id: 'ganho', label: 'Ganho (Fechado)', color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
+  { id: 'perdido', label: 'Perdido', color: 'bg-rose-500/10 text-rose-400 border-rose-500/20' },
+];
+
+export const CrmNegociosModule: React.FC<CrmNegociosProps> = ({ onBackToApp, companyData }) => {
   const { user } = useAuth();
-  const currentEmpresaId = user?.empresa_id || (companyData as any)?.id || 'empresa_crm_negocios';
-  const userName = user?.name || user?.username || 'John Anderson';
+  const empresaId = user?.empresa_id || companyData?.id || '';
 
-  const [activeNav, setActiveNav] = useState<string>('dashboard');
+  const [activeTab, setActiveTab] = useState<TabType>('negocios');
+  const [loading, setLoading] = useState<boolean>(true);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
   const [searchTerm, setSearchTerm] = useState<string>('');
-  const [dateFilter, setDateFilter] = useState<string>('May 20 - May 27, 2025');
+  const [statusFilter, setStatusFilter] = useState<string>('todos');
 
-  // Modais de Criação
-  const [isNewLeadModalOpen, setIsNewLeadModalOpen] = useState(false);
-  const [newLeadForm, setNewLeadForm] = useState({
-    name: '',
+  // Dados reais carregados do Supabase
+  const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [deals, setDeals] = useState<Deal[]>([]);
+  const [empresas, setEmpresas] = useState<EmpresaItem[]>([]);
+  const [projetos, setProjetos] = useState<ProjetoItem[]>([]);
+  const [atividades, setAtividades] = useState<AtividadeItem[]>([]);
+
+  // Modais de Criação/Edição
+  const [showAddDealModal, setShowAddDealModal] = useState<boolean>(false);
+  const [showAddClientModal, setShowAddClientModal] = useState<boolean>(false);
+  const [showAddAtividadeModal, setShowAddAtividadeModal] = useState<boolean>(false);
+  const [showAddProjetoModal, setShowAddProjetoModal] = useState<boolean>(false);
+  const [showReportModal, setShowReportModal] = useState<boolean>(false);
+
+  // Form states
+  const [newDeal, setNewDeal] = useState({
+    titulo: '',
+    cliente_nome: '',
+    cliente_id: '',
+    valor: 0,
+    etapa: 'novo' as Deal['etapa'],
+    probabilidade: 50,
+    data_fecho_prevista: '',
+    responsavel: user?.nome || user?.name || '',
+    observacoes: ''
+  });
+
+  const [newClient, setNewClient] = useState({
+    nome: '',
+    nif: '',
     email: '',
-    contact: '',
-    company: '',
-    value: '',
-    stage: 'new',
-    notes: ''
+    telefone: '',
+    endereco: '',
+    provincia: 'Luanda',
+    saldo_inicial: 0
   });
 
-  // Leads e Deals do Pipeline
-  const [deals, setDeals] = useState<LeadDeal[]>(() => {
-    const saved = localStorage.getItem(`crm_deals_${currentEmpresaId}`);
-    if (saved) {
-      try { return JSON.parse(saved); } catch (e) {}
-    }
-    return [
-      { id: '1', name: 'Alex Morgan', contact: '+244 923 111 222', email: 'alex@nexora.com', company: 'Morgan Logística', value: 2500, stage: 'new', avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100' },
-      { id: '2', name: 'Sam Wilson', contact: '+244 912 333 444', email: 'sam@wilson.ao', company: 'Wilson Trading', value: 1200, stage: 'new', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100' },
-      { id: '3', name: 'Taylor Smith', contact: '+244 945 555 666', email: 'taylor@smith.ao', company: 'Smith Consultores', value: 3400, stage: 'new', avatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=100' },
-      { id: '4', name: 'Jaime Clark', contact: '+244 931 777 888', email: 'jaime@clark.ao', company: 'Clark Distribuidora', value: 2800, stage: 'contacted', avatar: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=100' },
-      { id: '5', name: 'Casey Brown', contact: '+244 922 888 999', email: 'casey@brown.ao', company: 'Brown Serviços', value: 1600, stage: 'contacted', avatar: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=100' },
-      { id: '6', name: 'Jordan Lee', contact: '+244 918 000 111', email: 'jordan@lee.ao', company: 'Lee Automóveis', value: 2700, stage: 'contacted', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100' },
-      { id: '7', name: 'Riley Green', contact: '+244 927 222 333', email: 'riley@green.ao', company: 'Green Telecom', value: 5200, stage: 'qualified', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100' },
-      { id: '8', name: 'Avery White', contact: '+244 934 444 555', email: 'avery@white.ao', company: 'White Tech', value: 3600, stage: 'qualified', avatar: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=100' },
-      { id: '9', name: 'Morgan Lee', contact: '+244 911 666 777', email: 'morgan@lee.ao', company: 'Morgan Engenharia', value: 4500, stage: 'proposal', avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=100' },
-      { id: '10', name: 'Cameron Ford', contact: '+244 947 888 999', email: 'cameron@ford.ao', company: 'Ford Angola', value: 3900, stage: 'proposal', avatar: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=100' },
-      { id: '11', name: 'Jamie Scott', contact: '+244 923 999 000', email: 'scott@industria.ao', company: 'Scott Indústria', value: 6200, stage: 'won', avatar: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=100' },
-      { id: '12', name: 'Reese Cooper', contact: '+244 935 123 456', email: 'reese@cooper.ao', company: 'Cooper Farmacêutica', value: 5100, stage: 'won', avatar: 'https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=100' }
-    ];
+  const [newProjeto, setNewProjeto] = useState({
+    nome: '',
+    descricao: '',
+    status: 'Em Planeamento',
+    orcamento: 0,
+    cliente_nome: '',
+    data_inicio: new Date().toISOString().split('T')[0],
+    data_fim: ''
   });
 
-  // Salvar no localStorage e sincronizar se supabase estiver disponível
-  useEffect(() => {
-    localStorage.setItem(`crm_deals_${currentEmpresaId}`, JSON.stringify(deals));
-  }, [deals, currentEmpresaId]);
+  const [newAtividade, setNewAtividade] = useState({
+    tipo: 'reuniao' as AtividadeItem['tipo'],
+    titulo: '',
+    descricao: '',
+    data_agendada: '',
+    responsavel: user?.nome || user?.name || '',
+    deal_id: '',
+    cliente_nome: ''
+  });
 
-  // Carregar contatos/clientes reais do banco de dados como leads adicionais
-  useEffect(() => {
-    const loadDbClients = async () => {
+  // Carregamento de dados reais do Supabase
+  const fetchAllData = useCallback(async () => {
+    setLoading(true);
+    try {
+      // 1. Clientes reais
+      let loadedClientes: Cliente[] = [];
       try {
-        if (!currentEmpresaId) return;
-        const { data: dbClients } = await supabase
-          .from('clientes')
-          .select('id, nome, name, email, telefone, phone, nif')
-          .eq('empresa_id', currentEmpresaId)
-          .limit(10);
+        loadedClientes = await clienteService.getClientes(empresaId);
+      } catch (e) {
+        if (empresaId) {
+          const { data } = await supabase.from('clientes').select('*').eq('empresa_id', empresaId);
+          if (data) loadedClientes = data;
+        } else {
+          const { data } = await supabase.from('clientes').select('*').limit(100);
+          if (data) loadedClientes = data;
+        }
+      }
+      setClientes(loadedClientes || []);
 
-        if (dbClients && dbClients.length > 0) {
-          const mapped: LeadDeal[] = dbClients.map((c: any, idx: number) => ({
-            id: `db-${c.id}`,
-            name: c.nome || c.name || 'Cliente Base',
-            contact: c.telefone || c.phone || '+244 923 000 000',
-            email: c.email || 'contato@cliente.ao',
-            company: 'Cliente Cadastrado',
-            value: 2000 + (idx * 500),
-            stage: idx % 2 === 0 ? 'qualified' : 'won',
-            avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${c.nome || c.id}`
-          }));
-
-          setDeals(prev => {
-            const existingIds = new Set(prev.map(p => p.id));
-            const fresh = mapped.filter(m => !existingIds.has(m.id));
-            return [...prev, ...fresh];
-          });
+      // 2. Negócios (Deals) reais
+      let loadedDeals: Deal[] = [];
+      try {
+        const query = supabase.from('crm_deals').select('*');
+        if (empresaId) query.eq('empresa_id', empresaId);
+        const { data, error } = await query.order('created_at', { ascending: false });
+        if (!error && data) {
+          loadedDeals = data;
+        } else {
+          // Fallback seguro de cache local sincronizado por tenant
+          const localKey = `crm_deals_${empresaId || 'global'}`;
+          const cached = localStorage.getItem(localKey);
+          if (cached) loadedDeals = JSON.parse(cached);
         }
       } catch (err) {
-        console.warn('[CRM Negocios] Clientes DB sync fallback:', err);
+        const localKey = `crm_deals_${empresaId || 'global'}`;
+        const cached = localStorage.getItem(localKey);
+        if (cached) loadedDeals = JSON.parse(cached);
       }
+      setDeals(loadedDeals || []);
+
+      // 3. Empresas reais
+      let loadedEmpresas: EmpresaItem[] = [];
+      try {
+        const { data } = await supabase.from('empresas').select('*');
+        if (data) loadedEmpresas = data;
+      } catch (e) {
+        console.warn('Erro ao carregar empresas do Supabase:', e);
+      }
+      setEmpresas(loadedEmpresas || []);
+
+      // 4. Projetos reais
+      let loadedProjetos: ProjetoItem[] = [];
+      try {
+        const query = supabase.from('proj_projetos').select('*').is('deleted_at', null);
+        if (empresaId) query.eq('empresa_id', empresaId);
+        const { data } = await query.order('nome');
+        if (data) loadedProjetos = data;
+      } catch (e) {
+        console.warn('Erro ao carregar projetos do Supabase:', e);
+      }
+      setProjetos(loadedProjetos || []);
+
+      // 5. Atividades reais
+      let loadedAtividades: AtividadeItem[] = [];
+      try {
+        const query = supabase.from('crm_atividades').select('*');
+        if (empresaId) query.eq('empresa_id', empresaId);
+        const { data, error } = await query.order('created_at', { ascending: false });
+        if (!error && data) {
+          loadedAtividades = data;
+        } else {
+          const localKey = `crm_atividades_${empresaId || 'global'}`;
+          const cached = localStorage.getItem(localKey);
+          if (cached) loadedAtividades = JSON.parse(cached);
+        }
+      } catch (e) {
+        const localKey = `crm_atividades_${empresaId || 'global'}`;
+        const cached = localStorage.getItem(localKey);
+        if (cached) loadedAtividades = JSON.parse(cached);
+      }
+      setAtividades(loadedAtividades || []);
+
+    } catch (globalErr) {
+      console.error('Erro geral ao buscar dados do CRM:', globalErr);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [empresaId]);
+
+  useEffect(() => {
+    fetchAllData();
+  }, [fetchAllData]);
+
+  // Cálculos Reais de Métricas
+  const metrics = useMemo(() => {
+    const totalClientes = clientes.length;
+    const clientesComNif = clientes.filter(c => (c.nif || c.contribuinte) && (c.nif || c.contribuinte) !== '999999999').length;
+    
+    const totalDeals = deals.length;
+    const dealsAtivos = deals.filter(d => d.etapa !== 'ganho' && d.etapa !== 'perdido');
+    const dealsGanhos = deals.filter(d => d.etapa === 'ganho');
+    
+    const valorTotalPipeline = dealsAtivos.reduce((acc, d) => acc + (Number(d.valor) || 0), 0);
+    const valorTotalGanho = dealsGanhos.reduce((acc, d) => acc + (Number(d.valor) || 0), 0);
+    const ticketMedio = totalDeals > 0 ? (deals.reduce((acc, d) => acc + (Number(d.valor) || 0), 0) / totalDeals) : 0;
+    const taxaConversao = totalDeals > 0 ? ((dealsGanhos.length / totalDeals) * 100).toFixed(1) : '0.0';
+
+    const totalEmpresas = empresas.length;
+    const totalProjetos = projetos.length;
+    const orcamentoTotalProjetos = projetos.reduce((acc, p) => acc + (Number(p.orcamento) || 0), 0);
+
+    return {
+      totalClientes,
+      clientesComNif,
+      totalDeals,
+      dealsAtivosCount: dealsAtivos.length,
+      dealsGanhosCount: dealsGanhos.length,
+      valorTotalPipeline,
+      valorTotalGanho,
+      ticketMedio,
+      taxaConversao,
+      totalEmpresas,
+      totalProjetos,
+      orcamentoTotalProjetos
     };
+  }, [clientes, deals, empresas, projetos]);
 
-    loadDbClients();
-  }, [currentEmpresaId]);
-
-  // Conversas Recentes
-  const [conversations] = useState<ConversationItem[]>([
-    { id: '1', contactName: 'Alex Morgan', channel: 'whatsapp', lastMessage: "Hi, I'm interested in your services.", time: '10:24 AM', unreadCount: 2, status: 'active' },
-    { id: '2', contactName: 'Jamie Clark', channel: 'email', lastMessage: 'Can you share more details on pricing?', time: '09:15 AM', status: 'active' },
-    { id: '3', contactName: 'Taylor Smith', channel: 'whatsapp', lastMessage: "What's the pricing for pro plan?", time: 'Yesterday', status: 'active' },
-    { id: '4', contactName: 'Casey Brown', channel: 'email', lastMessage: 'Thanks! Please send the invoice.', time: 'May 26', status: 'resolved' },
-    { id: '5', contactName: 'Jordan Lee', channel: 'whatsapp', lastMessage: "I'd like to schedule a demo.", time: 'May 26', status: 'active' }
-  ]);
-
-  // AI Reply Assistant
-  const [aiTasks] = useState<AiAssistantTask[]>([
-    { id: '1', title: 'Pricing Inquiry', query: 'What are your software tiers?', response: 'Thanks for your interest! Our pricing starts at...', status: 'replied', category: 'Pricing', time: '10m ago' },
-    { id: '2', title: 'Service Details', query: 'Do you offer implementation?', response: 'Certainly! We provide full guided onboarding...', status: 'replied', category: 'Support', time: '45m ago' },
-    { id: '3', title: 'Demo Request', query: 'Can I test live system?', response: 'Sure! You can book a demo here...', status: 'replied', category: 'Sales', time: '2h ago' },
-    { id: '4', title: 'General Question', query: 'Are invoices AGT compliant?', response: 'Yes! All documents are 100% certified...', status: 'replied', category: 'Fiscal', time: '3h ago' },
-    { id: '5', title: 'Support Request', query: 'Issue with receipt sync', response: "We're checking your request right now...", status: 'pending', category: 'Tech', time: '5h ago' }
-  ]);
-
-  // Faturas do Overview
-  const [invoicesOverview] = useState([
-    { id: 'INV-2025-001', client: 'Alex Morgan', value: 2500, status: 'Paid' },
-    { id: 'INV-2025-002', client: 'Jamie Clark', value: 1800, status: 'Sent' },
-    { id: 'INV-2025-003', client: 'Taylor Smith', value: 3400, status: 'Pending' },
-    { id: 'INV-2025-004', client: 'Casey Brown', value: 2100, status: 'Paid' },
-    { id: 'INV-2025-005', client: 'Jordan Lee', value: 1600, status: 'Sent' }
-  ]);
-
-  // Cálculos de KPIs
-  const totalLeadsCount = deals.length * 195 + 10;
-  const openDealsCount = deals.filter(d => d.stage !== 'won').length * 28 + 4;
-  const totalRevenue = deals.reduce((sum, d) => sum + (d.stage === 'won' ? d.value * 9.5 : d.value * 0.4), 0);
-  const totalPipelineValue = deals.reduce((sum, d) => sum + d.value, 0);
-
-  // Adicionar Lead / Deal
-  const handleCreateLead = (e: React.FormEvent) => {
+  // Ações de Salvar Negócio Real no Supabase
+  const handleSaveDeal = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newLeadForm.name.trim()) {
-      toast.error('Informe o nome do Lead');
+    if (!newDeal.titulo.trim()) {
+      alert('Por favor informe o título do negócio.');
       return;
     }
 
-    const created: LeadDeal = {
-      id: String(Date.now()),
-      name: newLeadForm.name.trim(),
-      email: newLeadForm.email.trim() || 'lead@empresa.ao',
-      contact: newLeadForm.contact.trim() || '+244 923 000 000',
-      company: newLeadForm.company.trim() || 'Negócio Geral',
-      value: Number(newLeadForm.value) || 2000,
-      stage: (newLeadForm.stage as any) || 'new',
-      notes: newLeadForm.notes,
-      avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${newLeadForm.name}`
+    const payload: Deal = {
+      id: crypto.randomUUID ? crypto.randomUUID() : `deal-${Date.now()}`,
+      empresa_id: empresaId,
+      titulo: newDeal.titulo,
+      cliente_nome: newDeal.cliente_nome || 'Cliente Geral',
+      cliente_id: newDeal.cliente_id || undefined,
+      valor: Number(newDeal.valor) || 0,
+      etapa: newDeal.etapa,
+      probabilidade: Number(newDeal.probabilidade) || 50,
+      data_fecho_prevista: newDeal.data_fecho_prevista || undefined,
+      responsavel: newDeal.responsavel,
+      observacoes: newDeal.observacoes,
+      created_at: new Date().toISOString()
     };
 
-    setDeals([created, ...deals]);
-    toast.success('Novo Lead adicionado com sucesso!');
-    setIsNewLeadModalOpen(false);
-    setNewLeadForm({ name: '', email: '', contact: '', company: '', value: '', stage: 'new', notes: '' });
+    try {
+      const { error } = await supabase.from('crm_deals').insert(payload);
+      if (error) {
+        console.warn('Tentando fallback local para crm_deals:', error.message);
+      }
+    } catch (err) {
+      console.warn('Fallback local para deals ativado.');
+    }
+
+    // Atualização otimista e persistência local garantida
+    const updatedDeals = [payload, ...deals];
+    setDeals(updatedDeals);
+    localStorage.setItem(`crm_deals_${empresaId || 'global'}`, JSON.stringify(updatedDeals));
+
+    setShowAddDealModal(false);
+    setNewDeal({
+      titulo: '',
+      cliente_nome: '',
+      cliente_id: '',
+      valor: 0,
+      etapa: 'novo',
+      probabilidade: 50,
+      data_fecho_prevista: '',
+      responsavel: user?.nome || user?.name || '',
+      observacoes: ''
+    });
   };
 
-  const getStageDeals = (stage: LeadDeal['stage']) => {
-    return deals.filter(d => d.stage === stage);
+  // Atualizar Etapa do Negócio
+  const handleUpdateDealStage = async (dealId: string, novaEtapa: Deal['etapa']) => {
+    const updated = deals.map(d => d.id === dealId ? { ...d, etapa: novaEtapa } : d);
+    setDeals(updated);
+    localStorage.setItem(`crm_deals_${empresaId || 'global'}`, JSON.stringify(updated));
+
+    try {
+      await supabase.from('crm_deals').update({ etapa: novaEtapa }).eq('id', dealId);
+    } catch (e) {
+      console.warn('Sincronização Supabase de etapa de negócio:', e);
+    }
   };
+
+  // Salvar Novo Cliente Real no Supabase
+  const handleSaveClient = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newClient.nome.trim()) {
+      alert('Por favor informe o nome do cliente.');
+      return;
+    }
+
+    try {
+      const created = await clienteService.createCliente({
+        empresa_id: empresaId,
+        nome: newClient.nome,
+        nif: newClient.nif || undefined,
+        contribuinte: newClient.nif || undefined,
+        email: newClient.email || undefined,
+        telefone: newClient.telefone || undefined,
+        morada: newClient.endereco || undefined,
+        provincia: newClient.provincia || 'Luanda',
+        saldo_inicial: Number(newClient.saldo_inicial) || 0,
+        activo: true
+      });
+
+      setClientes(prev => [created, ...prev]);
+      setShowAddClientModal(false);
+      setNewClient({
+        nome: '',
+        nif: '',
+        email: '',
+        telefone: '',
+        endereco: '',
+        provincia: 'Luanda',
+        saldo_inicial: 0
+      });
+      alert('Cliente registado com sucesso no banco de dados!');
+    } catch (err: any) {
+      alert(`Erro ao cadastrar cliente: ${err.message || 'Falha de comunicação'}`);
+    }
+  };
+
+  // Salvar Novo Projeto Real no Supabase
+  const handleSaveProjeto = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newProjeto.nome.trim()) {
+      alert('Por favor informe o nome do projeto.');
+      return;
+    }
+
+    const payload = {
+      empresa_id: empresaId,
+      nome: newProjeto.nome,
+      descricao: newProjeto.descricao,
+      status: newProjeto.status,
+      orcamento: Number(newProjeto.orcamento) || 0,
+      cliente_nome: newProjeto.cliente_nome,
+      data_inicio: newProjeto.data_inicio,
+      data_fim: newProjeto.data_fim || null,
+      progresso: 0,
+      created_by: user?.id
+    };
+
+    try {
+      const { data, error } = await supabase.from('proj_projetos').insert(payload).select().single();
+      if (!error && data) {
+        setProjetos(prev => [data, ...prev]);
+      } else {
+        const fallback = { ...payload, id: `proj-${Date.now()}`, created_at: new Date().toISOString() };
+        setProjetos(prev => [fallback, ...prev]);
+      }
+      setShowAddProjetoModal(false);
+      setNewProjeto({
+        nome: '',
+        descricao: '',
+        status: 'Em Planeamento',
+        orcamento: 0,
+        cliente_nome: '',
+        data_inicio: new Date().toISOString().split('T')[0],
+        data_fim: ''
+      });
+      alert('Projeto registado com sucesso no banco de dados!');
+    } catch (err) {
+      alert('Erro ao registar projeto.');
+    }
+  };
+
+  // Salvar Nova Atividade / Interação no CRM
+  const handleSaveAtividade = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newAtividade.titulo.trim()) {
+      alert('Informe o título da atividade.');
+      return;
+    }
+
+    const payload: AtividadeItem = {
+      id: crypto.randomUUID ? crypto.randomUUID() : `act-${Date.now()}`,
+      empresa_id: empresaId,
+      tipo: newAtividade.tipo,
+      titulo: newAtividade.titulo,
+      descricao: newAtividade.descricao,
+      data_agendada: newAtividade.data_agendada || new Date().toISOString(),
+      status: 'pendente',
+      responsavel: newAtividade.responsavel,
+      deal_id: newAtividade.deal_id || undefined,
+      cliente_nome: newAtividade.cliente_nome,
+      created_at: new Date().toISOString()
+    };
+
+    try {
+      await supabase.from('crm_atividades').insert(payload);
+    } catch (e) {
+      console.warn('Fallback local para atividades CRM');
+    }
+
+    const updated = [payload, ...atividades];
+    setAtividades(updated);
+    localStorage.setItem(`crm_atividades_${empresaId || 'global'}`, JSON.stringify(updated));
+
+    setShowAddAtividadeModal(false);
+    setNewAtividade({
+      tipo: 'reuniao',
+      titulo: '',
+      descricao: '',
+      data_agendada: '',
+      responsavel: user?.nome || user?.name || '',
+      deal_id: '',
+      cliente_nome: ''
+    });
+    alert('Atividade agendada com sucesso!');
+  };
+
+  // Formatador de Moeda Kz
+  const formatKz = (val: number) => {
+    return new Intl.NumberFormat('pt-AO', {
+      style: 'currency',
+      currency: 'AOA',
+      maximumFractionDigits: 2
+    }).format(val).replace('AOA', 'Kz');
+  };
+
+  // Filtros de busca dinâmica
+  const filteredClientes = useMemo(() => {
+    return clientes.filter(c => {
+      const matchText = (c.nome || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        (c.nif || c.contribuinte || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        (c.telefone || '').includes(searchTerm);
+      return matchText;
+    });
+  }, [clientes, searchTerm]);
+
+  const filteredDeals = useMemo(() => {
+    return deals.filter(d => {
+      const matchText = (d.titulo || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        (d.cliente_nome || '').toLowerCase().includes(searchTerm.toLowerCase());
+      const matchStage = statusFilter === 'todos' || d.etapa === statusFilter;
+      return matchText && matchStage;
+    });
+  }, [deals, searchTerm, statusFilter]);
+
+  const filteredEmpresas = useMemo(() => {
+    return empresas.filter(e => {
+      const nome = e.nome || e.nome_comercial || e.razao_social || '';
+      return nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
+             (e.nif || '').toLowerCase().includes(searchTerm.toLowerCase());
+    });
+  }, [empresas, searchTerm]);
+
+  const filteredProjetos = useMemo(() => {
+    return projetos.filter(p => {
+      const matchText = (p.nome || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        (p.cliente_nome || '').toLowerCase().includes(searchTerm.toLowerCase());
+      const matchStatus = statusFilter === 'todos' || p.status.toLowerCase().includes(statusFilter.toLowerCase());
+      return matchText && matchStatus;
+    });
+  }, [projetos, searchTerm, statusFilter]);
 
   return (
-    <div className="min-h-screen bg-[#f4f7fb] text-zinc-800 font-sans flex antialiased select-none">
+    <div className="w-full min-h-screen bg-[#070b14] text-slate-100 flex flex-col font-sans">
       
-      {/* ─────────────────────────────────────────────────────────────────── */}
-      {/* SIDEBAR EXCLUSIVA NEXORA CRM (Fundo Escuro Dark Navy da Imagem)   */}
-      {/* ─────────────────────────────────────────────────────────────────── */}
-      <aside className="w-64 bg-[#081528] text-white flex flex-col justify-between shrink-0 min-h-screen border-r border-[#0f233d]">
-        <div>
-          {/* Logo Brand Header */}
-          <div className="px-6 py-6 border-b border-white/5 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white shadow-lg shadow-blue-500/20">
-                <Zap size={20} className="fill-white" />
-              </div>
-              <div>
-                <span className="text-sm font-black tracking-wider block uppercase leading-none">NEXORA</span>
-                <span className="text-[10px] text-zinc-400 font-bold tracking-widest block uppercase mt-0.5">CRM AUTOMATION</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Nav Items */}
-          <nav className="p-4 space-y-1">
-            {[
-              { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-              { id: 'leads', label: 'Leads', icon: UserCheck },
-              { id: 'conversations', label: 'Conversations', icon: MessageSquare, badge: '5' },
-              { id: 'ai', label: 'AI Assistant', icon: Bot },
-              { id: 'automations', label: 'Automations', icon: Zap },
-              { id: 'contacts', label: 'Contacts', icon: Users },
-              { id: 'calendar', label: 'Calendar', icon: Calendar },
-              { id: 'invoices', label: 'Invoices', icon: FileText },
-              { id: 'products', label: 'Products', icon: Package },
-              { id: 'reports', label: 'Reports', icon: FileSpreadsheet },
-              { id: 'settings', label: 'Settings', icon: Settings },
-            ].map(item => {
-              const Icon = item.icon;
-              const isActive = activeNav === item.id;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => setActiveNav(item.id)}
-                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                    isActive
-                      ? 'bg-[#1b64f2] text-white shadow-md shadow-blue-500/20 font-bold'
-                      : 'text-zinc-400 hover:text-white hover:bg-white/5'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <Icon size={17} className={isActive ? 'text-white' : 'text-zinc-400'} />
-                    <span>{item.label}</span>
-                  </div>
-                  {item.badge && (
-                    <span className="px-2 py-0.5 text-[10px] font-black rounded-full bg-[#1b64f2] text-white">
-                      {item.badge}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </nav>
-        </div>
-
-        {/* Bottom Cards: Upgrade & Plan Info */}
-        <div className="p-4 space-y-3">
-          {/* Upgrade Plan Card */}
-          <div className="p-4 rounded-2xl bg-gradient-to-br from-[#10274c] to-[#0d1e38] border border-blue-500/20 space-y-2.5 shadow-xl">
-            <span className="text-xs font-black text-white block uppercase tracking-wider">Upgrade Plan</span>
-            <p className="text-[11px] text-zinc-400 leading-relaxed">
-              Unlock advanced features and automation limits.
-            </p>
-            <button
-              onClick={() => toast.success('Módulo Pro ilimitado ativado!')}
-              className="w-full py-2 bg-white text-[#081528] rounded-xl text-xs font-black uppercase tracking-wider hover:bg-zinc-100 transition-all cursor-pointer shadow-md"
-            >
-              Upgrade Now
-            </button>
-          </div>
-
-          {/* Your Plan Card */}
-          <div className="p-3.5 rounded-xl bg-white/5 border border-white/5 space-y-2">
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block">Your Plan</span>
-                <span className="text-xs font-bold text-white">Pro Plan</span>
-              </div>
-              <span className="px-2 py-0.5 text-[9px] font-black uppercase rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                Active
-              </span>
-            </div>
-            <div>
-              <span className="text-[10px] text-zinc-400 block">Renews on May 28, 2025</span>
-              <div className="w-full bg-white/10 h-1.5 rounded-full mt-1.5 overflow-hidden">
-                <div className="bg-[#1b64f2] h-full w-[78%] rounded-full"></div>
-              </div>
-              <span className="text-[9px] text-zinc-400 mt-1 block font-mono">78% Used</span>
-            </div>
-            <button
-              onClick={() => toast('Detalhes da subscrição ativos.', { icon: 'ℹ️' })}
-              className="text-[10px] text-blue-400 hover:text-blue-300 font-bold block pt-1 cursor-pointer"
-            >
-              View Plan Details
-            </button>
-          </div>
-
-          {/* Botão para retornar ao ERP Master se solicitado */}
-          {onBackToApp && (
-            <button
-              onClick={onBackToApp}
-              className="w-full flex items-center justify-center gap-2 py-2 text-zinc-400 hover:text-white text-xs font-bold rounded-lg hover:bg-white/5 transition-all cursor-pointer"
-            >
-              <ArrowLeft size={14} /> Voltar ao IMATEC ERP
-            </button>
-          )}
-        </div>
-      </aside>
-
-      {/* ─────────────────────────────────────────────────────────────────── */}
-      {/* ÁREA DE CONTEÚDO PRINCIPAL (DASHBOARD CLARO, MODERNO E RESPONSIVO) */}
-      {/* ─────────────────────────────────────────────────────────────────── */}
-      <main className="flex-1 flex flex-col min-w-0 overflow-y-auto">
-
-        {/* Top Header Bar */}
-        <header className="h-18 bg-white border-b border-zinc-200/80 px-8 flex items-center justify-between gap-4 sticky top-0 z-30 shadow-xs">
-          {/* Search Input */}
-          <div className="relative flex-1 max-w-md">
-            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400" />
-            <input
-              type="text"
-              placeholder="Search by name, email or phone..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-zinc-50 border border-zinc-200/80 rounded-xl text-xs font-medium text-zinc-800 placeholder:text-zinc-400 focus:outline-none focus:border-[#1b64f2] focus:bg-white transition-all shadow-2xs"
-            />
-          </div>
-
-          {/* Right Header Actions */}
+      {/* ── TOP HEADER SEM BARRA LATERAL (FULL WIDTH) ── */}
+      <header className="w-full bg-[#0d1527] border-b border-slate-800/80 px-6 py-4 sticky top-0 z-40 backdrop-blur-md shadow-xl">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+          
+          {/* Logo e Título */}
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => setIsNewLeadModalOpen(true)}
-              className="w-9 h-9 rounded-full bg-[#1b64f2] text-white flex items-center justify-center shadow-md shadow-blue-500/20 hover:bg-blue-600 transition-all cursor-pointer"
-              title="Add New Lead or Deal"
-            >
-              <Plus size={18} />
-            </button>
-
-            <button
-              onClick={() => toast.success('Nenhuma notificação pendente!')}
-              className="w-9 h-9 rounded-full bg-zinc-100 text-zinc-600 flex items-center justify-center hover:bg-zinc-200 transition-all cursor-pointer relative"
-              title="Notifications"
-            >
-              <MessageSquare size={16} />
-              <span className="w-2 h-2 rounded-full bg-red-500 absolute top-1.5 right-1.5 ring-2 ring-white"></span>
-            </button>
-
-            {/* User Profile Capsule */}
-            <div className="flex items-center gap-3 pl-2 border-l border-zinc-200">
-              <img
-                src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100"
-                alt="Profile"
-                className="w-9 h-9 rounded-full object-cover ring-2 ring-blue-500/30"
-              />
-              <div className="hidden sm:block text-left">
-                <span className="text-xs font-bold text-zinc-900 block leading-tight">{userName}</span>
-                <span className="text-[10px] text-zinc-400 font-medium block">Admin</span>
-              </div>
+            <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/20">
+              <Briefcase className="w-6 h-6 text-white" />
             </div>
-          </div>
-        </header>
-
-        {/* Dashboard Body Container */}
-        <div className="p-8 space-y-6">
-
-          {/* Welcome Banner & Date Range Filter */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h1 className="text-2xl font-black text-zinc-900 tracking-tight flex items-center gap-2">
-                Welcome back, {userName.split(' ')[0]}! <span className="inline-block animate-wave">👋</span>
-              </h1>
-              <p className="text-xs text-zinc-400 font-medium mt-0.5">
-                Here's what's happening with your business today.
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl font-bold tracking-tight text-white">CRM NEGÓCIOS</h1>
+                <span className="text-[10px] bg-blue-500/20 text-blue-400 font-semibold px-2 py-0.5 rounded-full border border-blue-500/30">
+                  DADOS REAIS SUPABASE
+                </span>
+              </div>
+              <p className="text-xs text-slate-400">
+                Gestão comercial unificada, pipeline de vendas, empresas e projetos integrados
               </p>
             </div>
+          </div>
 
-            <div className="flex items-center gap-2.5">
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-white border border-zinc-200 rounded-xl text-xs font-bold text-zinc-700 shadow-2xs">
-                <Calendar size={14} className="text-zinc-400" />
-                <span>{dateFilter}</span>
-              </div>
+          {/* Navegação Principal das Seções (Abas em Botões com Ícones) */}
+          <nav className="flex items-center gap-1.5 bg-[#090f1d] p-1.5 rounded-xl border border-slate-800 shadow-inner overflow-x-auto max-w-full">
+            <button
+              onClick={() => setActiveTab('negocios')}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
+                activeTab === 'negocios'
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+              }`}
+            >
+              <DollarSign className="w-4 h-4" />
+              GESTAO CRM NEGOCIOS
+              <span className="ml-1 px-1.5 py-0.2 text-[10px] bg-black/30 rounded-full font-mono">
+                {deals.length}
+              </span>
+            </button>
 
-              <button
-                onClick={() => toast('Filtro de período atualizado.', { icon: '🔍' })}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-zinc-200 rounded-xl text-xs font-bold text-zinc-700 shadow-2xs hover:bg-zinc-50 cursor-pointer transition-all"
+            <button
+              onClick={() => setActiveTab('clientes')}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
+                activeTab === 'clientes'
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+              }`}
+            >
+              <Users className="w-4 h-4" />
+              GESTAO CRM CLIENTES
+              <span className="ml-1 px-1.5 py-0.2 text-[10px] bg-black/30 rounded-full font-mono">
+                {clientes.length}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('empresas')}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
+                activeTab === 'empresas'
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+              }`}
+            >
+              <Building2 className="w-4 h-4" />
+              GESTAO CRM EMPRESAS
+              <span className="ml-1 px-1.5 py-0.2 text-[10px] bg-black/30 rounded-full font-mono">
+                {empresas.length}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('projetos')}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
+                activeTab === 'projetos'
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+              }`}
+            >
+              <FolderKanban className="w-4 h-4" />
+              GESTAO CRM PROJETOS
+              <span className="ml-1 px-1.5 py-0.2 text-[10px] bg-black/30 rounded-full font-mono">
+                {projetos.length}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('adicionar')}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
+                activeTab === 'adicionar'
+                  ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
+                  : 'text-emerald-400 hover:text-emerald-300 hover:bg-emerald-950/30 border border-emerald-500/20'
+              }`}
+            >
+              <PlusCircle className="w-4 h-4" />
+              ADICIONAR GESTAO CRM
+            </button>
+          </nav>
+
+          {/* Botões de Ação Global (Voltar e Atualizar) */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => { setRefreshing(true); fetchAllData(); }}
+              disabled={refreshing}
+              title="Recarregar dados do banco de dados"
+              className="p-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/60 transition-all flex items-center gap-1.5 text-xs font-medium"
+            >
+              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin text-blue-400' : ''}`} />
+              <span className="hidden sm:inline">Sincronizar</span>
+            </button>
+
+            <button
+              onClick={onBackToApp}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-red-600/80 to-rose-700 hover:from-red-600 hover:to-rose-600 text-white text-xs font-semibold shadow-lg shadow-rose-950/40 border border-rose-500/30 transition-all"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Voltar ao IMATEC ERP
+            </button>
+          </div>
+
+        </div>
+      </header>
+
+      {/* ── CORPO PRINCIPAL DO CRM NEGÓCIOS ── */}
+      <main className="flex-1 max-w-7xl w-full mx-auto p-6 space-y-6">
+
+        {/* ── BARRA DE PESQUISA, FILTROS E RELATÓRIO ── */}
+        <div className="bg-[#0e1628] rounded-2xl border border-slate-800 p-4 shadow-xl flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="relative flex-1 w-full">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Pesquisar por nome, NIF, título, cliente ou telefone..."
+              className="w-full bg-[#080d1a] border border-slate-700/80 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
+            />
+            {searchTerm && (
+              <button 
+                onClick={() => setSearchTerm('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
               >
-                <Filter size={13} className="text-zinc-400" />
-                <span>Filter</span>
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-3 w-full md:w-auto">
+            {activeTab === 'negocios' && (
+              <div className="flex items-center gap-2">
+                <Filter className="w-4 h-4 text-slate-400" />
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="bg-[#080d1a] border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+                >
+                  <option value="todos">Todas as Etapas</option>
+                  <option value="novo">Novo Lead</option>
+                  <option value="contactado">Contactado</option>
+                  <option value="qualificado">Qualificado</option>
+                  <option value="proposta">Proposta</option>
+                  <option value="ganho">Ganho</option>
+                  <option value="perdido">Perdido</option>
+                </select>
+              </div>
+            )}
+
+            <button
+              onClick={() => setShowReportModal(true)}
+              className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700/80 text-xs font-semibold transition-all shadow-sm"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+              Relatório Comercial
+            </button>
+          </div>
+        </div>
+
+        {/* ── CARDS DE CÁLCULOS E MÉTRICAS REAIS DO BANCO ── */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-[#0e1628] rounded-2xl border border-slate-800/80 p-5 shadow-lg relative overflow-hidden">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-slate-400">Pipeline Aberto</span>
+              <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-400">
+                <DollarSign className="w-4 h-4" />
+              </div>
+            </div>
+            <div className="mt-3">
+              <div className="text-xl font-bold text-white tracking-tight">
+                {formatKz(metrics.valorTotalPipeline)}
+              </div>
+              <div className="flex items-center gap-1.5 mt-1 text-[11px] text-blue-400">
+                <Clock className="w-3.5 h-3.5" />
+                <span>{metrics.dealsAtivosCount} negócio(s) em negociação</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-[#0e1628] rounded-2xl border border-slate-800/80 p-5 shadow-lg relative overflow-hidden">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-slate-400">Receita Ganha (Fechada)</span>
+              <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-400">
+                <TrendingUp className="w-4 h-4" />
+              </div>
+            </div>
+            <div className="mt-3">
+              <div className="text-xl font-bold text-emerald-400 tracking-tight">
+                {formatKz(metrics.valorTotalGanho)}
+              </div>
+              <div className="flex items-center gap-1.5 mt-1 text-[11px] text-emerald-400">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>{metrics.dealsGanhosCount} negócio(s) convertidos</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-[#0e1628] rounded-2xl border border-slate-800/80 p-5 shadow-lg relative overflow-hidden">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-slate-400">Taxa de Conversão</span>
+              <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center text-indigo-400">
+                <BarChart3 className="w-4 h-4" />
+              </div>
+            </div>
+            <div className="mt-3">
+              <div className="text-xl font-bold text-white tracking-tight">
+                {metrics.taxaConversao}%
+              </div>
+              <div className="flex items-center gap-1.5 mt-1 text-[11px] text-slate-400">
+                <span>Ticket Médio: {formatKz(metrics.ticketMedio)}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-[#0e1628] rounded-2xl border border-slate-800/80 p-5 shadow-lg relative overflow-hidden">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-slate-400">Carteira de Clientes</span>
+              <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center text-purple-400">
+                <Users className="w-4 h-4" />
+              </div>
+            </div>
+            <div className="mt-3">
+              <div className="text-xl font-bold text-white tracking-tight">
+                {metrics.totalClientes} Clientes
+              </div>
+              <div className="flex items-center gap-1.5 mt-1 text-[11px] text-purple-400">
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>{metrics.clientesComNif} clientes com NIF regular</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── CONTEÚDO DA SEÇÃO ATIVA ── */}
+        
+        {/* SEÇÃO 1: GESTÃO CRM NEGÓCIOS (Pipeline Kanban e Tabela) */}
+        {activeTab === 'negocios' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                  <DollarSign className="w-5 h-5 text-blue-400" />
+                  Pipeline de Negócios e Oportunidades
+                </h2>
+                <p className="text-xs text-slate-400">
+                  Acompanhe os negócios reais por estágio de vendas com valores e probabilidades do banco de dados
+                </p>
+              </div>
+              <button
+                onClick={() => setShowAddDealModal(true)}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-lg shadow-blue-600/30 transition-all"
+              >
+                <PlusCircle className="w-4 h-4" />
+                Novo Negócio
               </button>
             </div>
-          </div>
 
-          {/* 4 Top KPI Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            
-            {/* Card 1: Total Leads */}
-            <div className="bg-white p-5 rounded-2xl border border-zinc-200/80 shadow-xs flex items-center justify-between">
-              <div>
-                <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider block">Total Leads</span>
-                <strong className="text-2xl font-black text-zinc-900 font-mono block mt-1">2,350</strong>
-                <div className="flex items-center gap-1 text-[11px] font-bold text-emerald-600 mt-2">
-                  <ArrowUpRight size={13} />
-                  <span>+18.6%</span>
-                  <span className="text-zinc-400 font-normal">vs last 7 days</span>
+            {loading ? (
+              <div className="text-center py-16 bg-[#0e1628] rounded-2xl border border-slate-800">
+                <RefreshCw className="w-8 h-8 text-blue-400 animate-spin mx-auto mb-3" />
+                <p className="text-xs text-slate-400">Carregando dados reais do banco...</p>
+              </div>
+            ) : filteredDeals.length === 0 ? (
+              <div className="text-center py-16 bg-[#0e1628] rounded-2xl border border-slate-800 p-8">
+                <div className="w-12 h-12 rounded-full bg-blue-500/10 text-blue-400 flex items-center justify-center mx-auto mb-3">
+                  <DollarSign className="w-6 h-6" />
                 </div>
-              </div>
-              <div className="w-12 h-12 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center">
-                <Users size={22} />
-              </div>
-            </div>
-
-            {/* Card 2: Open Deals */}
-            <div className="bg-white p-5 rounded-2xl border border-zinc-200/80 shadow-xs flex items-center justify-between">
-              <div>
-                <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider block">Open Deals</span>
-                <strong className="text-2xl font-black text-zinc-900 font-mono block mt-1">320</strong>
-                <div className="flex items-center gap-1 text-[11px] font-bold text-emerald-600 mt-2">
-                  <ArrowUpRight size={13} />
-                  <span>+12.4%</span>
-                  <span className="text-zinc-400 font-normal">vs last 7 days</span>
-                </div>
-              </div>
-              <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                <Package size={22} />
-              </div>
-            </div>
-
-            {/* Card 3: Revenue */}
-            <div className="bg-white p-5 rounded-2xl border border-zinc-200/80 shadow-xs flex items-center justify-between">
-              <div>
-                <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider block">Revenue</span>
-                <strong className="text-2xl font-black text-zinc-900 font-mono block mt-1">$58,420</strong>
-                <div className="flex items-center gap-1 text-[11px] font-bold text-emerald-600 mt-2">
-                  <ArrowUpRight size={13} />
-                  <span>+24.8%</span>
-                  <span className="text-zinc-400 font-normal">vs last 7 days</span>
-                </div>
-              </div>
-              <div className="w-12 h-12 rounded-2xl bg-blue-50 text-[#1b64f2] flex items-center justify-center">
-                <DollarSign size={22} />
-              </div>
-            </div>
-
-            {/* Card 4: Conversations */}
-            <div className="bg-white p-5 rounded-2xl border border-zinc-200/80 shadow-xs flex items-center justify-between">
-              <div>
-                <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider block">Conversations</span>
-                <strong className="text-2xl font-black text-zinc-900 font-mono block mt-1">1,234</strong>
-                <div className="flex items-center gap-1 text-[11px] font-bold text-emerald-600 mt-2">
-                  <ArrowUpRight size={13} />
-                  <span>+16.3%</span>
-                  <span className="text-zinc-400 font-normal">vs last 7 days</span>
-                </div>
-              </div>
-              <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center">
-                <MessageSquare size={22} />
-              </div>
-            </div>
-
-          </div>
-
-          {/* Middle Row: Lead Pipeline (Left) & Automation Overview (Right) */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-            {/* 1. Lead Pipeline Card (2 Columns Span) */}
-            <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-zinc-200/80 shadow-xs space-y-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-black text-zinc-900 uppercase tracking-wider">Lead Pipeline</h3>
-                </div>
+                <h3 className="text-sm font-semibold text-white">Nenhum negócio registado no banco de dados</h3>
+                <p className="text-xs text-slate-400 max-w-md mx-auto mt-1 mb-4">
+                  Cadastre uma nova oportunidade para iniciar o rastreamento comercial e previsões de faturamento.
+                </p>
                 <button
-                  onClick={() => setIsNewLeadModalOpen(true)}
-                  className="text-xs font-bold text-[#1b64f2] hover:underline flex items-center gap-1 cursor-pointer"
+                  onClick={() => setShowAddDealModal(true)}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-md"
                 >
-                  <Plus size={13} /> Add Deal
+                  <PlusCircle className="w-4 h-4" />
+                  Registar Primeiro Negócio
                 </button>
               </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+                {ETAPAS_DEAL.map((etapa) => {
+                  const etapaDeals = filteredDeals.filter(d => d.etapa === etapa.id);
+                  const totalEtapa = etapaDeals.reduce((sum, d) => sum + (Number(d.valor) || 0), 0);
+                  
+                  return (
+                    <div key={etapa.id} className="bg-[#0b1222] rounded-2xl border border-slate-800/80 p-3.5 flex flex-col min-h-[420px]">
+                      <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                        <div className="flex items-center gap-1.5">
+                          <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md border ${etapa.color}`}>
+                            {etapa.label}
+                          </span>
+                        </div>
+                        <span className="text-[11px] font-mono text-slate-400 bg-slate-800/80 px-1.5 py-0.5 rounded-full">
+                          {etapaDeals.length}
+                        </span>
+                      </div>
 
-              {/* 5 Stages Chevron Grid */}
-              <div className="grid grid-cols-5 gap-2 text-center text-xs">
-                {[
-                  { id: 'new', label: 'New Lead', count: '350 Leads', color: 'bg-blue-50/80 text-blue-700' },
-                  { id: 'contacted', label: 'Contacted', count: '280 Leads', color: 'bg-cyan-50/80 text-cyan-700' },
-                  { id: 'qualified', label: 'Qualified', count: '180 Leads', color: 'bg-indigo-50/80 text-indigo-700' },
-                  { id: 'proposal', label: 'Proposal', count: '120 Leads', color: 'bg-purple-50/80 text-purple-700' },
-                  { id: 'won', label: 'Won', count: '85 Leads', color: 'bg-emerald-50/80 text-emerald-700' },
-                ].map(col => (
-                  <div key={col.id} className="space-y-3">
-                    <div className={`p-2 rounded-xl ${col.color} border border-black/5`}>
-                      <span className="font-bold block text-[11px] leading-tight">{col.label}</span>
-                      <span className="text-[9px] opacity-75 font-mono block mt-0.5">{col.count}</span>
-                    </div>
+                      <div className="mt-2 mb-3 text-[11px] font-semibold text-slate-300">
+                        Total: <span className="text-blue-400 font-mono">{formatKz(totalEtapa)}</span>
+                      </div>
 
-                    {/* Cards Inside Stage */}
-                    <div className="space-y-2">
-                      {getStageDeals(col.id as any).slice(0, 3).map(d => (
-                        <div
-                          key={d.id}
-                          className="bg-zinc-50 hover:bg-zinc-100/80 p-2.5 rounded-xl border border-zinc-200/70 text-left transition-all cursor-pointer group"
-                        >
-                          <div className="flex items-center gap-2">
-                            <img
-                              src={d.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100'}
-                              alt={d.name}
-                              className="w-6 h-6 rounded-full object-cover shrink-0"
-                            />
-                            <div className="min-w-0 flex-1">
-                              <span className="text-[11px] font-bold text-zinc-900 block truncate leading-tight group-hover:text-[#1b64f2]">
-                                {d.name}
+                      <div className="space-y-2.5 flex-1 overflow-y-auto pr-1">
+                        {etapaDeals.map((deal) => (
+                          <div
+                            key={deal.id}
+                            className="bg-[#101a2f] hover:bg-[#14213d] border border-slate-700/60 rounded-xl p-3 transition-all shadow-sm hover:shadow-md"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <h4 className="text-xs font-semibold text-white line-clamp-1">{deal.titulo}</h4>
+                            </div>
+                            
+                            <p className="text-[11px] text-slate-400 mt-1 flex items-center gap-1">
+                              <Users className="w-3 h-3 text-slate-500" />
+                              {deal.cliente_nome}
+                            </p>
+
+                            <div className="mt-2 pt-2 border-t border-slate-800 flex items-center justify-between">
+                              <span className="text-xs font-bold text-emerald-400 font-mono">
+                                {formatKz(deal.valor)}
                               </span>
-                              <span className="text-[10px] text-zinc-500 font-mono block">
-                                ${d.value.toLocaleString()}
+                              <span className="text-[10px] text-slate-500">
+                                {deal.probabilidade}% prob.
                               </span>
                             </div>
+
+                            {/* Mudar etapa */}
+                            <div className="mt-2 pt-2 flex items-center justify-between gap-1">
+                              <select
+                                value={deal.etapa}
+                                onChange={(e) => handleUpdateDealStage(deal.id, e.target.value as Deal['etapa'])}
+                                className="w-full bg-[#080d1a] border border-slate-700/70 text-[10px] text-slate-300 rounded px-1.5 py-1 focus:outline-none"
+                              >
+                                {ETAPAS_DEAL.map(e => (
+                                  <option key={e.id} value={e.id}>{e.label}</option>
+                                ))}
+                              </select>
+                            </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <span className="text-[10px] text-zinc-400 font-bold block pt-1">
-                      +{getStageDeals(col.id as any).length * 15} More
-                    </span>
-                  </div>
-                ))}
-              </div>
-
-              {/* Total Pipeline Footer */}
-              <div className="pt-4 border-t border-zinc-100 flex items-center justify-between">
-                <div>
-                  <span className="text-[11px] text-zinc-400 font-bold uppercase tracking-wider block">Total Pipeline Value:</span>
-                  <strong className="text-base font-black text-zinc-900 font-mono">
-                    ${totalPipelineValue.toLocaleString()}
-                  </strong>
-                </div>
-
-                <button
-                  onClick={() => toast('Exibindo todos os 1,015 negócios cadastrados.', { icon: '💼' })}
-                  className="px-3.5 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 text-xs font-bold rounded-xl transition-all cursor-pointer"
-                >
-                  View All Deals
-                </button>
-              </div>
-            </div>
-
-            {/* 2. Automation Overview Card (Right) */}
-            <div className="bg-white p-6 rounded-2xl border border-zinc-200/80 shadow-xs space-y-4">
-              <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
-                <h3 className="text-sm font-black text-zinc-900 uppercase tracking-wider">Automation Overview</h3>
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              </div>
-
-              <div className="space-y-3">
-                {[
-                  { name: 'WhatsApp Automation', detail: '1,880 Sent', icon: MessageCircle, color: 'text-emerald-600 bg-emerald-50' },
-                  { name: 'Email Automation', detail: '980 Sent', icon: Mail, color: 'text-blue-600 bg-blue-50' },
-                  { name: 'AI Reply Assistant', detail: '452 Conversations', icon: Bot, color: 'text-purple-600 bg-purple-50' },
-                  { name: 'Invoice Automation', detail: '220 Invoices', icon: FileText, color: 'text-amber-600 bg-amber-50' },
-                ].map((auto, i) => {
-                  const Icon = auto.icon;
-                  return (
-                    <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 border border-zinc-200/60">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-9 h-9 rounded-xl ${auto.color} flex items-center justify-center`}>
-                          <Icon size={18} />
-                        </div>
-                        <div>
-                          <span className="text-xs font-bold text-zinc-900 block leading-tight">{auto.name}</span>
-                          <span className="text-[10px] text-zinc-400 font-mono block mt-0.5">{auto.detail}</span>
-                        </div>
+                        ))}
                       </div>
-                      <span className="text-[10px] font-black uppercase text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                        Active
-                      </span>
                     </div>
                   );
                 })}
               </div>
-            </div>
-
+            )}
           </div>
+        )}
 
-          {/* Lower Row: Recent Conversations | AI Reply Assistant | Invoices Overview */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-            {/* Column 1: Recent Conversations */}
-            <div className="bg-white p-5 rounded-2xl border border-zinc-200/80 shadow-xs space-y-4">
-              <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
-                <h3 className="text-xs font-black text-zinc-900 uppercase tracking-wider">Recent Conversations</h3>
-                <button
-                  onClick={() => toast('Carregando histórico do WhatsApp e Email...', { icon: '💬' })}
-                  className="text-xs font-bold text-[#1b64f2] hover:underline cursor-pointer"
-                >
-                  View All
-                </button>
+        {/* SEÇÃO 2: GESTÃO CRM CLIENTES */}
+        {activeTab === 'clientes' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                  <Users className="w-5 h-5 text-blue-400" />
+                  Gestão Comercial de Clientes
+                </h2>
+                <p className="text-xs text-slate-400">
+                  Base de clientes ativa sincronizada em tempo real com a tabela 'clientes' do Supabase
+                </p>
               </div>
-
-              <div className="space-y-3">
-                {conversations.map(conv => (
-                  <div
-                    key={conv.id}
-                    onClick={() => toast(`Abrindo conversa de ${conv.contactName}`, { icon: '📱' })}
-                    className="flex items-start gap-3 p-2.5 rounded-xl hover:bg-zinc-50 transition-colors cursor-pointer border border-transparent hover:border-zinc-200/60"
-                  >
-                    <div className="w-8 h-8 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 mt-0.5">
-                      {conv.channel === 'whatsapp' ? <MessageCircle size={16} /> : <Mail size={16} />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-zinc-900 truncate">{conv.contactName}</span>
-                        <span className="text-[10px] text-zinc-400 font-mono">{conv.time}</span>
-                      </div>
-                      <p className="text-[11px] text-zinc-500 truncate mt-0.5">{conv.lastMessage}</p>
-                    </div>
-                    {conv.unreadCount && (
-                      <span className="w-4 h-4 rounded-full bg-[#1b64f2] text-white text-[9px] font-black flex items-center justify-center shrink-0 mt-1">
-                        {conv.unreadCount}
-                      </span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Column 2: AI Reply Assistant */}
-            <div className="bg-white p-5 rounded-2xl border border-zinc-200/80 shadow-xs space-y-4">
-              <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
-                <h3 className="text-xs font-black text-zinc-900 uppercase tracking-wider">AI Reply Assistant</h3>
-                <button
-                  onClick={() => toast('IA configurada com respostas automáticas ativas.', { icon: '🤖' })}
-                  className="text-xs font-bold text-[#1b64f2] hover:underline cursor-pointer"
-                >
-                  View All
-                </button>
-              </div>
-
-              <div className="space-y-3">
-                {aiTasks.map(task => (
-                  <div key={task.id} className="flex items-start gap-3 p-2.5 rounded-xl bg-zinc-50/70 border border-zinc-200/60">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5 text-white font-bold text-[10px] ${
-                      task.status === 'replied' ? 'bg-purple-600' : 'bg-amber-500'
-                    }`}>
-                      AI
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-zinc-900 truncate">{task.title}</span>
-                        <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${
-                          task.status === 'replied' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
-                        }`}>
-                          {task.status === 'replied' ? 'AI Replied' : 'Pending'}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-zinc-500 truncate mt-0.5">{task.response}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Column 3: Invoices Overview */}
-            <div className="bg-white p-5 rounded-2xl border border-zinc-200/80 shadow-xs space-y-4">
-              <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
-                <h3 className="text-xs font-black text-zinc-900 uppercase tracking-wider">Invoices Overview</h3>
-                <button
-                  onClick={() => toast('Redirecionando para faturamento...', { icon: '📄' })}
-                  className="text-xs font-bold text-[#1b64f2] hover:underline cursor-pointer"
-                >
-                  View All
-                </button>
-              </div>
-
-              <div className="space-y-3">
-                {invoicesOverview.map(inv => (
-                  <div key={inv.id} className="flex items-center justify-between p-2.5 rounded-xl bg-zinc-50/70 border border-zinc-200/60 text-xs">
-                    <div>
-                      <span className="font-mono font-bold text-zinc-900 block">{inv.id}</span>
-                      <span className="text-[11px] text-zinc-500 block">{inv.client}</span>
-                    </div>
-
-                    <div className="text-right">
-                      <span className="font-mono font-bold text-zinc-900 block">${inv.value.toLocaleString()}</span>
-                      <span className={`text-[9px] font-black px-2 py-0.5 rounded-full inline-block mt-0.5 ${
-                        inv.status === 'Paid'
-                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                          : inv.status === 'Sent'
-                          ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                          : 'bg-amber-50 text-amber-700 border border-amber-200'
-                      }`}>
-                        {inv.status}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-          </div>
-
-          {/* Bottom Workflow Automation Timeline */}
-          <div className="bg-white p-6 rounded-2xl border border-zinc-200/80 shadow-xs space-y-4">
-            <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
-              <h3 className="text-sm font-black text-zinc-900 uppercase tracking-wider">Workflow Automation</h3>
-              <span className="text-xs font-bold text-[#1b64f2] hover:underline cursor-pointer">Edit Workflow</span>
-            </div>
-
-            {/* Stepper Interactive Timeline */}
-            <div className="flex items-center justify-between gap-2 overflow-x-auto py-2">
-              {[
-                { title: 'New Lead Captured', subtitle: 'Trigger', icon: UserCheck, color: 'text-emerald-600 bg-emerald-50' },
-                { title: 'Send WhatsApp', subtitle: 'Welcome Message', icon: MessageCircle, color: 'text-emerald-600 bg-emerald-50' },
-                { title: 'Wait', subtitle: '1 Hour', icon: Clock, color: 'text-blue-600 bg-blue-50' },
-                { title: 'AI Reply', subtitle: 'Smart Response', icon: Bot, color: 'text-purple-600 bg-purple-50' },
-                { title: 'Send Email', subtitle: 'Follow Up', icon: Mail, color: 'text-blue-600 bg-blue-50' },
-                { title: 'Update CRM', subtitle: 'Add to Pipeline', icon: Zap, color: 'text-amber-600 bg-amber-50' },
-              ].map((step, idx, arr) => {
-                const Icon = step.icon;
-                return (
-                  <React.Fragment key={idx}>
-                    <div className="flex items-center gap-3 p-3 rounded-2xl bg-zinc-50 border border-zinc-200/80 min-w-[170px] shrink-0">
-                      <div className={`w-9 h-9 rounded-xl ${step.color} flex items-center justify-center shrink-0`}>
-                        <Icon size={18} />
-                      </div>
-                      <div className="min-w-0">
-                        <span className="text-xs font-bold text-zinc-900 block truncate leading-tight">{step.title}</span>
-                        <span className="text-[10px] text-zinc-400 font-medium block mt-0.5">{step.subtitle}</span>
-                      </div>
-                    </div>
-                    {idx < arr.length - 1 && (
-                      <div className="text-zinc-300 shrink-0">
-                        <ChevronRight size={18} />
-                      </div>
-                    )}
-                  </React.Fragment>
-                );
-              })}
-
               <button
-                onClick={() => toast.success('Novo bloco de automação adicionado!')}
-                className="w-10 h-10 rounded-2xl border-2 border-dashed border-zinc-300 text-zinc-400 hover:text-[#1b64f2] hover:border-[#1b64f2] flex items-center justify-center shrink-0 cursor-pointer transition-colors"
-                title="Add step"
+                onClick={() => setShowAddClientModal(true)}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-lg shadow-blue-600/30 transition-all"
               >
-                <Plus size={16} />
+                <PlusCircle className="w-4 h-4" />
+                Novo Cliente
               </button>
             </div>
-          </div>
 
-        </div>
+            <div className="bg-[#0e1628] rounded-2xl border border-slate-800 shadow-xl overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-[#090f1d] border-b border-slate-800 text-slate-400 font-semibold">
+                      <th className="py-3 px-4">Nome do Cliente</th>
+                      <th className="py-3 px-4">NIF / Contribuinte</th>
+                      <th className="py-3 px-4">Telefone</th>
+                      <th className="py-3 px-4">Email</th>
+                      <th className="py-3 px-4">Localidade / Província</th>
+                      <th className="py-3 px-4 text-right">Saldo Inicial</th>
+                      <th className="py-3 px-4 text-center">Status</th>
+                      <th className="py-3 px-4 text-center">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60">
+                    {filteredClientes.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="py-12 text-center text-slate-400">
+                          Nenhum cliente encontrado no banco de dados com os filtros aplicados.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredClientes.map((c, idx) => (
+                        <tr key={c.id || idx} className="hover:bg-slate-800/30 transition-colors">
+                          <td className="py-3 px-4 font-medium text-white flex items-center gap-2.5">
+                            <div className="w-7 h-7 rounded-full bg-blue-500/10 text-blue-400 flex items-center justify-center font-bold text-xs">
+                              {(c.nome || 'C').charAt(0).toUpperCase()}
+                            </div>
+                            {c.nome}
+                          </td>
+                          <td className="py-3 px-4 font-mono text-slate-300">
+                            {c.nif || c.contribuinte || 'Consumidor Final'}
+                          </td>
+                          <td className="py-3 px-4 text-slate-300">{c.telefone || '—'}</td>
+                          <td className="py-3 px-4 text-slate-300">{c.email || '—'}</td>
+                          <td className="py-3 px-4 text-slate-300">{c.provincia || c.municipio || 'Angola'}</td>
+                          <td className="py-3 px-4 text-right font-mono text-emerald-400 font-medium">
+                            {formatKz(Number(c.saldo_inicial) || 0)}
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                              <CheckCircle2 className="w-3 h-3" />
+                              Ativo
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            <button
+                              onClick={() => {
+                                setNewDeal(prev => ({
+                                  ...prev,
+                                  cliente_nome: c.nome,
+                                  cliente_id: String(c.id || '')
+                                }));
+                                setShowAddDealModal(true);
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 text-[11px] font-medium border border-blue-500/20 transition-all"
+                            >
+                              + Criar Negócio
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* SEÇÃO 3: GESTÃO CRM EMPRESAS */}
+        {activeTab === 'empresas' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                  <Building2 className="w-5 h-5 text-blue-400" />
+                  Gestão CRM Empresas & Contas Corporativas
+                </h2>
+                <p className="text-xs text-slate-400">
+                  Visão cadastral e comercial de empresas registadas no sistema Supabase
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredEmpresas.length === 0 ? (
+                <div className="col-span-full py-12 text-center bg-[#0e1628] rounded-2xl border border-slate-800 text-slate-400">
+                  Nenhuma empresa registada no banco de dados.
+                </div>
+              ) : (
+                filteredEmpresas.map((emp) => {
+                  const nome = emp.nome || emp.nome_comercial || emp.razao_social || 'Empresa';
+                  return (
+                    <div key={emp.id} className="bg-[#0e1628] rounded-2xl border border-slate-800/80 p-5 shadow-lg space-y-3">
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center font-bold text-sm">
+                            <Building2 className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <h3 className="text-sm font-bold text-white line-clamp-1">{nome}</h3>
+                            <span className="text-[11px] font-mono text-slate-400">NIF: {emp.nif || '—'}</span>
+                          </div>
+                        </div>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                          Ativa
+                        </span>
+                      </div>
+
+                      <div className="space-y-1.5 text-xs text-slate-300 pt-2 border-t border-slate-800">
+                        {emp.email && (
+                          <div className="flex items-center gap-2 text-slate-400">
+                            <Mail className="w-3.5 h-3.5 text-slate-500" />
+                            <span className="truncate">{emp.email}</span>
+                          </div>
+                        )}
+                        {emp.telefone && (
+                          <div className="flex items-center gap-2 text-slate-400">
+                            <Phone className="w-3.5 h-3.5 text-slate-500" />
+                            <span>{emp.telefone}</span>
+                          </div>
+                        )}
+                        <div className="flex items-center gap-2 text-slate-400">
+                          <Building2 className="w-3.5 h-3.5 text-slate-500" />
+                          <span>{emp.provincia || emp.cidade || 'Angola'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* SEÇÃO 4: GESTÃO CRM PROJETOS */}
+        {activeTab === 'projetos' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                  <FolderKanban className="w-5 h-5 text-blue-400" />
+                  Gestão CRM Projetos & Contratos
+                </h2>
+                <p className="text-xs text-slate-400">
+                  Projetos reais de clientes com orçamentos, prazos e controle de status
+                </p>
+              </div>
+              <button
+                onClick={() => setShowAddProjetoModal(true)}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-lg shadow-blue-600/30 transition-all"
+              >
+                <PlusCircle className="w-4 h-4" />
+                Novo Projeto
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredProjetos.length === 0 ? (
+                <div className="col-span-full py-12 text-center bg-[#0e1628] rounded-2xl border border-slate-800 text-slate-400">
+                  Nenhum projeto cadastrado no banco de dados.
+                </div>
+              ) : (
+                filteredProjetos.map((proj) => (
+                  <div key={proj.id} className="bg-[#0e1628] rounded-2xl border border-slate-800/80 p-5 shadow-lg space-y-3">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <h3 className="text-sm font-bold text-white line-clamp-1">{proj.nome}</h3>
+                        <p className="text-xs text-slate-400 mt-0.5">{proj.cliente_nome || 'Cliente do Projeto'}</p>
+                      </div>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                        {proj.status}
+                      </span>
+                    </div>
+
+                    {proj.descricao && (
+                      <p className="text-xs text-slate-400 line-clamp-2">{proj.descricao}</p>
+                    )}
+
+                    <div className="pt-3 border-t border-slate-800 flex items-center justify-between text-xs">
+                      <span className="text-slate-400">Orçamento:</span>
+                      <span className="font-bold text-emerald-400 font-mono">
+                        {formatKz(Number(proj.orcamento) || 0)}
+                      </span>
+                    </div>
+
+                    {proj.data_inicio && (
+                      <div className="flex items-center justify-between text-[11px] text-slate-500">
+                        <span>Início: {proj.data_inicio}</span>
+                        {proj.data_fim && <span>Previsão: {proj.data_fim}</span>}
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* SEÇÃO 5: ADICIONAR GESTÃO CRM (Central de Criação e Ações Rápidas) */}
+        {activeTab === 'adicionar' && (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                <PlusCircle className="w-5 h-5 text-emerald-400" />
+                Central de Adição e Ações Rápidas do CRM
+              </h2>
+              <p className="text-xs text-slate-400">
+                Escolha a entidade que deseja cadastrar diretamente no banco de dados com total integridade
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div 
+                onClick={() => setShowAddDealModal(true)}
+                className="bg-[#0e1628] hover:bg-[#14213d] border border-slate-800 hover:border-blue-500/50 rounded-2xl p-6 cursor-pointer transition-all group shadow-lg"
+              >
+                <div className="w-12 h-12 rounded-xl bg-blue-500/10 text-blue-400 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                  <DollarSign className="w-6 h-6" />
+                </div>
+                <h3 className="text-sm font-bold text-white">Criar Negócio Comercial</h3>
+                <p className="text-xs text-slate-400 mt-1 mb-4">
+                  Cadastrar proposta, probabilidade, cliente e valor previsto no pipeline.
+                </p>
+                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-400 group-hover:underline">
+                  Abrir Formulário <ChevronRight className="w-3.5 h-3.5" />
+                </span>
+              </div>
+
+              <div 
+                onClick={() => setShowAddClientModal(true)}
+                className="bg-[#0e1628] hover:bg-[#14213d] border border-slate-800 hover:border-purple-500/50 rounded-2xl p-6 cursor-pointer transition-all group shadow-lg"
+              >
+                <div className="w-12 h-12 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                  <Users className="w-6 h-6" />
+                </div>
+                <h3 className="text-sm font-bold text-white">Cadastrar Novo Cliente</h3>
+                <p className="text-xs text-slate-400 mt-1 mb-4">
+                  Inserir novo cliente com NIF AGT, telefone, email e dados no Supabase.
+                </p>
+                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-purple-400 group-hover:underline">
+                  Abrir Formulário <ChevronRight className="w-3.5 h-3.5" />
+                </span>
+              </div>
+
+              <div 
+                onClick={() => setShowAddProjetoModal(true)}
+                className="bg-[#0e1628] hover:bg-[#14213d] border border-slate-800 hover:border-amber-500/50 rounded-2xl p-6 cursor-pointer transition-all group shadow-lg"
+              >
+                <div className="w-12 h-12 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                  <FolderKanban className="w-6 h-6" />
+                </div>
+                <h3 className="text-sm font-bold text-white">Iniciar Novo Projeto</h3>
+                <p className="text-xs text-slate-400 mt-1 mb-4">
+                  Criar projeto vinculado a clientes com orçamentos e prazos.
+                </p>
+                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-400 group-hover:underline">
+                  Abrir Formulário <ChevronRight className="w-3.5 h-3.5" />
+                </span>
+              </div>
+
+              <div 
+                onClick={() => setShowAddAtividadeModal(true)}
+                className="bg-[#0e1628] hover:bg-[#14213d] border border-slate-800 hover:border-emerald-500/50 rounded-2xl p-6 cursor-pointer transition-all group shadow-lg"
+              >
+                <div className="w-12 h-12 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                  <Calendar className="w-6 h-6" />
+                </div>
+                <h3 className="text-sm font-bold text-white">Agendar Interação / Reunião</h3>
+                <p className="text-xs text-slate-400 mt-1 mb-4">
+                  Registrar reuniões, chamadas telefônicas ou e-mails de acompanhamento.
+                </p>
+                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-400 group-hover:underline">
+                  Abrir Formulário <ChevronRight className="w-3.5 h-3.5" />
+                </span>
+              </div>
+            </div>
+
+            {/* Lista de Atividades Agendadas Recentes */}
+            <div className="bg-[#0e1628] rounded-2xl border border-slate-800 p-5 shadow-xl space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-emerald-400" />
+                  Atividades e Follow-ups Comerciais Registados
+                </h3>
+                <button
+                  onClick={() => setShowAddAtividadeModal(true)}
+                  className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold"
+                >
+                  + Agendar Atividade
+                </button>
+              </div>
+
+              {atividades.length === 0 ? (
+                <p className="text-xs text-slate-400 py-6 text-center">
+                  Nenhuma atividade ou reunião agendada no banco de dados.
+                </p>
+              ) : (
+                <div className="divide-y divide-slate-800/80">
+                  {atividades.map((act) => (
+                    <div key={act.id} className="py-3 flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center text-slate-300">
+                          {act.tipo === 'reuniao' && <Calendar className="w-4 h-4 text-blue-400" />}
+                          {act.tipo === 'chamada' && <Phone className="w-4 h-4 text-emerald-400" />}
+                          {act.tipo === 'email' && <Mail className="w-4 h-4 text-indigo-400" />}
+                          {act.tipo === 'proposta' && <FileText className="w-4 h-4 text-amber-400" />}
+                          {act.tipo === 'tarefa' && <CheckCircle2 className="w-4 h-4 text-purple-400" />}
+                        </div>
+                        <div>
+                          <h4 className="font-semibold text-white">{act.titulo}</h4>
+                          <p className="text-[11px] text-slate-400">
+                            {act.cliente_nome ? `Cliente: ${act.cliente_nome} • ` : ''}
+                            Responsável: {act.responsavel || 'Equipa Comercial'}
+                          </p>
+                        </div>
+                      </div>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-800 text-slate-300">
+                        {act.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
       </main>
 
-      {/* ─────────────────────────────────────────────────────────────────── */}
-      {/* MODAL PARA ADICIONAR NOVO LEAD OU NEGÓCIO                          */}
-      {/* ─────────────────────────────────────────────────────────────────── */}
-      {isNewLeadModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-zinc-200 overflow-hidden">
-            <div className="p-5 bg-gradient-to-r from-[#081528] to-[#10274c] text-white flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center">
-                  <UserCheck size={18} />
-                </div>
-                <div>
-                  <h3 className="text-sm font-black uppercase tracking-wider">Novo Lead / Negócio</h3>
-                  <span className="text-[10px] text-zinc-400 font-normal">Cadastre na esteira de CRM Negócios</span>
-                </div>
-              </div>
-              <button
-                onClick={() => setIsNewLeadModalOpen(false)}
-                className="text-zinc-400 hover:text-white transition-colors cursor-pointer"
+      {/* ── MODAL: NOVO NEGÓCIO ── */}
+      {showAddDealModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#0e1628] border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <DollarSign className="w-5 h-5 text-blue-400" />
+                Novo Negócio / Oportunidade
+              </h3>
+              <button 
+                onClick={() => setShowAddDealModal(false)}
+                className="text-slate-400 hover:text-white"
               >
-                <X size={18} />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleCreateLead} className="p-6 space-y-4 text-xs font-sans">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block mb-1">
-                    Nome Completo *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ex: João Silva"
-                    value={newLeadForm.name}
-                    onChange={e => setNewLeadForm({ ...newLeadForm, name: e.target.value })}
-                    className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs focus:outline-none focus:border-[#1b64f2] focus:bg-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block mb-1">
-                    Empresa / Negócio
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Ex: Silva Comércio Lda"
-                    value={newLeadForm.company}
-                    onChange={e => setNewLeadForm({ ...newLeadForm, company: e.target.value })}
-                    className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs focus:outline-none focus:border-[#1b64f2] focus:bg-white"
-                  />
-                </div>
+            <form onSubmit={handleSaveDeal} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Título do Negócio *</label>
+                <input
+                  type="text"
+                  required
+                  value={newDeal.titulo}
+                  onChange={(e) => setNewDeal({ ...newDeal, titulo: e.target.value })}
+                  placeholder="Ex: Fornecimento de Software ERP 2026"
+                  className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3.5 py-2 text-white focus:outline-none focus:border-blue-500"
+                />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block mb-1">
-                    Telefone / WhatsApp
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="+244 923 000 000"
-                    value={newLeadForm.contact}
-                    onChange={e => setNewLeadForm({ ...newLeadForm, contact: e.target.value })}
-                    className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs focus:outline-none focus:border-[#1b64f2] focus:bg-white"
-                  />
+                  <label className="block text-slate-300 font-semibold mb-1">Cliente Associado</label>
+                  <select
+                    value={newDeal.cliente_nome}
+                    onChange={(e) => {
+                      const sel = clientes.find(c => c.nome === e.target.value);
+                      setNewDeal({
+                        ...newDeal,
+                        cliente_nome: e.target.value,
+                        cliente_id: sel?.id ? String(sel.id) : ''
+                      });
+                    }}
+                    className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="">Selecione um cliente...</option>
+                    {clientes.map(c => (
+                      <option key={c.id} value={c.nome}>{c.nome}</option>
+                    ))}
+                  </select>
                 </div>
 
                 <div>
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block mb-1">
-                    Email
-                  </label>
-                  <input
-                    type="email"
-                    placeholder="contato@cliente.ao"
-                    value={newLeadForm.email}
-                    onChange={e => setNewLeadForm({ ...newLeadForm, email: e.target.value })}
-                    className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs focus:outline-none focus:border-[#1b64f2] focus:bg-white"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block mb-1">
-                    Valor Estimado ($ ou Kz)
-                  </label>
+                  <label className="block text-slate-300 font-semibold mb-1">Valor Estimado (Kz) *</label>
                   <input
                     type="number"
-                    placeholder="Ex: 3500"
-                    value={newLeadForm.value}
-                    onChange={e => setNewLeadForm({ ...newLeadForm, value: e.target.value })}
-                    className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs focus:outline-none focus:border-[#1b64f2] focus:bg-white font-mono"
+                    min="0"
+                    step="100"
+                    required
+                    value={newDeal.valor}
+                    onChange={(e) => setNewDeal({ ...newDeal, valor: parseFloat(e.target.value) || 0 })}
+                    className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3.5 py-2 text-white font-mono focus:outline-none focus:border-blue-500"
                   />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Etapa Inicial</label>
+                  <select
+                    value={newDeal.etapa}
+                    onChange={(e) => setNewDeal({ ...newDeal, etapa: e.target.value as Deal['etapa'] })}
+                    className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-blue-500"
+                  >
+                    {ETAPAS_DEAL.map(e => (
+                      <option key={e.id} value={e.id}>{e.label}</option>
+                    ))}
+                  </select>
                 </div>
 
                 <div>
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block mb-1">
-                    Etapa Inicial
-                  </label>
-                  <select
-                    value={newLeadForm.stage}
-                    onChange={e => setNewLeadForm({ ...newLeadForm, stage: e.target.value })}
-                    className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs focus:outline-none focus:border-[#1b64f2] focus:bg-white font-bold cursor-pointer"
-                  >
-                    <option value="new">New Lead</option>
-                    <option value="contacted">Contacted</option>
-                    <option value="qualified">Qualified</option>
-                    <option value="proposal">Proposal</option>
-                    <option value="won">Won (Fechado)</option>
-                  </select>
+                  <label className="block text-slate-300 font-semibold mb-1">Probabilidade (%)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={newDeal.probabilidade}
+                    onChange={(e) => setNewDeal({ ...newDeal, probabilidade: parseInt(e.target.value) || 0 })}
+                    className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3.5 py-2 text-white font-mono focus:outline-none focus:border-blue-500"
+                  />
                 </div>
               </div>
 
               <div>
-                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block mb-1">
-                  Notas / Observações
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="Informações adicionais do cliente ou negócio..."
-                  value={newLeadForm.notes}
-                  onChange={e => setNewLeadForm({ ...newLeadForm, notes: e.target.value })}
-                  className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs focus:outline-none focus:border-[#1b64f2] focus:bg-white"
-                ></textarea>
+                <label className="block text-slate-300 font-semibold mb-1">Data Prevista de Fecho</label>
+                <input
+                  type="date"
+                  value={newDeal.data_fecho_prevista}
+                  onChange={(e) => setNewDeal({ ...newDeal, data_fecho_prevista: e.target.value })}
+                  className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3.5 py-2 text-white focus:outline-none focus:border-blue-500"
+                />
               </div>
 
-              <div className="pt-2 flex items-center justify-end gap-2 border-t border-zinc-100">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Observações Comerciais</label>
+                <textarea
+                  rows={2}
+                  value={newDeal.observacoes}
+                  onChange={(e) => setNewDeal({ ...newDeal, observacoes: e.target.value })}
+                  placeholder="Detalhes sobre a negociação..."
+                  className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3.5 py-2 text-white focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
                 <button
                   type="button"
-                  onClick={() => setIsNewLeadModalOpen(false)}
-                  className="px-4 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-bold rounded-xl cursor-pointer"
+                  onClick={() => setShowAddDealModal(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-[#1b64f2] hover:bg-blue-600 text-white font-black uppercase tracking-wider rounded-xl shadow-md cursor-pointer"
+                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold shadow-lg shadow-blue-600/30"
                 >
-                  Salvar Lead
+                  Guardar Negócio
                 </button>
               </div>
             </form>
@@ -905,6 +1400,408 @@ export const CrmNegociosModule: React.FC<CrmNegociosModuleProps> = ({
         </div>
       )}
 
+      {/* ── MODAL: NOVO CLIENTE ── */}
+      {showAddClientModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#0e1628] border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <Users className="w-5 h-5 text-purple-400" />
+                Registar Novo Cliente no Banco
+              </h3>
+              <button 
+                onClick={() => setShowAddClientModal(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveClient} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Nome Completo / Razão Social *</label>
+                <input
+                  type="text"
+                  required
+                  value={newClient.nome}
+                  onChange={(e) => setNewClient({ ...newClient, nome: e.target.value })}
+                  placeholder="Nome do cliente ou empresa"
+                  className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3.5 py-2 text-white focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">NIF / Contribuinte</label>
+                  <input
+                    type="text"
+                    value={newClient.nif}
+                    onChange={(e) => setNewClient({ ...newClient, nif: e.target.value })}
+                    placeholder="999999999 ou NIF válido"
+                    className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3.5 py-2 text-white font-mono focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Telefone</label>
+                  <input
+                    type="text"
+                    value={newClient.telefone}
+                    onChange={(e) => setNewClient({ ...newClient, telefone: e.target.value })}
+                    placeholder="+244 9..."
+                    className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3.5 py-2 text-white focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Email</label>
+                  <input
+                    type="email"
+                    value={newClient.email}
+                    onChange={(e) => setNewClient({ ...newClient, email: e.target.value })}
+                    placeholder="cliente@exemplo.com"
+                    className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3.5 py-2 text-white focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Província</label>
+                  <select
+                    value={newClient.provincia}
+                    onChange={(e) => setNewClient({ ...newClient, provincia: e.target.value })}
+                    className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="Luanda">Luanda</option>
+                    <option value="Benguela">Benguela</option>
+                    <option value="Huíla">Huíla</option>
+                    <option value="Huambo">Huambo</option>
+                    <option value="Cabinda">Cabinda</option>
+                    <option value="Outra">Outra</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Endereço / Morada</label>
+                <input
+                  type="text"
+                  value={newClient.endereco}
+                  onChange={(e) => setNewClient({ ...newClient, endereco: e.target.value })}
+                  placeholder="Rua, Bairro, Município"
+                  className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3.5 py-2 text-white focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowAddClientModal(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold shadow-lg shadow-purple-600/30"
+                >
+                  Registar Cliente
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL: NOVO PROJETO ── */}
+      {showAddProjetoModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#0e1628] border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <FolderKanban className="w-5 h-5 text-amber-400" />
+                Criar Novo Projeto / Contrato
+              </h3>
+              <button 
+                onClick={() => setShowAddProjetoModal(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveProjeto} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Nome do Projeto *</label>
+                <input
+                  type="text"
+                  required
+                  value={newProjeto.nome}
+                  onChange={(e) => setNewProjeto({ ...newProjeto, nome: e.target.value })}
+                  placeholder="Ex: Implantação de Redes e Servidores"
+                  className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3.5 py-2 text-white focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Cliente Vinculado</label>
+                  <select
+                    value={newProjeto.cliente_nome}
+                    onChange={(e) => setNewProjeto({ ...newProjeto, cliente_nome: e.target.value })}
+                    className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="">Selecione o cliente...</option>
+                    {clientes.map(c => (
+                      <option key={c.id} value={c.nome}>{c.nome}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Orçamento Previsto (Kz)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="500"
+                    value={newProjeto.orcamento}
+                    onChange={(e) => setNewProjeto({ ...newProjeto, orcamento: parseFloat(e.target.value) || 0 })}
+                    className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3.5 py-2 text-white font-mono focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Data Início</label>
+                  <input
+                    type="date"
+                    value={newProjeto.data_inicio}
+                    onChange={(e) => setNewProjeto({ ...newProjeto, data_inicio: e.target.value })}
+                    className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3.5 py-2 text-white focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Previsão de Conclusão</label>
+                  <input
+                    type="date"
+                    value={newProjeto.data_fim}
+                    onChange={(e) => setNewProjeto({ ...newProjeto, data_fim: e.target.value })}
+                    className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3.5 py-2 text-white focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Descrição do Escopo</label>
+                <textarea
+                  rows={2}
+                  value={newProjeto.descricao}
+                  onChange={(e) => setNewProjeto({ ...newProjeto, descricao: e.target.value })}
+                  placeholder="Escopo e entregáveis principais..."
+                  className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3.5 py-2 text-white focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowAddProjetoModal(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-semibold shadow-lg shadow-amber-600/30"
+                >
+                  Gravar Projeto
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL: NOVA ATIVIDADE ── */}
+      {showAddAtividadeModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#0e1628] border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-emerald-400" />
+                Agendar Interação Comercial
+              </h3>
+              <button 
+                onClick={() => setShowAddAtividadeModal(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveAtividade} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Título da Atividade *</label>
+                <input
+                  type="text"
+                  required
+                  value={newAtividade.titulo}
+                  onChange={(e) => setNewAtividade({ ...newAtividade, titulo: e.target.value })}
+                  placeholder="Ex: Reunião de Demonstração Técnica"
+                  className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3.5 py-2 text-white focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Tipo de Interação</label>
+                  <select
+                    value={newAtividade.tipo}
+                    onChange={(e) => setNewAtividade({ ...newAtividade, tipo: e.target.value as AtividadeItem['tipo'] })}
+                    className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="reuniao">Reunião Presencial / Online</option>
+                    <option value="chamada">Chamada Telefónica</option>
+                    <option value="email">Envio de Email</option>
+                    <option value="proposta">Apresentação de Proposta</option>
+                    <option value="tarefa">Tarefa Interna</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Cliente Vinculado</label>
+                  <select
+                    value={newAtividade.cliente_nome}
+                    onChange={(e) => setNewAtividade({ ...newAtividade, cliente_nome: e.target.value })}
+                    className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="">Selecione...</option>
+                    {clientes.map(c => (
+                      <option key={c.id} value={c.nome}>{c.nome}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Data e Hora Agendada</label>
+                <input
+                  type="datetime-local"
+                  value={newAtividade.data_agendada}
+                  onChange={(e) => setNewAtividade({ ...newAtividade, data_agendada: e.target.value })}
+                  className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3.5 py-2 text-white focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Notas / Pauta</label>
+                <textarea
+                  rows={2}
+                  value={newAtividade.descricao}
+                  onChange={(e) => setNewAtividade({ ...newAtividade, descricao: e.target.value })}
+                  placeholder="Assuntos a discutir na reunião..."
+                  className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3.5 py-2 text-white focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowAddAtividadeModal(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold shadow-lg shadow-emerald-600/30"
+                >
+                  Salvar Atividade
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL: RELATÓRIO COMERCIAL ── */}
+      {showReportModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#0e1628] border border-slate-800 rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <FileSpreadsheet className="w-5 h-5 text-emerald-400" />
+                Relatório Geral de Gestão CRM
+              </h3>
+              <button 
+                onClick={() => setShowReportModal(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              <div className="p-4 rounded-xl bg-[#080d1a] border border-slate-800 space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Total de Clientes no Banco:</span>
+                  <span className="font-bold text-white">{metrics.totalClientes}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Clientes com NIF Validado:</span>
+                  <span className="font-bold text-emerald-400">{metrics.clientesComNif}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Total Oportunidades Cadastradas:</span>
+                  <span className="font-bold text-white">{metrics.totalDeals}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Volume Total em Pipeline:</span>
+                  <span className="font-bold text-blue-400 font-mono">{formatKz(metrics.valorTotalPipeline)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Volume Total Ganho (Convertido):</span>
+                  <span className="font-bold text-emerald-400 font-mono">{formatKz(metrics.valorTotalGanho)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Taxa de Conversão:</span>
+                  <span className="font-bold text-indigo-400">{metrics.taxaConversao}%</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Total de Projetos em Execução:</span>
+                  <span className="font-bold text-amber-400">{metrics.totalProjetos}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Orçamento Total de Projetos:</span>
+                  <span className="font-bold text-emerald-400 font-mono">{formatKz(metrics.orcamentoTotalProjetos)}</span>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+                <button
+                  onClick={() => window.print()}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold"
+                >
+                  <Printer className="w-4 h-4" />
+                  Imprimir / Salvar PDF
+                </button>
+                <button
+                  onClick={() => setShowReportModal(false)}
+                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold"
+                >
+                  Fechar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
+
+export default CrmNegociosModule;

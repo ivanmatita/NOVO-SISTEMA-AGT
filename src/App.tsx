@@ -28,6 +28,7 @@ import { GestaoComprasForm } from './components/purchases/GestaoComprasForm';
 import { StockAtualModule } from './components/stock/StockAtualModule';
 import { StockProductPicker } from './components/stock/StockProductPicker';
 import { StockEntradasReport } from './components/stock/StockEntradasReport';
+import { CrmNegociosModule } from './components/CrmNegociosModule';
 
 
 import ProjectManagementModule from './components/ProjectManagementModule';
@@ -2828,7 +2829,8 @@ const WorkplaceModule = ({
 
 const PERMISSION_EQUIVALENTS: Record<string, string[]> = {
   dashboard: ['dashboard', 'painel', 'painel_de_bordo', 'painel de bordo'],
-  crm_empresas: ['crm_empresas', 'crm', 'crm empresas'],
+  crm_negocios: ['crm_negocios', 'crm', 'crm negócios', 'crm negocios', 'negocios'],
+  crm_empresas: ['crm_empresas', 'crm empresas'],
   clients: ['clients', 'clientes'],
   workplaces: ['workplaces', 'locais_trabalho', 'locais de trabalho'],
   secretary: ['secretary', 'secretaria', 'secretaria beta', 'secretaria_beta'],
@@ -3023,6 +3025,7 @@ const hasModulePermission = (user: any, moduleId: string): boolean => {
 
 const SIDEBAR_MENU_ITEMS = [
   { id: 'dashboard', label: 'Painel de Bordo', icon: LayoutDashboard },
+  { id: 'crm_negocios', label: 'CRM Negócios', icon: Briefcase, badge: '⚡ NOVO' },
   { id: 'crm_empresas', label: 'CRM EMPRESAS', icon: ShieldAlert, badge: 'SUPER ADM' },
   { id: 'clients', label: 'Clientes', icon: Users },
   { id: 'workplaces', label: 'Locais de Trabalho', icon: Briefcase },
@@ -33542,7 +33545,7 @@ export default function App() {
   const [activeTab, setActiveTabState] = useState(() => {
     // Ler o hash da URL para restaurar o tab correcto ao carregar/refresh (#pos → 'pos')
     const VALID_TABS = [
-      'dashboard','crm_empresas','clients','workplaces','secretary','pos','contracts',
+      'dashboard','crm_negocios','crm_empresas','clients','workplaces','secretary','pos','contracts',
       'electronic_invoices','security','specialized','archive','cartas','invoices',
       'drafts','suppliers','products','financial','accounting','hr','reports',
       'licencas','empresa','taxes','metrics','media','warehouse','caixa','alertas',
@@ -35488,7 +35491,7 @@ export default function App() {
   return (
     <ProtectedRoute>
       <div className="min-h-screen bg-[#f4f7f9] text-zinc-800 font-sans selection:bg-[#003366]/10 flex" style={{ overflowX: 'clip' }}>
-        {sidebarOpen && (
+        {sidebarOpen && activeTab !== 'crm_negocios' && (
           <Sidebar 
             activeTab={activeTab} 
             setActiveTab={(t) => {
@@ -35501,7 +35504,7 @@ export default function App() {
         )}
         
         <div className="flex-1 flex flex-col min-w-0 min-h-screen">
-          <TopHeader 
+          {activeTab !== 'crm_negocios' && <TopHeader 
             fiscalYear={fiscalYear} 
             setFiscalYear={setFiscalYear} 
             sidebarOpen={sidebarOpen}
@@ -35535,7 +35538,7 @@ export default function App() {
                 setActiveTab('dashboard');
               }
             }}
-          />
+          />}
           {/* Staging Banner - only visible in non-production environments */}
           <StagingBadge />
           <main className="flex-1 overflow-visible w-full transition-all duration-300">
@@ -35818,6 +35821,13 @@ export default function App() {
                       }
                       
                       switch (activeTab) {
+                        case 'crm_negocios':
+                          return (
+                            <CrmNegociosModule 
+                              onBackToApp={() => setActiveTab('dashboard')} 
+                              companyData={companyData} 
+                            />
+                          );
                         case 'crm_empresas':
                           if (!isImatecAuthorizedAdmin(user, companyData)) {
                             return (

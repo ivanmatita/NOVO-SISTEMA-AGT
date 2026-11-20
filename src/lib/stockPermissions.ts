@@ -170,6 +170,10 @@ export function getStockCapabilities(user?: User | null): StockCapabilities {
 export const STOCK_ROUTE_MAP: Record<StockSubRoute, string> = {
   dashboard: '/stock',
   produtos: '/stock/produtos',
+  'gestao-artigos': '/stock/gestao-artigos',
+  'requisicao-material': '/stock/requisicao-material',
+  'gestao-saidas': '/stock/gestao-saidas',
+  'valorizacao-stock': '/stock/valorizacao-stock',
   categorias: '/stock/categorias',
   entradas: '/stock/entradas',
   saidas: '/stock/saidas',

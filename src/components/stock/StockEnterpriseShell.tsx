@@ -6,8 +6,10 @@ import {
   ArrowUpRight,
   BarChart3,
   Bell,
+  BookOpen,
   Building2,
   ClipboardCheck,
+  ClipboardList,
   Cpu,
   FileSpreadsheet,
   FileText,
@@ -19,9 +21,11 @@ import {
   Plus,
   QrCode,
   RefreshCw,
+  Scale,
   Settings,
   ShoppingBag,
   Tag,
+  TrendingDown,
 } from 'lucide-react';
 import type {
   Product,
@@ -49,6 +53,10 @@ import {
 import { StockDetailedReportsModule } from './StockDetailedReportsModule';
 import { StockAgentsHubModule } from './StockAgentsHubModule';
 import { StockProducaoModule } from './StockProducaoModule';
+import { StockGestaoArtigosModule } from './StockGestaoArtigosModule';
+import { StockRequisicaoMaterialModule } from './StockRequisicaoMaterialModule';
+import { StockGestaoSaidasModule } from './StockGestaoSaidasModule';
+import { StockValorizacaoStockModule } from './StockValorizacaoStockModule';
 import { BarcodeScannerModal } from './BarcodeScannerModal';
 import { StockExcelImportModal } from './StockExcelImportModal';
 import { WarehouseModule } from '../WarehouseModule';
@@ -191,6 +199,10 @@ export const StockEnterpriseShell: React.FC<StockEnterpriseShellProps> = ({
     { id: 'relatorios', label: 'Relatórios', icon: FileText },
     { id: 'agentes-ia', label: 'Agentes IA (9)', icon: Cpu, badge: pendingAgentCount },
     { id: 'producao', label: 'Produção', icon: Cpu },
+    { id: 'gestao-artigos', label: 'Gestão de Artigos', icon: BookOpen },
+    { id: 'requisicao-material', label: 'Requisição Material', icon: ClipboardList },
+    { id: 'gestao-saidas', label: 'Gestão de Saídas', icon: TrendingDown },
+    { id: 'valorizacao-stock', label: 'Valorização Stock', icon: Scale },
     { id: 'precos', label: 'Tabela Serviços', icon: Tag },
     { id: 'configuracoes', label: 'Configurações', icon: Settings },
   ];
@@ -483,6 +495,44 @@ export const StockEnterpriseShell: React.FC<StockEnterpriseShellProps> = ({
           activeTaxes={activeTaxes}
           onRefresh={handleFullRefresh}
           onNavigateToStock={() => onSubRouteChange('produtos')}
+        />
+      )}
+
+      {activeSubRoute === 'gestao-artigos' && (
+        <StockGestaoArtigosModule
+          products={products}
+          stockMovements={stockMovements}
+          warehouses={warehouses}
+          companyData={companyData}
+          onRefresh={handleFullRefresh}
+        />
+      )}
+
+      {activeSubRoute === 'requisicao-material' && (
+        <StockRequisicaoMaterialModule
+          empresaId={empresaId}
+          warehouses={warehouses}
+          onRefresh={handleFullRefresh}
+        />
+      )}
+
+      {activeSubRoute === 'gestao-saidas' && (
+        <StockGestaoSaidasModule
+          products={products}
+          stockMovements={stockMovements}
+          warehouses={warehouses}
+          companyData={companyData}
+          onRefresh={handleFullRefresh}
+        />
+      )}
+
+      {activeSubRoute === 'valorizacao-stock' && (
+        <StockValorizacaoStockModule
+          products={products}
+          stockMovements={stockMovements}
+          warehouses={warehouses}
+          saldos={saldos}
+          onRefresh={handleFullRefresh}
         />
       )}
 

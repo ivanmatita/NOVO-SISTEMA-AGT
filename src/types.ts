@@ -1259,6 +1259,10 @@ export type StockRole = 'admin' | 'gestor_stock' | 'operador' | 'auditor' | 'con
 export type StockSubRoute =
   | 'dashboard'
   | 'produtos'
+  | 'gestao-artigos'
+  | 'requisicao-material'
+  | 'gestao-saidas'
+  | 'valorizacao-stock'
   | 'categorias'
   | 'entradas'
   | 'saidas'

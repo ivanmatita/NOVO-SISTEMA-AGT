@@ -7,29 +7,30 @@ import {
   PlusCircle,
   Search,
   Filter,
-  Download,
   RefreshCw,
   ArrowLeft,
   DollarSign,
   CheckCircle2,
   Clock,
-  AlertTriangle,
   TrendingUp,
   Phone,
   Mail,
   Calendar,
-  Edit3,
+  Edit,
   Trash2,
   Eye,
   BarChart3,
   FileText,
-  Layers,
+  Printer,
   ChevronRight,
   ShieldCheck,
   Check,
   X,
   FileSpreadsheet,
-  Printer
+  Layers,
+  ArrowUpDown,
+  SlidersHorizontal,
+  ChevronDown
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -40,7 +41,7 @@ interface CrmNegociosProps {
   companyData?: any;
 }
 
-type TabType = 'clientes' | 'negocios' | 'empresas' | 'projetos' | 'adicionar';
+type TabType = 'negocios' | 'clientes' | 'empresas' | 'projetos' | 'adicionar' | 'relatorios';
 
 interface Deal {
   id: string;
@@ -103,39 +104,49 @@ interface AtividadeItem {
 }
 
 const ETAPAS_DEAL = [
-  { id: 'novo', label: 'Novo Lead', color: 'bg-blue-500/10 text-blue-400 border-blue-500/20' },
-  { id: 'contactado', label: 'Contactado', color: 'bg-amber-500/10 text-amber-400 border-amber-500/20' },
-  { id: 'qualificado', label: 'Qualificado', color: 'bg-purple-500/10 text-purple-400 border-purple-500/20' },
-  { id: 'proposta', label: 'Proposta Enviada', color: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' },
-  { id: 'ganho', label: 'Ganho (Fechado)', color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
-  { id: 'perdido', label: 'Perdido', color: 'bg-rose-500/10 text-rose-400 border-rose-500/20' },
+  { id: 'novo', label: 'Novo Lead', color: 'bg-blue-50 text-blue-700 border-blue-200' },
+  { id: 'contactado', label: 'Contactado', color: 'bg-amber-50 text-amber-700 border-amber-200' },
+  { id: 'qualificado', label: 'Qualificado', color: 'bg-purple-50 text-purple-700 border-purple-200' },
+  { id: 'proposta', label: 'Proposta Enviada', color: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+  { id: 'ganho', label: 'Ganho (Fechado)', color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  { id: 'perdido', label: 'Perdido', color: 'bg-rose-50 text-rose-700 border-rose-200' },
 ];
 
 export const CrmNegociosModule: React.FC<CrmNegociosProps> = ({ onBackToApp, companyData }) => {
   const { user } = useAuth();
   const empresaId = user?.empresa_id || companyData?.id || '';
 
+  // Tab ativa principal
   const [activeTab, setActiveTab] = useState<TabType>('negocios');
+  const [activeReportSection, setActiveReportSection] = useState<'negocios' | 'clientes' | 'empresas' | 'projetos' | 'geral'>('negocios');
+
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('todos');
 
-  // Dados reais carregados do Supabase
+  // Dados reais Supabase
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [empresas, setEmpresas] = useState<EmpresaItem[]>([]);
   const [projetos, setProjetos] = useState<ProjetoItem[]>([]);
   const [atividades, setAtividades] = useState<AtividadeItem[]>([]);
 
-  // Modais de Criação/Edição
+  // Modais de Criação
   const [showAddDealModal, setShowAddDealModal] = useState<boolean>(false);
   const [showAddClientModal, setShowAddClientModal] = useState<boolean>(false);
-  const [showAddAtividadeModal, setShowAddAtividadeModal] = useState<boolean>(false);
   const [showAddProjetoModal, setShowAddProjetoModal] = useState<boolean>(false);
-  const [showReportModal, setShowReportModal] = useState<boolean>(false);
+  const [showAddAtividadeModal, setShowAddAtividadeModal] = useState<boolean>(false);
 
-  // Form states
+  // Modais de Edição
+  const [editingDeal, setEditingDeal] = useState<Deal | null>(null);
+  const [editingCliente, setEditingCliente] = useState<Cliente | null>(null);
+  const [editingProjeto, setEditingProjeto] = useState<ProjetoItem | null>(null);
+
+  // Modal de Detalhe Individual
+  const [viewItem, setViewItem] = useState<{ title: string; data: Record<string, any> } | null>(null);
+
+  // Form states de cadastro
   const [newDeal, setNewDeal] = useState({
     titulo: '',
     cliente_nome: '',
@@ -206,7 +217,6 @@ export const CrmNegociosModule: React.FC<CrmNegociosProps> = ({ onBackToApp, com
         if (!error && data) {
           loadedDeals = data;
         } else {
-          // Fallback seguro de cache local sincronizado por tenant
           const localKey = `crm_deals_${empresaId || 'global'}`;
           const cached = localStorage.getItem(localKey);
           if (cached) loadedDeals = JSON.parse(cached);
@@ -272,6 +282,15 @@ export const CrmNegociosModule: React.FC<CrmNegociosProps> = ({ onBackToApp, com
     fetchAllData();
   }, [fetchAllData]);
 
+  // Formatador Kz
+  const formatKz = (val: number) => {
+    return new Intl.NumberFormat('pt-AO', {
+      style: 'currency',
+      currency: 'AOA',
+      maximumFractionDigits: 2
+    }).format(val || 0).replace('AOA', 'Kz');
+  };
+
   // Cálculos Reais de Métricas
   const metrics = useMemo(() => {
     const totalClientes = clientes.length;
@@ -306,11 +325,13 @@ export const CrmNegociosModule: React.FC<CrmNegociosProps> = ({ onBackToApp, com
     };
   }, [clientes, deals, empresas, projetos]);
 
-  // Ações de Salvar Negócio Real no Supabase
+  // ── MUTAÇÕES DE DADOS REAIS (CRIAR, EDITAR, EXCLUIR) ──
+
+  // 1. Deals
   const handleSaveDeal = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newDeal.titulo.trim()) {
-      alert('Por favor informe o título do negócio.');
+      alert('Informe o título do negócio.');
       return;
     }
 
@@ -318,7 +339,7 @@ export const CrmNegociosModule: React.FC<CrmNegociosProps> = ({ onBackToApp, com
       id: crypto.randomUUID ? crypto.randomUUID() : `deal-${Date.now()}`,
       empresa_id: empresaId,
       titulo: newDeal.titulo,
-      cliente_nome: newDeal.cliente_nome || 'Cliente Geral',
+      cliente_nome: newDeal.cliente_nome || 'Cliente Comercial',
       cliente_id: newDeal.cliente_id || undefined,
       valor: Number(newDeal.valor) || 0,
       etapa: newDeal.etapa,
@@ -330,18 +351,14 @@ export const CrmNegociosModule: React.FC<CrmNegociosProps> = ({ onBackToApp, com
     };
 
     try {
-      const { error } = await supabase.from('crm_deals').insert(payload);
-      if (error) {
-        console.warn('Tentando fallback local para crm_deals:', error.message);
-      }
+      await supabase.from('crm_deals').insert(payload);
     } catch (err) {
-      console.warn('Fallback local para deals ativado.');
+      console.warn('Fallback local para deals:', err);
     }
 
-    // Atualização otimista e persistência local garantida
-    const updatedDeals = [payload, ...deals];
-    setDeals(updatedDeals);
-    localStorage.setItem(`crm_deals_${empresaId || 'global'}`, JSON.stringify(updatedDeals));
+    const updated = [payload, ...deals];
+    setDeals(updated);
+    localStorage.setItem(`crm_deals_${empresaId || 'global'}`, JSON.stringify(updated));
 
     setShowAddDealModal(false);
     setNewDeal({
@@ -357,7 +374,6 @@ export const CrmNegociosModule: React.FC<CrmNegociosProps> = ({ onBackToApp, com
     });
   };
 
-  // Atualizar Etapa do Negócio
   const handleUpdateDealStage = async (dealId: string, novaEtapa: Deal['etapa']) => {
     const updated = deals.map(d => d.id === dealId ? { ...d, etapa: novaEtapa } : d);
     setDeals(updated);
@@ -366,15 +382,55 @@ export const CrmNegociosModule: React.FC<CrmNegociosProps> = ({ onBackToApp, com
     try {
       await supabase.from('crm_deals').update({ etapa: novaEtapa }).eq('id', dealId);
     } catch (e) {
-      console.warn('Sincronização Supabase de etapa de negócio:', e);
+      console.warn('Erro ao atualizar etapa no Supabase:', e);
     }
   };
 
-  // Salvar Novo Cliente Real no Supabase
+  const handleSaveEditDeal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingDeal) return;
+
+    try {
+      await supabase.from('crm_deals').update({
+        titulo: editingDeal.titulo,
+        cliente_nome: editingDeal.cliente_nome,
+        valor: Number(editingDeal.valor) || 0,
+        etapa: editingDeal.etapa,
+        probabilidade: Number(editingDeal.probabilidade) || 50,
+        data_fecho_prevista: editingDeal.data_fecho_prevista,
+        responsavel: editingDeal.responsavel,
+        observacoes: editingDeal.observacoes
+      }).eq('id', editingDeal.id);
+    } catch (e) {
+      console.warn('Fallback de atualização local de deal:', e);
+    }
+
+    const updated = deals.map(d => d.id === editingDeal.id ? editingDeal : d);
+    setDeals(updated);
+    localStorage.setItem(`crm_deals_${empresaId || 'global'}`, JSON.stringify(updated));
+    setEditingDeal(null);
+    alert('Negócio atualizado com sucesso!');
+  };
+
+  const handleDeleteDeal = async (id: string) => {
+    if (!window.confirm('Tem certeza que deseja excluir este negócio do CRM?')) return;
+
+    try {
+      await supabase.from('crm_deals').delete().eq('id', id);
+    } catch (e) {
+      console.warn('Erro ao excluir no Supabase:', e);
+    }
+
+    const updated = deals.filter(d => d.id !== id);
+    setDeals(updated);
+    localStorage.setItem(`crm_deals_${empresaId || 'global'}`, JSON.stringify(updated));
+  };
+
+  // 2. Clientes
   const handleSaveClient = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newClient.nome.trim()) {
-      alert('Por favor informe o nome do cliente.');
+      alert('Informe o nome do cliente.');
       return;
     }
 
@@ -409,11 +465,46 @@ export const CrmNegociosModule: React.FC<CrmNegociosProps> = ({ onBackToApp, com
     }
   };
 
-  // Salvar Novo Projeto Real no Supabase
+  const handleSaveEditCliente = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCliente || !editingCliente.id) return;
+
+    try {
+      await clienteService.updateCliente(editingCliente.id, {
+        nome: editingCliente.nome,
+        nif: editingCliente.nif || editingCliente.contribuinte,
+        email: editingCliente.email,
+        telefone: editingCliente.telefone,
+        morada: editingCliente.morada || editingCliente.endereco,
+        provincia: editingCliente.provincia,
+        saldo_inicial: Number(editingCliente.saldo_inicial) || 0
+      });
+
+      setClientes(prev => prev.map(c => c.id === editingCliente.id ? editingCliente : c));
+      setEditingCliente(null);
+      alert('Cliente atualizado com sucesso no banco de dados!');
+    } catch (err: any) {
+      alert(`Erro ao atualizar cliente: ${err.message || 'Erro'}`);
+    }
+  };
+
+  const handleDeleteCliente = async (id: string | number) => {
+    if (!window.confirm('Tem certeza que deseja desativar/excluir este cliente?')) return;
+
+    try {
+      await clienteService.deleteCliente(id);
+      setClientes(prev => prev.filter(c => c.id !== id));
+      alert('Cliente removido com sucesso!');
+    } catch (e: any) {
+      alert(`Erro ao excluir cliente: ${e.message}`);
+    }
+  };
+
+  // 3. Projetos
   const handleSaveProjeto = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newProjeto.nome.trim()) {
-      alert('Por favor informe o nome do projeto.');
+      alert('Informe o nome do projeto.');
       return;
     }
 
@@ -448,13 +539,47 @@ export const CrmNegociosModule: React.FC<CrmNegociosProps> = ({ onBackToApp, com
         data_inicio: new Date().toISOString().split('T')[0],
         data_fim: ''
       });
-      alert('Projeto registado com sucesso no banco de dados!');
+      alert('Projeto gravado com sucesso no banco!');
     } catch (err) {
       alert('Erro ao registar projeto.');
     }
   };
 
-  // Salvar Nova Atividade / Interação no CRM
+  const handleSaveEditProjeto = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingProjeto) return;
+
+    try {
+      await supabase.from('proj_projetos').update({
+        nome: editingProjeto.nome,
+        descricao: editingProjeto.descricao,
+        status: editingProjeto.status,
+        orcamento: Number(editingProjeto.orcamento) || 0,
+        cliente_nome: editingProjeto.cliente_nome,
+        data_inicio: editingProjeto.data_inicio,
+        data_fim: editingProjeto.data_fim
+      }).eq('id', editingProjeto.id);
+
+      setProjetos(prev => prev.map(p => p.id === editingProjeto.id ? editingProjeto : p));
+      setEditingProjeto(null);
+      alert('Projeto atualizado com sucesso!');
+    } catch (e) {
+      alert('Erro ao atualizar projeto.');
+    }
+  };
+
+  const handleDeleteProjeto = async (id: string) => {
+    if (!window.confirm('Tem certeza que deseja excluir este projeto?')) return;
+    try {
+      await supabase.from('proj_projetos').update({ deleted_at: new Date().toISOString() }).eq('id', id);
+      setProjetos(prev => prev.filter(p => p.id !== id));
+      alert('Projeto removido.');
+    } catch (e) {
+      alert('Erro ao excluir projeto.');
+    }
+  };
+
+  // 4. Atividades
   const handleSaveAtividade = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newAtividade.titulo.trim()) {
@@ -479,7 +604,7 @@ export const CrmNegociosModule: React.FC<CrmNegociosProps> = ({ onBackToApp, com
     try {
       await supabase.from('crm_atividades').insert(payload);
     } catch (e) {
-      console.warn('Fallback local para atividades CRM');
+      console.warn('Fallback local para atividades');
     }
 
     const updated = [payload, ...atividades];
@@ -497,15 +622,6 @@ export const CrmNegociosModule: React.FC<CrmNegociosProps> = ({ onBackToApp, com
       cliente_nome: ''
     });
     alert('Atividade agendada com sucesso!');
-  };
-
-  // Formatador de Moeda Kz
-  const formatKz = (val: number) => {
-    return new Intl.NumberFormat('pt-AO', {
-      style: 'currency',
-      currency: 'AOA',
-      maximumFractionDigits: 2
-    }).format(val).replace('AOA', 'Kz');
   };
 
   // Filtros de busca dinâmica
@@ -545,120 +661,143 @@ export const CrmNegociosModule: React.FC<CrmNegociosProps> = ({ onBackToApp, com
   }, [projetos, searchTerm, statusFilter]);
 
   return (
-    <div className="w-full min-h-screen bg-[#070b14] text-slate-100 flex flex-col font-sans">
+    <div className="w-full min-h-screen bg-[#f8fafc] text-slate-800 flex flex-col font-sans antialiased">
       
-      {/* ── TOP HEADER SEM BARRA LATERAL (FULL WIDTH) ── */}
-      <header className="w-full bg-[#0d1527] border-b border-slate-800/80 px-6 py-4 sticky top-0 z-40 backdrop-blur-md shadow-xl">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+      {/* ── TOP HEADER CLÁSSICO BRANCO LEVE (FULL WIDTH) ── */}
+      <header className="w-full bg-white border-b border-slate-200 px-6 py-4 sticky top-0 z-40 shadow-sm">
+        <div className="w-full max-w-[1850px] mx-auto flex flex-col xl:flex-row items-center justify-between gap-4">
           
-          {/* Logo e Título */}
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/20">
-              <Briefcase className="w-6 h-6 text-white" />
+          {/* Identidade Corporativa Clássica */}
+          <div className="flex items-center gap-3.5 self-start xl:self-center">
+            <div className="w-12 h-12 bg-[#003366] text-white flex items-center justify-center font-bold shadow-sm rounded-none">
+              <Briefcase className="w-6 h-6" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-xl font-bold tracking-tight text-white">CRM NEGÓCIOS</h1>
-                <span className="text-[10px] bg-blue-500/20 text-blue-400 font-semibold px-2 py-0.5 rounded-full border border-blue-500/30">
+                <h1 className="text-xl font-black tracking-tight text-[#003366] uppercase">
+                  CRM NEGÓCIOS & EMPRESAS
+                </h1>
+                <span className="text-[10px] bg-blue-100 text-[#003366] font-bold px-2 py-0.5 rounded-none border border-blue-200 uppercase tracking-wider">
                   DADOS REAIS SUPABASE
                 </span>
               </div>
-              <p className="text-xs text-slate-400">
-                Gestão comercial unificada, pipeline de vendas, empresas e projetos integrados
+              <p className="text-xs text-slate-500 font-medium">
+                Gestão comercial unificada, pipeline de vendas, contas corporativas e contratos
               </p>
             </div>
           </div>
 
-          {/* Navegação Principal das Seções (Abas em Botões com Ícones) */}
-          <nav className="flex items-center gap-1.5 bg-[#090f1d] p-1.5 rounded-xl border border-slate-800 shadow-inner overflow-x-auto max-w-full">
+          {/* Navegação Principal em Botões Grandes Clássicos Quadrados */}
+          <nav className="flex items-center flex-wrap gap-2 w-full xl:w-auto justify-start xl:justify-center">
+            
             <button
               onClick={() => setActiveTab('negocios')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
+              className={`flex items-center gap-2.5 px-5 py-3 text-xs font-bold uppercase tracking-wider transition-all border rounded-none ${
                 activeTab === 'negocios'
-                  ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                  ? 'bg-[#003366] text-white border-[#003366] shadow-sm'
+                  : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50 hover:border-slate-400'
               }`}
             >
-              <DollarSign className="w-4 h-4" />
+              <DollarSign className="w-4 h-4 text-emerald-500" />
               GESTAO CRM NEGOCIOS
-              <span className="ml-1 px-1.5 py-0.2 text-[10px] bg-black/30 rounded-full font-mono">
+              <span className={`px-2 py-0.5 text-[11px] font-mono font-bold rounded-none ${
+                activeTab === 'negocios' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'
+              }`}>
                 {deals.length}
               </span>
             </button>
 
             <button
               onClick={() => setActiveTab('clientes')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
+              className={`flex items-center gap-2.5 px-5 py-3 text-xs font-bold uppercase tracking-wider transition-all border rounded-none ${
                 activeTab === 'clientes'
-                  ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                  ? 'bg-[#003366] text-white border-[#003366] shadow-sm'
+                  : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50 hover:border-slate-400'
               }`}
             >
-              <Users className="w-4 h-4" />
+              <Users className="w-4 h-4 text-blue-500" />
               GESTAO CRM CLIENTES
-              <span className="ml-1 px-1.5 py-0.2 text-[10px] bg-black/30 rounded-full font-mono">
+              <span className={`px-2 py-0.5 text-[11px] font-mono font-bold rounded-none ${
+                activeTab === 'clientes' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'
+              }`}>
                 {clientes.length}
               </span>
             </button>
 
             <button
               onClick={() => setActiveTab('empresas')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
+              className={`flex items-center gap-2.5 px-5 py-3 text-xs font-bold uppercase tracking-wider transition-all border rounded-none ${
                 activeTab === 'empresas'
-                  ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                  ? 'bg-[#003366] text-white border-[#003366] shadow-sm'
+                  : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50 hover:border-slate-400'
               }`}
             >
-              <Building2 className="w-4 h-4" />
+              <Building2 className="w-4 h-4 text-purple-500" />
               GESTAO CRM EMPRESAS
-              <span className="ml-1 px-1.5 py-0.2 text-[10px] bg-black/30 rounded-full font-mono">
+              <span className={`px-2 py-0.5 text-[11px] font-mono font-bold rounded-none ${
+                activeTab === 'empresas' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'
+              }`}>
                 {empresas.length}
               </span>
             </button>
 
             <button
               onClick={() => setActiveTab('projetos')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
+              className={`flex items-center gap-2.5 px-5 py-3 text-xs font-bold uppercase tracking-wider transition-all border rounded-none ${
                 activeTab === 'projetos'
-                  ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                  ? 'bg-[#003366] text-white border-[#003366] shadow-sm'
+                  : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50 hover:border-slate-400'
               }`}
             >
-              <FolderKanban className="w-4 h-4" />
+              <FolderKanban className="w-4 h-4 text-amber-500" />
               GESTAO CRM PROJETOS
-              <span className="ml-1 px-1.5 py-0.2 text-[10px] bg-black/30 rounded-full font-mono">
+              <span className={`px-2 py-0.5 text-[11px] font-mono font-bold rounded-none ${
+                activeTab === 'projetos' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'
+              }`}>
                 {projetos.length}
               </span>
             </button>
 
             <button
               onClick={() => setActiveTab('adicionar')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
+              className={`flex items-center gap-2.5 px-5 py-3 text-xs font-bold uppercase tracking-wider transition-all border rounded-none ${
                 activeTab === 'adicionar'
-                  ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
-                  : 'text-emerald-400 hover:text-emerald-300 hover:bg-emerald-950/30 border border-emerald-500/20'
+                  ? 'bg-emerald-700 text-white border-emerald-700 shadow-sm'
+                  : 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
               }`}
             >
-              <PlusCircle className="w-4 h-4" />
+              <PlusCircle className="w-4 h-4 text-emerald-600" />
               ADICIONAR GESTAO CRM
+            </button>
+
+            <button
+              onClick={() => setActiveTab('relatorios')}
+              className={`flex items-center gap-2.5 px-5 py-3 text-xs font-bold uppercase tracking-wider transition-all border rounded-none ${
+                activeTab === 'relatorios'
+                  ? 'bg-indigo-700 text-white border-indigo-700 shadow-sm'
+                  : 'bg-indigo-50 text-indigo-800 border-indigo-300 hover:bg-indigo-100'
+              }`}
+            >
+              <FileSpreadsheet className="w-4 h-4 text-indigo-600" />
+              RELATÓRIOS & IMPRESSÃO
             </button>
           </nav>
 
-          {/* Botões de Ação Global (Voltar e Atualizar) */}
-          <div className="flex items-center gap-2">
+          {/* Botões Globais de Ação */}
+          <div className="flex items-center gap-2.5 self-end xl:self-center">
             <button
               onClick={() => { setRefreshing(true); fetchAllData(); }}
               disabled={refreshing}
-              title="Recarregar dados do banco de dados"
-              className="p-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/60 transition-all flex items-center gap-1.5 text-xs font-medium"
+              title="Sincronizar dados frescos do banco"
+              className="px-4 py-2.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 rounded-none"
             >
-              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin text-blue-400' : ''}`} />
-              <span className="hidden sm:inline">Sincronizar</span>
+              <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-blue-600' : 'text-slate-500'}`} />
+              <span>Sincronizar</span>
             </button>
 
             <button
               onClick={onBackToApp}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-red-600/80 to-rose-700 hover:from-red-600 hover:to-rose-600 text-white text-xs font-semibold shadow-lg shadow-rose-950/40 border border-rose-500/30 transition-all"
+              className="px-5 py-2.5 bg-[#cc0000] hover:bg-[#aa0000] text-white text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 rounded-none shadow-sm"
             >
               <ArrowLeft className="w-4 h-4" />
               Voltar ao IMATEC ERP
@@ -668,38 +807,134 @@ export const CrmNegociosModule: React.FC<CrmNegociosProps> = ({ onBackToApp, com
         </div>
       </header>
 
-      {/* ── CORPO PRINCIPAL DO CRM NEGÓCIOS ── */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-6 space-y-6">
+      {/* ── CONTEÚDO PRINCIPAL (MAX WIDTH AMPLIADA, CLEAN & LEVE) ── */}
+      <main className="flex-1 w-full max-w-[1850px] mx-auto px-6 py-5 space-y-4">
 
-        {/* ── BARRA DE PESQUISA, FILTROS E RELATÓRIO ── */}
-        <div className="bg-[#0e1628] rounded-2xl border border-slate-800 p-4 shadow-xl flex flex-col md:flex-row items-center justify-between gap-4">
+        {/* ── PAINEL DE CÁLCULOS E MÉTRICAS REAIS (COMPACTO, NÃO TOMA ESPAÇO EXCESSIVO) ── */}
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          
+          <div className="bg-white border border-slate-200 p-3.5 rounded-none shadow-sm flex items-center justify-between">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Pipeline Aberto</p>
+              <p className="text-base font-black text-[#003366] font-mono mt-0.5">
+                {formatKz(metrics.valorTotalPipeline)}
+              </p>
+              <span className="text-[10px] text-slate-400 font-medium">
+                {metrics.dealsAtivosCount} negócio(s) em aberto
+              </span>
+            </div>
+            <div className="w-8 h-8 bg-blue-50 text-blue-600 flex items-center justify-center rounded-none">
+              <DollarSign className="w-4 h-4" />
+            </div>
+          </div>
+
+          <div className="bg-white border border-slate-200 p-3.5 rounded-none shadow-sm flex items-center justify-between">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Receita Fechada</p>
+              <p className="text-base font-black text-emerald-600 font-mono mt-0.5">
+                {formatKz(metrics.valorTotalGanho)}
+              </p>
+              <span className="text-[10px] text-slate-400 font-medium">
+                {metrics.dealsGanhosCount} negócio(s) ganhos
+              </span>
+            </div>
+            <div className="w-8 h-8 bg-emerald-50 text-emerald-600 flex items-center justify-center rounded-none">
+              <TrendingUp className="w-4 h-4" />
+            </div>
+          </div>
+
+          <div className="bg-white border border-slate-200 p-3.5 rounded-none shadow-sm flex items-center justify-between">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Taxa Conversão</p>
+              <p className="text-base font-black text-indigo-700 font-mono mt-0.5">
+                {metrics.taxaConversao}%
+              </p>
+              <span className="text-[10px] text-slate-400 font-medium">
+                Ticket: {formatKz(metrics.ticketMedio)}
+              </span>
+            </div>
+            <div className="w-8 h-8 bg-indigo-50 text-indigo-600 flex items-center justify-center rounded-none">
+              <BarChart3 className="w-4 h-4" />
+            </div>
+          </div>
+
+          <div className="bg-white border border-slate-200 p-3.5 rounded-none shadow-sm flex items-center justify-between">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Clientes Ativos</p>
+              <p className="text-base font-black text-slate-800 font-mono mt-0.5">
+                {metrics.totalClientes} Clientes
+              </p>
+              <span className="text-[10px] text-emerald-600 font-medium">
+                {metrics.clientesComNif} NIFs AGT regulares
+              </span>
+            </div>
+            <div className="w-8 h-8 bg-purple-50 text-purple-600 flex items-center justify-center rounded-none">
+              <Users className="w-4 h-4" />
+            </div>
+          </div>
+
+          <div className="bg-white border border-slate-200 p-3.5 rounded-none shadow-sm flex items-center justify-between">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Contas Empresas</p>
+              <p className="text-base font-black text-slate-800 font-mono mt-0.5">
+                {metrics.totalEmpresas} Empresas
+              </p>
+              <span className="text-[10px] text-slate-400 font-medium">
+                Cadastros corporativos
+              </span>
+            </div>
+            <div className="w-8 h-8 bg-amber-50 text-amber-600 flex items-center justify-center rounded-none">
+              <Building2 className="w-4 h-4" />
+            </div>
+          </div>
+
+          <div className="bg-white border border-slate-200 p-3.5 rounded-none shadow-sm flex items-center justify-between">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Projetos & Obras</p>
+              <p className="text-base font-black text-slate-800 font-mono mt-0.5">
+                {metrics.totalProjetos} Projetos
+              </p>
+              <span className="text-[10px] text-slate-500 font-medium font-mono">
+                {formatKz(metrics.orcamentoTotalProjetos)}
+              </span>
+            </div>
+            <div className="w-8 h-8 bg-rose-50 text-rose-600 flex items-center justify-center rounded-none">
+              <FolderKanban className="w-4 h-4" />
+            </div>
+          </div>
+
+        </div>
+
+        {/* ── BARRA DE FERRAMENTAS CLÁSSICA: PESQUISA, FILTROS E AÇÕES RÁPIDAS ── */}
+        <div className="bg-white border border-slate-200 p-3 rounded-none shadow-sm flex flex-col md:flex-row items-center justify-between gap-3">
+          
           <div className="relative flex-1 w-full">
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Pesquisar por nome, NIF, título, cliente ou telefone..."
-              className="w-full bg-[#080d1a] border border-slate-700/80 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
+              placeholder="Pesquisar por título, cliente, NIF, telefone ou descrição em tempo real..."
+              className="w-full bg-[#f8fafc] border border-slate-300 rounded-none pl-10 pr-4 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#003366] transition-colors"
             />
             {searchTerm && (
               <button 
                 onClick={() => setSearchTerm('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
             )}
           </div>
 
-          <div className="flex items-center gap-3 w-full md:w-auto">
+          <div className="flex items-center gap-2.5 w-full md:w-auto">
             {activeTab === 'negocios' && (
-              <div className="flex items-center gap-2">
-                <Filter className="w-4 h-4 text-slate-400" />
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-slate-500 font-semibold uppercase">Filtro:</span>
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
-                  className="bg-[#080d1a] border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+                  className="bg-[#f8fafc] border border-slate-300 rounded-none px-3 py-2 text-xs font-medium text-slate-700 focus:outline-none focus:border-[#003366]"
                 >
                   <option value="todos">Todas as Etapas</option>
                   <option value="novo">Novo Lead</option>
@@ -713,107 +948,38 @@ export const CrmNegociosModule: React.FC<CrmNegociosProps> = ({ onBackToApp, com
             )}
 
             <button
-              onClick={() => setShowReportModal(true)}
-              className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700/80 text-xs font-semibold transition-all shadow-sm"
+              onClick={() => {
+                setActiveTab('relatorios');
+                setActiveReportSection(activeTab === 'relatorios' ? 'geral' : (activeTab as any));
+              }}
+              className="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold uppercase tracking-wider flex items-center gap-2 rounded-none transition-all shadow-sm"
             >
-              <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
-              Relatório Comercial
+              <Printer className="w-4 h-4 text-slate-500" />
+              <span>Imprimir Relatório</span>
             </button>
           </div>
-        </div>
 
-        {/* ── CARDS DE CÁLCULOS E MÉTRICAS REAIS DO BANCO ── */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-[#0e1628] rounded-2xl border border-slate-800/80 p-5 shadow-lg relative overflow-hidden">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-400">Pipeline Aberto</span>
-              <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-400">
-                <DollarSign className="w-4 h-4" />
-              </div>
-            </div>
-            <div className="mt-3">
-              <div className="text-xl font-bold text-white tracking-tight">
-                {formatKz(metrics.valorTotalPipeline)}
-              </div>
-              <div className="flex items-center gap-1.5 mt-1 text-[11px] text-blue-400">
-                <Clock className="w-3.5 h-3.5" />
-                <span>{metrics.dealsAtivosCount} negócio(s) em negociação</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-[#0e1628] rounded-2xl border border-slate-800/80 p-5 shadow-lg relative overflow-hidden">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-400">Receita Ganha (Fechada)</span>
-              <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-400">
-                <TrendingUp className="w-4 h-4" />
-              </div>
-            </div>
-            <div className="mt-3">
-              <div className="text-xl font-bold text-emerald-400 tracking-tight">
-                {formatKz(metrics.valorTotalGanho)}
-              </div>
-              <div className="flex items-center gap-1.5 mt-1 text-[11px] text-emerald-400">
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>{metrics.dealsGanhosCount} negócio(s) convertidos</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-[#0e1628] rounded-2xl border border-slate-800/80 p-5 shadow-lg relative overflow-hidden">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-400">Taxa de Conversão</span>
-              <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center text-indigo-400">
-                <BarChart3 className="w-4 h-4" />
-              </div>
-            </div>
-            <div className="mt-3">
-              <div className="text-xl font-bold text-white tracking-tight">
-                {metrics.taxaConversao}%
-              </div>
-              <div className="flex items-center gap-1.5 mt-1 text-[11px] text-slate-400">
-                <span>Ticket Médio: {formatKz(metrics.ticketMedio)}</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-[#0e1628] rounded-2xl border border-slate-800/80 p-5 shadow-lg relative overflow-hidden">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-400">Carteira de Clientes</span>
-              <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center text-purple-400">
-                <Users className="w-4 h-4" />
-              </div>
-            </div>
-            <div className="mt-3">
-              <div className="text-xl font-bold text-white tracking-tight">
-                {metrics.totalClientes} Clientes
-              </div>
-              <div className="flex items-center gap-1.5 mt-1 text-[11px] text-purple-400">
-                <ShieldCheck className="w-3.5 h-3.5" />
-                <span>{metrics.clientesComNif} clientes com NIF regular</span>
-              </div>
-            </div>
-          </div>
         </div>
 
         {/* ── CONTEÚDO DA SEÇÃO ATIVA ── */}
-        
-        {/* SEÇÃO 1: GESTÃO CRM NEGÓCIOS (Pipeline Kanban e Tabela) */}
+
+        {/* 1. SEÇÃO: GESTÃO CRM NEGÓCIOS (Pipeline & Funil Kanban Profissional) */}
         {activeTab === 'negocios' && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
+          <div className="space-y-4">
+            
+            <div className="flex items-center justify-between border-b border-slate-200 pb-2">
               <div>
-                <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                  <DollarSign className="w-5 h-5 text-blue-400" />
-                  Pipeline de Negócios e Oportunidades
+                <h2 className="text-base font-black text-[#003366] uppercase tracking-wide flex items-center gap-2">
+                  <DollarSign className="w-5 h-5 text-emerald-600" />
+                  Funil de Vendas & Oportunidades Comerciais
                 </h2>
-                <p className="text-xs text-slate-400">
-                  Acompanhe os negócios reais por estágio de vendas com valores e probabilidades do banco de dados
+                <p className="text-xs text-slate-500">
+                  Visualização por estágio de fechamento. Clique nos botões para editar, excluir ou mudar de etapa.
                 </p>
               </div>
               <button
                 onClick={() => setShowAddDealModal(true)}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-lg shadow-blue-600/30 transition-all"
+                className="px-4 py-2 bg-[#003366] hover:bg-[#002244] text-white text-xs font-bold uppercase tracking-wider flex items-center gap-2 rounded-none shadow-sm transition-all"
               >
                 <PlusCircle className="w-4 h-4" />
                 Novo Negócio
@@ -821,179 +987,253 @@ export const CrmNegociosModule: React.FC<CrmNegociosProps> = ({ onBackToApp, com
             </div>
 
             {loading ? (
-              <div className="text-center py-16 bg-[#0e1628] rounded-2xl border border-slate-800">
-                <RefreshCw className="w-8 h-8 text-blue-400 animate-spin mx-auto mb-3" />
-                <p className="text-xs text-slate-400">Carregando dados reais do banco...</p>
+              <div className="text-center py-16 bg-white border border-slate-200 rounded-none">
+                <RefreshCw className="w-8 h-8 text-[#003366] animate-spin mx-auto mb-2" />
+                <p className="text-xs font-medium text-slate-500">Carregando oportunidades do banco de dados...</p>
               </div>
             ) : filteredDeals.length === 0 ? (
-              <div className="text-center py-16 bg-[#0e1628] rounded-2xl border border-slate-800 p-8">
-                <div className="w-12 h-12 rounded-full bg-blue-500/10 text-blue-400 flex items-center justify-center mx-auto mb-3">
-                  <DollarSign className="w-6 h-6" />
-                </div>
-                <h3 className="text-sm font-semibold text-white">Nenhum negócio registado no banco de dados</h3>
-                <p className="text-xs text-slate-400 max-w-md mx-auto mt-1 mb-4">
-                  Cadastre uma nova oportunidade para iniciar o rastreamento comercial e previsões de faturamento.
+              <div className="text-center py-14 bg-white border border-slate-200 p-8 rounded-none">
+                <DollarSign className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                <h3 className="text-sm font-bold text-slate-700 uppercase">Nenhum negócio cadastrado no banco</h3>
+                <p className="text-xs text-slate-500 max-w-md mx-auto mt-1 mb-4">
+                  Cadastre oportunidades para rastrear propostas, probabilidades e receitas previstas.
                 </p>
                 <button
                   onClick={() => setShowAddDealModal(true)}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-md"
+                  className="px-5 py-2.5 bg-[#003366] hover:bg-[#002244] text-white text-xs font-bold uppercase tracking-wider rounded-none shadow-sm"
                 >
-                  <PlusCircle className="w-4 h-4" />
                   Registar Primeiro Negócio
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
                 {ETAPAS_DEAL.map((etapa) => {
                   const etapaDeals = filteredDeals.filter(d => d.etapa === etapa.id);
                   const totalEtapa = etapaDeals.reduce((sum, d) => sum + (Number(d.valor) || 0), 0);
-                  
+
                   return (
-                    <div key={etapa.id} className="bg-[#0b1222] rounded-2xl border border-slate-800/80 p-3.5 flex flex-col min-h-[420px]">
-                      <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                        <div className="flex items-center gap-1.5">
-                          <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md border ${etapa.color}`}>
-                            {etapa.label}
-                          </span>
-                        </div>
-                        <span className="text-[11px] font-mono text-slate-400 bg-slate-800/80 px-1.5 py-0.5 rounded-full">
+                    <div key={etapa.id} className="bg-white border border-slate-200 rounded-none p-3 flex flex-col min-h-[480px] shadow-sm">
+                      
+                      {/* Top da Coluna */}
+                      <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                        <span className={`text-[11px] font-black uppercase tracking-wider px-2 py-0.5 border rounded-none ${etapa.color}`}>
+                          {etapa.label}
+                        </span>
+                        <span className="text-xs font-mono font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-none">
                           {etapaDeals.length}
                         </span>
                       </div>
 
-                      <div className="mt-2 mb-3 text-[11px] font-semibold text-slate-300">
-                        Total: <span className="text-blue-400 font-mono">{formatKz(totalEtapa)}</span>
+                      <div className="py-2 text-[11px] font-bold text-slate-600 border-b border-slate-100">
+                        Subtotal: <span className="font-mono text-[#003366] font-black">{formatKz(totalEtapa)}</span>
                       </div>
 
-                      <div className="space-y-2.5 flex-1 overflow-y-auto pr-1">
+                      {/* Lista de Negócios */}
+                      <div className="space-y-2.5 flex-1 overflow-y-auto pt-2.5 pr-0.5">
                         {etapaDeals.map((deal) => (
                           <div
                             key={deal.id}
-                            className="bg-[#101a2f] hover:bg-[#14213d] border border-slate-700/60 rounded-xl p-3 transition-all shadow-sm hover:shadow-md"
+                            className="bg-[#f8fafc] hover:bg-white border border-slate-200 hover:border-slate-300 p-3 rounded-none transition-all shadow-sm group"
                           >
-                            <div className="flex items-start justify-between gap-2">
-                              <h4 className="text-xs font-semibold text-white line-clamp-1">{deal.titulo}</h4>
+                            <div className="flex items-start justify-between gap-1">
+                              <h4 className="text-xs font-black text-slate-800 line-clamp-1 uppercase">
+                                {deal.titulo}
+                              </h4>
                             </div>
-                            
-                            <p className="text-[11px] text-slate-400 mt-1 flex items-center gap-1">
-                              <Users className="w-3 h-3 text-slate-500" />
-                              {deal.cliente_nome}
+
+                            <p className="text-[11px] text-slate-600 font-medium mt-1 flex items-center gap-1.5">
+                              <Users className="w-3.5 h-3.5 text-slate-400" />
+                              <span className="truncate">{deal.cliente_nome}</span>
                             </p>
 
-                            <div className="mt-2 pt-2 border-t border-slate-800 flex items-center justify-between">
-                              <span className="text-xs font-bold text-emerald-400 font-mono">
+                            <div className="mt-2 pt-2 border-t border-slate-200/80 flex items-center justify-between">
+                              <span className="text-xs font-black text-emerald-700 font-mono">
                                 {formatKz(deal.valor)}
                               </span>
-                              <span className="text-[10px] text-slate-500">
+                              <span className="text-[10px] font-bold font-mono text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-none">
                                 {deal.probabilidade}% prob.
                               </span>
                             </div>
 
-                            {/* Mudar etapa */}
-                            <div className="mt-2 pt-2 flex items-center justify-between gap-1">
+                            {/* Mover Etapa Dropdown */}
+                            <div className="mt-2 pt-2 border-t border-slate-200/60">
                               <select
                                 value={deal.etapa}
                                 onChange={(e) => handleUpdateDealStage(deal.id, e.target.value as Deal['etapa'])}
-                                className="w-full bg-[#080d1a] border border-slate-700/70 text-[10px] text-slate-300 rounded px-1.5 py-1 focus:outline-none"
+                                className="w-full bg-white border border-slate-300 text-[10px] font-bold text-slate-700 px-1.5 py-1 rounded-none focus:outline-none"
                               >
                                 {ETAPAS_DEAL.map(e => (
-                                  <option key={e.id} value={e.id}>{e.label}</option>
+                                  <option key={e.id} value={e.id}>Mover p/ {e.label}</option>
                                 ))}
                               </select>
                             </div>
+
+                            {/* Ações: Editar, Excluir, Ver */}
+                            <div className="mt-2.5 pt-2 border-t border-slate-200 flex items-center justify-end gap-1.5">
+                              <button
+                                onClick={() => setViewItem({
+                                  title: `Negócio Comercial: ${deal.titulo}`,
+                                  data: {
+                                    'Título': deal.titulo,
+                                    'Cliente': deal.cliente_nome,
+                                    'Valor Previsto': formatKz(deal.valor),
+                                    'Etapa Comercial': deal.etapa,
+                                    'Probabilidade': `${deal.probabilidade}%`,
+                                    'Responsável': deal.responsavel || 'Não definido',
+                                    'Data Fecho Prevista': deal.data_fecho_prevista || 'Não estipulada',
+                                    'Observações': deal.observacoes || 'Nenhuma observação',
+                                    'Data de Criação': deal.created_at
+                                  }
+                                })}
+                                title="Ver Ficha Completa"
+                                className="p-1 text-slate-500 hover:text-blue-700 hover:bg-slate-100 rounded-none transition-all"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                              </button>
+
+                              <button
+                                onClick={() => setEditingDeal(deal)}
+                                title="Editar Negócio"
+                                className="p-1 text-slate-500 hover:text-amber-700 hover:bg-slate-100 rounded-none transition-all"
+                              >
+                                <Edit className="w-3.5 h-3.5" />
+                              </button>
+
+                              <button
+                                onClick={() => handleDeleteDeal(deal.id)}
+                                title="Excluir Negócio"
+                                className="p-1 text-slate-500 hover:text-rose-700 hover:bg-slate-100 rounded-none transition-all"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+
                           </div>
                         ))}
                       </div>
+
                     </div>
                   );
                 })}
               </div>
             )}
+
           </div>
         )}
 
-        {/* SEÇÃO 2: GESTÃO CRM CLIENTES */}
+        {/* 2. SEÇÃO: GESTÃO CRM CLIENTES */}
         {activeTab === 'clientes' && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
+          <div className="space-y-4">
+            
+            <div className="flex items-center justify-between border-b border-slate-200 pb-2">
               <div>
-                <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                  <Users className="w-5 h-5 text-blue-400" />
-                  Gestão Comercial de Clientes
+                <h2 className="text-base font-black text-[#003366] uppercase tracking-wide flex items-center gap-2">
+                  <Users className="w-5 h-5 text-blue-600" />
+                  Base Comercial de Clientes
                 </h2>
-                <p className="text-xs text-slate-400">
-                  Base de clientes ativa sincronizada em tempo real com a tabela 'clientes' do Supabase
+                <p className="text-xs text-slate-500">
+                  Dados sincronizados em tempo real com a tabela 'clientes'. Permite editar, excluir e emitir relatório.
                 </p>
               </div>
               <button
                 onClick={() => setShowAddClientModal(true)}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-lg shadow-blue-600/30 transition-all"
+                className="px-4 py-2 bg-[#003366] hover:bg-[#002244] text-white text-xs font-bold uppercase tracking-wider flex items-center gap-2 rounded-none shadow-sm transition-all"
               >
                 <PlusCircle className="w-4 h-4" />
                 Novo Cliente
               </button>
             </div>
 
-            <div className="bg-[#0e1628] rounded-2xl border border-slate-800 shadow-xl overflow-hidden">
+            <div className="bg-white border border-slate-200 rounded-none shadow-sm overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
-                    <tr className="bg-[#090f1d] border-b border-slate-800 text-slate-400 font-semibold">
+                    <tr className="bg-slate-100 border-b border-slate-200 text-slate-700 font-bold uppercase tracking-wider">
                       <th className="py-3 px-4">Nome do Cliente</th>
                       <th className="py-3 px-4">NIF / Contribuinte</th>
                       <th className="py-3 px-4">Telefone</th>
                       <th className="py-3 px-4">Email</th>
-                      <th className="py-3 px-4">Localidade / Província</th>
+                      <th className="py-3 px-4">Província</th>
                       <th className="py-3 px-4 text-right">Saldo Inicial</th>
-                      <th className="py-3 px-4 text-center">Status</th>
-                      <th className="py-3 px-4 text-center">Ações</th>
+                      <th className="py-3 px-4 text-center">Ações de Gestão</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-800/60">
+                  <tbody className="divide-y divide-slate-100">
                     {filteredClientes.length === 0 ? (
                       <tr>
-                        <td colSpan={8} className="py-12 text-center text-slate-400">
-                          Nenhum cliente encontrado no banco de dados com os filtros aplicados.
+                        <td colSpan={7} className="py-12 text-center text-slate-500">
+                          Nenhum cliente cadastrado no banco de dados.
                         </td>
                       </tr>
                     ) : (
-                      filteredClientes.map((c, idx) => (
-                        <tr key={c.id || idx} className="hover:bg-slate-800/30 transition-colors">
-                          <td className="py-3 px-4 font-medium text-white flex items-center gap-2.5">
-                            <div className="w-7 h-7 rounded-full bg-blue-500/10 text-blue-400 flex items-center justify-center font-bold text-xs">
-                              {(c.nome || 'C').charAt(0).toUpperCase()}
-                            </div>
+                      filteredClientes.map((c) => (
+                        <tr key={c.id} className="hover:bg-slate-50 transition-colors">
+                          <td className="py-3 px-4 font-bold text-slate-900">
                             {c.nome}
                           </td>
-                          <td className="py-3 px-4 font-mono text-slate-300">
-                            {c.nif || c.contribuinte || 'Consumidor Final'}
+                          <td className="py-3 px-4 font-mono font-bold text-slate-700">
+                            {c.nif || c.contribuinte || '999999999'}
                           </td>
-                          <td className="py-3 px-4 text-slate-300">{c.telefone || '—'}</td>
-                          <td className="py-3 px-4 text-slate-300">{c.email || '—'}</td>
-                          <td className="py-3 px-4 text-slate-300">{c.provincia || c.municipio || 'Angola'}</td>
-                          <td className="py-3 px-4 text-right font-mono text-emerald-400 font-medium">
+                          <td className="py-3 px-4 text-slate-600">{c.telefone || '—'}</td>
+                          <td className="py-3 px-4 text-slate-600">{c.email || '—'}</td>
+                          <td className="py-3 px-4 text-slate-600">{c.provincia || 'Luanda'}</td>
+                          <td className="py-3 px-4 text-right font-mono font-bold text-emerald-700">
                             {formatKz(Number(c.saldo_inicial) || 0)}
                           </td>
                           <td className="py-3 px-4 text-center">
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                              <CheckCircle2 className="w-3 h-3" />
-                              Ativo
-                            </span>
-                          </td>
-                          <td className="py-3 px-4 text-center">
-                            <button
-                              onClick={() => {
-                                setNewDeal(prev => ({
-                                  ...prev,
-                                  cliente_nome: c.nome,
-                                  cliente_id: String(c.id || '')
-                                }));
-                                setShowAddDealModal(true);
-                              }}
-                              className="px-2.5 py-1 rounded-lg bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 text-[11px] font-medium border border-blue-500/20 transition-all"
-                            >
-                              + Criar Negócio
-                            </button>
+                            <div className="flex items-center justify-center gap-1.5">
+                              
+                              <button
+                                onClick={() => {
+                                  setNewDeal(prev => ({
+                                    ...prev,
+                                    cliente_nome: c.nome,
+                                    cliente_id: String(c.id || '')
+                                  }));
+                                  setShowAddDealModal(true);
+                                }}
+                                className="px-2 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 text-[11px] font-bold uppercase rounded-none border border-blue-200 transition-all"
+                              >
+                                + Negócio
+                              </button>
+
+                              <button
+                                onClick={() => setViewItem({
+                                  title: `Ficha do Cliente: ${c.nome}`,
+                                  data: {
+                                    'Nome': c.nome,
+                                    'NIF': c.nif || c.contribuinte || 'Consumidor Final',
+                                    'Telefone': c.telefone || 'Não informado',
+                                    'Email': c.email || 'Não informado',
+                                    'Morada': c.morada || c.endereco || 'Não informada',
+                                    'Província': c.provincia || 'Luanda',
+                                    'Saldo Inicial': formatKz(Number(c.saldo_inicial) || 0),
+                                    'Status': c.activo !== false ? 'Ativo' : 'Inativo'
+                                  }
+                                })}
+                                title="Ver Detalhes"
+                                className="p-1 text-slate-500 hover:text-blue-700 hover:bg-slate-100 rounded-none"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                              </button>
+
+                              <button
+                                onClick={() => setEditingCliente(c)}
+                                title="Editar Cliente"
+                                className="p-1 text-slate-500 hover:text-amber-700 hover:bg-slate-100 rounded-none"
+                              >
+                                <Edit className="w-3.5 h-3.5" />
+                              </button>
+
+                              <button
+                                onClick={() => handleDeleteCliente(c.id!)}
+                                title="Excluir Cliente"
+                                className="p-1 text-slate-500 hover:text-rose-700 hover:bg-slate-100 rounded-none"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+
+                            </div>
                           </td>
                         </tr>
                       ))
@@ -1002,122 +1242,147 @@ export const CrmNegociosModule: React.FC<CrmNegociosProps> = ({ onBackToApp, com
                 </table>
               </div>
             </div>
+
           </div>
         )}
 
-        {/* SEÇÃO 3: GESTÃO CRM EMPRESAS */}
+        {/* 3. SEÇÃO: GESTÃO CRM EMPRESAS */}
         {activeTab === 'empresas' && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
+          <div className="space-y-4">
+            
+            <div className="flex items-center justify-between border-b border-slate-200 pb-2">
               <div>
-                <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                  <Building2 className="w-5 h-5 text-blue-400" />
-                  Gestão CRM Empresas & Contas Corporativas
+                <h2 className="text-base font-black text-[#003366] uppercase tracking-wide flex items-center gap-2">
+                  <Building2 className="w-5 h-5 text-purple-600" />
+                  Contas Empresariais & Corporativas
                 </h2>
-                <p className="text-xs text-slate-400">
-                  Visão cadastral e comercial de empresas registadas no sistema Supabase
+                <p className="text-xs text-slate-500">
+                  Visualização das empresas cadastradas no sistema Supabase.
                 </p>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
               {filteredEmpresas.length === 0 ? (
-                <div className="col-span-full py-12 text-center bg-[#0e1628] rounded-2xl border border-slate-800 text-slate-400">
+                <div className="col-span-full py-12 text-center bg-white border border-slate-200 p-8 rounded-none text-slate-500">
                   Nenhuma empresa registada no banco de dados.
                 </div>
               ) : (
                 filteredEmpresas.map((emp) => {
                   const nome = emp.nome || emp.nome_comercial || emp.razao_social || 'Empresa';
                   return (
-                    <div key={emp.id} className="bg-[#0e1628] rounded-2xl border border-slate-800/80 p-5 shadow-lg space-y-3">
+                    <div key={emp.id} className="bg-white border border-slate-200 p-4 rounded-none shadow-sm space-y-3">
                       <div className="flex items-start justify-between">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center font-bold text-sm">
+                          <div className="w-10 h-10 bg-[#003366] text-white flex items-center justify-center font-bold text-sm rounded-none">
                             <Building2 className="w-5 h-5" />
                           </div>
                           <div>
-                            <h3 className="text-sm font-bold text-white line-clamp-1">{nome}</h3>
-                            <span className="text-[11px] font-mono text-slate-400">NIF: {emp.nif || '—'}</span>
+                            <h3 className="text-sm font-bold text-slate-900 line-clamp-1 uppercase">{nome}</h3>
+                            <span className="text-xs font-mono font-bold text-slate-500">NIF: {emp.nif || '—'}</span>
                           </div>
                         </div>
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                        <span className="px-2 py-0.5 text-[10px] font-bold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-none">
                           Ativa
                         </span>
                       </div>
 
-                      <div className="space-y-1.5 text-xs text-slate-300 pt-2 border-t border-slate-800">
+                      <div className="space-y-1 text-xs text-slate-600 pt-2 border-t border-slate-100">
                         {emp.email && (
-                          <div className="flex items-center gap-2 text-slate-400">
-                            <Mail className="w-3.5 h-3.5 text-slate-500" />
+                          <div className="flex items-center gap-2 text-slate-600">
+                            <Mail className="w-3.5 h-3.5 text-slate-400" />
                             <span className="truncate">{emp.email}</span>
                           </div>
                         )}
                         {emp.telefone && (
-                          <div className="flex items-center gap-2 text-slate-400">
-                            <Phone className="w-3.5 h-3.5 text-slate-500" />
+                          <div className="flex items-center gap-2 text-slate-600">
+                            <Phone className="w-3.5 h-3.5 text-slate-400" />
                             <span>{emp.telefone}</span>
                           </div>
                         )}
-                        <div className="flex items-center gap-2 text-slate-400">
-                          <Building2 className="w-3.5 h-3.5 text-slate-500" />
+                        <div className="flex items-center gap-2 text-slate-600">
+                          <Building2 className="w-3.5 h-3.5 text-slate-400" />
                           <span>{emp.provincia || emp.cidade || 'Angola'}</span>
                         </div>
+                      </div>
+
+                      <div className="pt-2 border-t border-slate-100 flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={() => setViewItem({
+                            title: `Ficha Corporativa: ${nome}`,
+                            data: {
+                              'Razão Social': nome,
+                              'NIF': emp.nif || 'Não informado',
+                              'Email': emp.email || 'Não informado',
+                              'Telefone': emp.telefone || 'Não informado',
+                              'Endereço': emp.endereco || 'Não informado',
+                              'Cidade/Província': `${emp.cidade || ''} / ${emp.provincia || 'Angola'}`,
+                              'Status': 'Ativa',
+                              'Criada em': emp.created_at || 'Data anterior'
+                            }
+                          })}
+                          className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold uppercase rounded-none"
+                        >
+                          Ver Detalhes
+                        </button>
                       </div>
                     </div>
                   );
                 })
               )}
             </div>
+
           </div>
         )}
 
-        {/* SEÇÃO 4: GESTÃO CRM PROJETOS */}
+        {/* 4. SEÇÃO: GESTÃO CRM PROJETOS */}
         {activeTab === 'projetos' && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
+          <div className="space-y-4">
+            
+            <div className="flex items-center justify-between border-b border-slate-200 pb-2">
               <div>
-                <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                  <FolderKanban className="w-5 h-5 text-blue-400" />
-                  Gestão CRM Projetos & Contratos
+                <h2 className="text-base font-black text-[#003366] uppercase tracking-wide flex items-center gap-2">
+                  <FolderKanban className="w-5 h-5 text-amber-600" />
+                  Projetos, Obras & Contratos
                 </h2>
-                <p className="text-xs text-slate-400">
-                  Projetos reais de clientes com orçamentos, prazos e controle de status
+                <p className="text-xs text-slate-500">
+                  Controle orçamentário, prazos e clientes vinculados na tabela 'proj_projetos'.
                 </p>
               </div>
               <button
                 onClick={() => setShowAddProjetoModal(true)}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-lg shadow-blue-600/30 transition-all"
+                className="px-4 py-2 bg-[#003366] hover:bg-[#002244] text-white text-xs font-bold uppercase tracking-wider flex items-center gap-2 rounded-none shadow-sm transition-all"
               >
                 <PlusCircle className="w-4 h-4" />
                 Novo Projeto
               </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
               {filteredProjetos.length === 0 ? (
-                <div className="col-span-full py-12 text-center bg-[#0e1628] rounded-2xl border border-slate-800 text-slate-400">
+                <div className="col-span-full py-12 text-center bg-white border border-slate-200 p-8 rounded-none text-slate-500">
                   Nenhum projeto cadastrado no banco de dados.
                 </div>
               ) : (
                 filteredProjetos.map((proj) => (
-                  <div key={proj.id} className="bg-[#0e1628] rounded-2xl border border-slate-800/80 p-5 shadow-lg space-y-3">
+                  <div key={proj.id} className="bg-white border border-slate-200 p-4 rounded-none shadow-sm space-y-3">
                     <div className="flex items-start justify-between">
                       <div>
-                        <h3 className="text-sm font-bold text-white line-clamp-1">{proj.nome}</h3>
-                        <p className="text-xs text-slate-400 mt-0.5">{proj.cliente_nome || 'Cliente do Projeto'}</p>
+                        <h3 className="text-sm font-bold text-slate-900 uppercase line-clamp-1">{proj.nome}</h3>
+                        <p className="text-xs text-slate-500 mt-0.5">{proj.cliente_nome || 'Cliente do Projeto'}</p>
                       </div>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                      <span className="px-2 py-0.5 text-[10px] font-bold uppercase bg-blue-50 text-blue-700 border border-blue-200 rounded-none">
                         {proj.status}
                       </span>
                     </div>
 
                     {proj.descricao && (
-                      <p className="text-xs text-slate-400 line-clamp-2">{proj.descricao}</p>
+                      <p className="text-xs text-slate-600 line-clamp-2">{proj.descricao}</p>
                     )}
 
-                    <div className="pt-3 border-t border-slate-800 flex items-center justify-between text-xs">
-                      <span className="text-slate-400">Orçamento:</span>
-                      <span className="font-bold text-emerald-400 font-mono">
+                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
+                      <span className="text-slate-500 font-semibold uppercase">Orçamento:</span>
+                      <span className="font-mono font-black text-emerald-700">
                         {formatKz(Number(proj.orcamento) || 0)}
                       </span>
                     </div>
@@ -1125,135 +1390,174 @@ export const CrmNegociosModule: React.FC<CrmNegociosProps> = ({ onBackToApp, com
                     {proj.data_inicio && (
                       <div className="flex items-center justify-between text-[11px] text-slate-500">
                         <span>Início: {proj.data_inicio}</span>
-                        {proj.data_fim && <span>Previsão: {proj.data_fim}</span>}
+                        {proj.data_fim && <span>Término: {proj.data_fim}</span>}
                       </div>
                     )}
+
+                    <div className="pt-2 border-t border-slate-100 flex items-center justify-end gap-1.5">
+                      <button
+                        onClick={() => setViewItem({
+                          title: `Ficha de Projeto: ${proj.nome}`,
+                          data: {
+                            'Nome do Projeto': proj.nome,
+                            'Cliente': proj.cliente_nome || 'Não definido',
+                            'Orçamento Aprovado': formatKz(Number(proj.orcamento) || 0),
+                            'Status': proj.status,
+                            'Data Início': proj.data_inicio || 'Não estipulada',
+                            'Data Previsão Término': proj.data_fim || 'Não estipulada',
+                            'Descrição': proj.descricao || 'Sem descrição cadastrada'
+                          }
+                        })}
+                        className="p-1 text-slate-500 hover:text-blue-700 hover:bg-slate-100 rounded-none"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                      </button>
+
+                      <button
+                        onClick={() => setEditingProjeto(proj)}
+                        className="p-1 text-slate-500 hover:text-amber-700 hover:bg-slate-100 rounded-none"
+                      >
+                        <Edit className="w-3.5 h-3.5" />
+                      </button>
+
+                      <button
+                        onClick={() => handleDeleteProjeto(proj.id)}
+                        className="p-1 text-slate-500 hover:text-rose-700 hover:bg-slate-100 rounded-none"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
                   </div>
                 ))
               )}
             </div>
+
           </div>
         )}
 
-        {/* SEÇÃO 5: ADICIONAR GESTÃO CRM (Central de Criação e Ações Rápidas) */}
+        {/* 5. SEÇÃO: ADICIONAR GESTÃO CRM (Central de Ações Rápidas) */}
         {activeTab === 'adicionar' && (
-          <div className="space-y-6">
-            <div>
-              <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                <PlusCircle className="w-5 h-5 text-emerald-400" />
-                Central de Adição e Ações Rápidas do CRM
+          <div className="space-y-4">
+            
+            <div className="border-b border-slate-200 pb-2">
+              <h2 className="text-base font-black text-[#003366] uppercase tracking-wide flex items-center gap-2">
+                <PlusCircle className="w-5 h-5 text-emerald-600" />
+                Central de Cadastro e Operações Comerciais
               </h2>
-              <p className="text-xs text-slate-400">
-                Escolha a entidade que deseja cadastrar diretamente no banco de dados com total integridade
+              <p className="text-xs text-slate-500">
+                Escolha a entidade para cadastrar diretamente no banco de dados com integridade multi-tenant.
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5">
+              
               <div 
                 onClick={() => setShowAddDealModal(true)}
-                className="bg-[#0e1628] hover:bg-[#14213d] border border-slate-800 hover:border-blue-500/50 rounded-2xl p-6 cursor-pointer transition-all group shadow-lg"
+                className="bg-white border-2 border-slate-200 hover:border-[#003366] p-5 cursor-pointer transition-all rounded-none shadow-sm group"
               >
-                <div className="w-12 h-12 rounded-xl bg-blue-500/10 text-blue-400 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                  <DollarSign className="w-6 h-6" />
+                <div className="w-10 h-10 bg-blue-50 text-blue-700 flex items-center justify-center mb-3 rounded-none">
+                  <DollarSign className="w-5 h-5" />
                 </div>
-                <h3 className="text-sm font-bold text-white">Criar Negócio Comercial</h3>
-                <p className="text-xs text-slate-400 mt-1 mb-4">
-                  Cadastrar proposta, probabilidade, cliente e valor previsto no pipeline.
+                <h3 className="text-sm font-bold text-slate-900 uppercase">Criar Negócio Comercial</h3>
+                <p className="text-xs text-slate-500 mt-1 mb-3">
+                  Registrar proposta, probabilidade, cliente e valor em pipeline.
                 </p>
-                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-400 group-hover:underline">
+                <span className="inline-flex items-center gap-1 text-xs font-bold text-[#003366] uppercase group-hover:underline">
                   Abrir Formulário <ChevronRight className="w-3.5 h-3.5" />
                 </span>
               </div>
 
               <div 
                 onClick={() => setShowAddClientModal(true)}
-                className="bg-[#0e1628] hover:bg-[#14213d] border border-slate-800 hover:border-purple-500/50 rounded-2xl p-6 cursor-pointer transition-all group shadow-lg"
+                className="bg-white border-2 border-slate-200 hover:border-[#003366] p-5 cursor-pointer transition-all rounded-none shadow-sm group"
               >
-                <div className="w-12 h-12 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                  <Users className="w-6 h-6" />
+                <div className="w-10 h-10 bg-purple-50 text-purple-700 flex items-center justify-center mb-3 rounded-none">
+                  <Users className="w-5 h-5" />
                 </div>
-                <h3 className="text-sm font-bold text-white">Cadastrar Novo Cliente</h3>
-                <p className="text-xs text-slate-400 mt-1 mb-4">
-                  Inserir novo cliente com NIF AGT, telefone, email e dados no Supabase.
+                <h3 className="text-sm font-bold text-slate-900 uppercase">Cadastrar Novo Cliente</h3>
+                <p className="text-xs text-slate-500 mt-1 mb-3">
+                  Registrar novo cliente com NIF AGT, telefone e email.
                 </p>
-                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-purple-400 group-hover:underline">
+                <span className="inline-flex items-center gap-1 text-xs font-bold text-[#003366] uppercase group-hover:underline">
                   Abrir Formulário <ChevronRight className="w-3.5 h-3.5" />
                 </span>
               </div>
 
               <div 
                 onClick={() => setShowAddProjetoModal(true)}
-                className="bg-[#0e1628] hover:bg-[#14213d] border border-slate-800 hover:border-amber-500/50 rounded-2xl p-6 cursor-pointer transition-all group shadow-lg"
+                className="bg-white border-2 border-slate-200 hover:border-[#003366] p-5 cursor-pointer transition-all rounded-none shadow-sm group"
               >
-                <div className="w-12 h-12 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                  <FolderKanban className="w-6 h-6" />
+                <div className="w-10 h-10 bg-amber-50 text-amber-700 flex items-center justify-center mb-3 rounded-none">
+                  <FolderKanban className="w-5 h-5" />
                 </div>
-                <h3 className="text-sm font-bold text-white">Iniciar Novo Projeto</h3>
-                <p className="text-xs text-slate-400 mt-1 mb-4">
+                <h3 className="text-sm font-bold text-slate-900 uppercase">Iniciar Novo Projeto</h3>
+                <p className="text-xs text-slate-500 mt-1 mb-3">
                   Criar projeto vinculado a clientes com orçamentos e prazos.
                 </p>
-                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-400 group-hover:underline">
+                <span className="inline-flex items-center gap-1 text-xs font-bold text-[#003366] uppercase group-hover:underline">
                   Abrir Formulário <ChevronRight className="w-3.5 h-3.5" />
                 </span>
               </div>
 
               <div 
                 onClick={() => setShowAddAtividadeModal(true)}
-                className="bg-[#0e1628] hover:bg-[#14213d] border border-slate-800 hover:border-emerald-500/50 rounded-2xl p-6 cursor-pointer transition-all group shadow-lg"
+                className="bg-white border-2 border-slate-200 hover:border-[#003366] p-5 cursor-pointer transition-all rounded-none shadow-sm group"
               >
-                <div className="w-12 h-12 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                  <Calendar className="w-6 h-6" />
+                <div className="w-10 h-10 bg-emerald-50 text-emerald-700 flex items-center justify-center mb-3 rounded-none">
+                  <Calendar className="w-5 h-5" />
                 </div>
-                <h3 className="text-sm font-bold text-white">Agendar Interação / Reunião</h3>
-                <p className="text-xs text-slate-400 mt-1 mb-4">
-                  Registrar reuniões, chamadas telefônicas ou e-mails de acompanhamento.
+                <h3 className="text-sm font-bold text-slate-900 uppercase">Agendar Interação Comercial</h3>
+                <p className="text-xs text-slate-500 mt-1 mb-3">
+                  Registrar reunião, telefonema ou envio de proposta comercial.
                 </p>
-                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-400 group-hover:underline">
+                <span className="inline-flex items-center gap-1 text-xs font-bold text-[#003366] uppercase group-hover:underline">
                   Abrir Formulário <ChevronRight className="w-3.5 h-3.5" />
                 </span>
               </div>
+
             </div>
 
-            {/* Lista de Atividades Agendadas Recentes */}
-            <div className="bg-[#0e1628] rounded-2xl border border-slate-800 p-5 shadow-xl space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                  <Calendar className="w-4 h-4 text-emerald-400" />
-                  Atividades e Follow-ups Comerciais Registados
+            {/* Atividades Registadas */}
+            <div className="bg-white border border-slate-200 p-4 rounded-none shadow-sm space-y-3">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                <h3 className="text-sm font-black text-[#003366] uppercase flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-emerald-600" />
+                  Follow-ups e Atividades Agendadas
                 </h3>
                 <button
                   onClick={() => setShowAddAtividadeModal(true)}
-                  className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold"
+                  className="px-3 py-1.5 bg-[#003366] hover:bg-[#002244] text-white text-xs font-bold uppercase rounded-none"
                 >
-                  + Agendar Atividade
+                  + Agendar
                 </button>
               </div>
 
               {atividades.length === 0 ? (
                 <p className="text-xs text-slate-400 py-6 text-center">
-                  Nenhuma atividade ou reunião agendada no banco de dados.
+                  Nenhuma atividade cadastrada no momento.
                 </p>
               ) : (
-                <div className="divide-y divide-slate-800/80">
+                <div className="divide-y divide-slate-100">
                   {atividades.map((act) => (
-                    <div key={act.id} className="py-3 flex items-center justify-between text-xs">
+                    <div key={act.id} className="py-2.5 flex items-center justify-between text-xs">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center text-slate-300">
-                          {act.tipo === 'reuniao' && <Calendar className="w-4 h-4 text-blue-400" />}
-                          {act.tipo === 'chamada' && <Phone className="w-4 h-4 text-emerald-400" />}
-                          {act.tipo === 'email' && <Mail className="w-4 h-4 text-indigo-400" />}
-                          {act.tipo === 'proposta' && <FileText className="w-4 h-4 text-amber-400" />}
-                          {act.tipo === 'tarefa' && <CheckCircle2 className="w-4 h-4 text-purple-400" />}
+                        <div className="w-7 h-7 bg-slate-100 flex items-center justify-center rounded-none font-bold text-slate-700">
+                          {act.tipo === 'reuniao' && <Calendar className="w-3.5 h-3.5 text-blue-600" />}
+                          {act.tipo === 'chamada' && <Phone className="w-3.5 h-3.5 text-emerald-600" />}
+                          {act.tipo === 'email' && <Mail className="w-3.5 h-3.5 text-indigo-600" />}
+                          {act.tipo === 'proposta' && <FileText className="w-3.5 h-3.5 text-amber-600" />}
+                          {act.tipo === 'tarefa' && <CheckCircle2 className="w-3.5 h-3.5 text-purple-600" />}
                         </div>
                         <div>
-                          <h4 className="font-semibold text-white">{act.titulo}</h4>
-                          <p className="text-[11px] text-slate-400">
+                          <h4 className="font-bold text-slate-900">{act.titulo}</h4>
+                          <p className="text-[11px] text-slate-500">
                             {act.cliente_nome ? `Cliente: ${act.cliente_nome} • ` : ''}
-                            Responsável: {act.responsavel || 'Equipa Comercial'}
+                            Responsável: {act.responsavel || 'Equipa de Vendas'}
                           </p>
                         </div>
                       </div>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-800 text-slate-300">
+                      <span className="px-2 py-0.5 text-[10px] font-bold uppercase bg-slate-100 text-slate-700 rounded-none border border-slate-200">
                         {act.status}
                       </span>
                     </div>
@@ -1261,44 +1565,270 @@ export const CrmNegociosModule: React.FC<CrmNegociosProps> = ({ onBackToApp, com
                 </div>
               )}
             </div>
+
+          </div>
+        )}
+
+        {/* 6. SEÇÃO: RELATÓRIOS & IMPRESSÃO DEDICADA */}
+        {activeTab === 'relatorios' && (
+          <div className="space-y-4">
+            
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-200 pb-3">
+              <div>
+                <h2 className="text-base font-black text-[#003366] uppercase tracking-wide flex items-center gap-2">
+                  <FileSpreadsheet className="w-5 h-5 text-indigo-600" />
+                  Centro de Relatórios Comerciais & Impressão
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Relatórios analíticos consolidados com dados reais do Supabase prontos para impressão oficial ou PDF.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => window.print()}
+                  className="px-5 py-2.5 bg-[#003366] hover:bg-[#002244] text-white text-xs font-bold uppercase tracking-wider flex items-center gap-2 rounded-none shadow-sm transition-all"
+                >
+                  <Printer className="w-4 h-4" />
+                  Imprimir Página / Salvar PDF
+                </button>
+              </div>
+            </div>
+
+            {/* Sub-navegação de Relatórios */}
+            <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
+              {(['geral', 'negocios', 'clientes', 'empresas', 'projetos'] as const).map((sec) => (
+                <button
+                  key={sec}
+                  onClick={() => setActiveReportSection(sec)}
+                  className={`px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-none border ${
+                    activeReportSection === sec
+                      ? 'bg-[#003366] text-white border-[#003366]'
+                      : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
+                  }`}
+                >
+                  {sec === 'geral' ? 'Resumo Geral' : `Relatório ${sec}`}
+                </button>
+              ))}
+            </div>
+
+            {/* Conteúdo do Relatório */}
+            <div className="bg-white border border-slate-300 p-8 rounded-none shadow-sm space-y-6 print:border-none print:p-0">
+              
+              <div className="border-b-2 border-[#003366] pb-4 flex items-center justify-between">
+                <div>
+                  <h1 className="text-xl font-black text-[#003366] uppercase">
+                    RELATÓRIO COMERCIAL DO CRM
+                  </h1>
+                  <p className="text-xs text-slate-600 font-semibold mt-0.5">
+                    Empresa: {companyData?.nome || companyData?.name || 'IMATEC ERP'} • Emissão: {new Date().toLocaleDateString('pt-AO')} {new Date().toLocaleTimeString('pt-AO')}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <span className="text-xs font-bold text-slate-700 font-mono">CONFIDENCIAL</span>
+                </div>
+              </div>
+
+              {activeReportSection === 'geral' && (
+                <div className="space-y-6">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-none">
+                      <span className="text-[11px] font-bold text-slate-500 uppercase">Clientes Cadastrados</span>
+                      <p className="text-xl font-black text-slate-900 mt-1">{metrics.totalClientes}</p>
+                    </div>
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-none">
+                      <span className="text-[11px] font-bold text-slate-500 uppercase">Negócios em Pipeline</span>
+                      <p className="text-xl font-black text-blue-700 font-mono mt-1">{formatKz(metrics.valorTotalPipeline)}</p>
+                    </div>
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-none">
+                      <span className="text-[11px] font-bold text-slate-500 uppercase">Receita Ganha</span>
+                      <p className="text-xl font-black text-emerald-700 font-mono mt-1">{formatKz(metrics.valorTotalGanho)}</p>
+                    </div>
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-none">
+                      <span className="text-[11px] font-bold text-slate-500 uppercase">Taxa de Conversão</span>
+                      <p className="text-xl font-black text-indigo-700 mt-1">{metrics.taxaConversao}%</p>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h3 className="text-sm font-bold text-[#003366] uppercase mb-2">Resumo dos Negócios Recentes</h3>
+                    <table className="w-full text-left text-xs border border-slate-200">
+                      <thead className="bg-slate-100 font-bold uppercase text-slate-700">
+                        <tr>
+                          <th className="p-2 border">Título</th>
+                          <th className="p-2 border">Cliente</th>
+                          <th className="p-2 border">Etapa</th>
+                          <th className="p-2 border text-right">Valor (Kz)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {deals.slice(0, 10).map(d => (
+                          <tr key={d.id}>
+                            <td className="p-2 border font-medium">{d.titulo}</td>
+                            <td className="p-2 border">{d.cliente_nome}</td>
+                            <td className="p-2 border uppercase font-bold text-[10px]">{d.etapa}</td>
+                            <td className="p-2 border text-right font-mono font-bold text-emerald-700">{formatKz(d.valor)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {activeReportSection === 'negocios' && (
+                <div>
+                  <h3 className="text-sm font-bold text-[#003366] uppercase mb-2">Relatório Completo de Pipeline</h3>
+                  <table className="w-full text-left text-xs border border-slate-200">
+                    <thead className="bg-slate-100 font-bold uppercase text-slate-700">
+                      <tr>
+                        <th className="p-2 border">Título do Negócio</th>
+                        <th className="p-2 border">Cliente Vinculado</th>
+                        <th className="p-2 border">Etapa</th>
+                        <th className="p-2 border text-center">Probabilidade</th>
+                        <th className="p-2 border text-right">Valor Estimado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {deals.map(d => (
+                        <tr key={d.id}>
+                          <td className="p-2 border font-bold text-slate-900">{d.titulo}</td>
+                          <td className="p-2 border">{d.cliente_nome}</td>
+                          <td className="p-2 border font-bold uppercase text-[10px]">{d.etapa}</td>
+                          <td className="p-2 border text-center font-mono">{d.probabilidade}%</td>
+                          <td className="p-2 border text-right font-mono font-bold text-emerald-700">{formatKz(d.valor)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {activeReportSection === 'clientes' && (
+                <div>
+                  <h3 className="text-sm font-bold text-[#003366] uppercase mb-2">Relação Comercial de Clientes</h3>
+                  <table className="w-full text-left text-xs border border-slate-200">
+                    <thead className="bg-slate-100 font-bold uppercase text-slate-700">
+                      <tr>
+                        <th className="p-2 border">Nome do Cliente</th>
+                        <th className="p-2 border">NIF</th>
+                        <th className="p-2 border">Telefone</th>
+                        <th className="p-2 border">Email</th>
+                        <th className="p-2 border">Província</th>
+                        <th className="p-2 border text-right">Saldo Inicial</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {clientes.map(c => (
+                        <tr key={c.id}>
+                          <td className="p-2 border font-bold text-slate-900">{c.nome}</td>
+                          <td className="p-2 border font-mono">{c.nif || c.contribuinte || '999999999'}</td>
+                          <td className="p-2 border">{c.telefone || '—'}</td>
+                          <td className="p-2 border">{c.email || '—'}</td>
+                          <td className="p-2 border">{c.provincia || 'Luanda'}</td>
+                          <td className="p-2 border text-right font-mono font-bold text-emerald-700">{formatKz(Number(c.saldo_inicial) || 0)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {activeReportSection === 'projetos' && (
+                <div>
+                  <h3 className="text-sm font-bold text-[#003366] uppercase mb-2">Relação de Projetos e Contratos</h3>
+                  <table className="w-full text-left text-xs border border-slate-200">
+                    <thead className="bg-slate-100 font-bold uppercase text-slate-700">
+                      <tr>
+                        <th className="p-2 border">Projeto</th>
+                        <th className="p-2 border">Cliente</th>
+                        <th className="p-2 border">Status</th>
+                        <th className="p-2 border">Início</th>
+                        <th className="p-2 border text-right">Orçamento (Kz)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {projetos.map(p => (
+                        <tr key={p.id}>
+                          <td className="p-2 border font-bold text-slate-900">{p.nome}</td>
+                          <td className="p-2 border">{p.cliente_nome || '—'}</td>
+                          <td className="p-2 border font-bold uppercase text-[10px]">{p.status}</td>
+                          <td className="p-2 border">{p.data_inicio || '—'}</td>
+                          <td className="p-2 border text-right font-mono font-bold text-emerald-700">{formatKz(Number(p.orcamento) || 0)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {activeReportSection === 'empresas' && (
+                <div>
+                  <h3 className="text-sm font-bold text-[#003366] uppercase mb-2">Relação de Empresas Registadas</h3>
+                  <table className="w-full text-left text-xs border border-slate-200">
+                    <thead className="bg-slate-100 font-bold uppercase text-slate-700">
+                      <tr>
+                        <th className="p-2 border">Razão Social</th>
+                        <th className="p-2 border">NIF</th>
+                        <th className="p-2 border">Email</th>
+                        <th className="p-2 border">Telefone</th>
+                        <th className="p-2 border">Localidade</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {empresas.map(e => (
+                        <tr key={e.id}>
+                          <td className="p-2 border font-bold text-slate-900">{e.nome || e.nome_comercial || 'Empresa'}</td>
+                          <td className="p-2 border font-mono">{e.nif || '—'}</td>
+                          <td className="p-2 border">{e.email || '—'}</td>
+                          <td className="p-2 border">{e.telefone || '—'}</td>
+                          <td className="p-2 border">{e.provincia || e.cidade || 'Angola'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+            </div>
+
           </div>
         )}
 
       </main>
 
-      {/* ── MODAL: NOVO NEGÓCIO ── */}
+      {/* ── MODAIS DE CADASTRO ── */}
+
+      {/* MODAL: NOVO NEGÓCIO */}
       {showAddDealModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#0e1628] border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <DollarSign className="w-5 h-5 text-blue-400" />
-                Novo Negócio / Oportunidade
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white border-2 border-[#003366] max-w-lg w-full p-6 shadow-2xl rounded-none space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <h3 className="text-sm font-black text-[#003366] uppercase flex items-center gap-2">
+                <DollarSign className="w-5 h-5 text-emerald-600" />
+                Registar Oportunidade / Negócio
               </h3>
-              <button 
-                onClick={() => setShowAddDealModal(false)}
-                className="text-slate-400 hover:text-white"
-              >
+              <button onClick={() => setShowAddDealModal(false)} className="text-slate-400 hover:text-slate-700">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveDeal} className="space-y-3.5 text-xs">
+            <form onSubmit={handleSaveDeal} className="space-y-3 text-xs">
               <div>
-                <label className="block text-slate-300 font-semibold mb-1">Título do Negócio *</label>
+                <label className="block text-slate-700 font-bold uppercase mb-1">Título do Negócio *</label>
                 <input
                   type="text"
                   required
                   value={newDeal.titulo}
                   onChange={(e) => setNewDeal({ ...newDeal, titulo: e.target.value })}
                   placeholder="Ex: Fornecimento de Software ERP 2026"
-                  className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3.5 py-2 text-white focus:outline-none focus:border-blue-500"
+                  className="w-full bg-[#f8fafc] border border-slate-300 rounded-none px-3 py-2 text-slate-800 focus:outline-none focus:border-[#003366]"
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-300 font-semibold mb-1">Cliente Associado</label>
+                  <label className="block text-slate-700 font-bold uppercase mb-1">Cliente Associado</label>
                   <select
                     value={newDeal.cliente_nome}
                     onChange={(e) => {
@@ -1309,9 +1839,9 @@ export const CrmNegociosModule: React.FC<CrmNegociosProps> = ({ onBackToApp, com
                         cliente_id: sel?.id ? String(sel.id) : ''
                       });
                     }}
-                    className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-blue-500"
+                    className="w-full bg-[#f8fafc] border border-slate-300 rounded-none px-3 py-2 text-slate-800 focus:outline-none focus:border-[#003366]"
                   >
-                    <option value="">Selecione um cliente...</option>
+                    <option value="">Selecione...</option>
                     {clientes.map(c => (
                       <option key={c.id} value={c.nome}>{c.nome}</option>
                     ))}
@@ -1319,26 +1849,26 @@ export const CrmNegociosModule: React.FC<CrmNegociosProps> = ({ onBackToApp, com
                 </div>
 
                 <div>
-                  <label className="block text-slate-300 font-semibold mb-1">Valor Estimado (Kz) *</label>
+                  <label className="block text-slate-700 font-bold uppercase mb-1">Valor Estimado (Kz) *</label>
                   <input
                     type="number"
                     min="0"
-                    step="100"
+                    step="500"
                     required
                     value={newDeal.valor}
                     onChange={(e) => setNewDeal({ ...newDeal, valor: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3.5 py-2 text-white font-mono focus:outline-none focus:border-blue-500"
+                    className="w-full bg-[#f8fafc] border border-slate-300 rounded-none px-3 py-2 text-slate-800 font-mono font-bold focus:outline-none focus:border-[#003366]"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-300 font-semibold mb-1">Etapa Inicial</label>
+                  <label className="block text-slate-700 font-bold uppercase mb-1">Etapa Inicial</label>
                   <select
                     value={newDeal.etapa}
                     onChange={(e) => setNewDeal({ ...newDeal, etapa: e.target.value as Deal['etapa'] })}
-                    className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-blue-500"
+                    className="w-full bg-[#f8fafc] border border-slate-300 rounded-none px-3 py-2 text-slate-800 focus:outline-none focus:border-[#003366]"
                   >
                     {ETAPAS_DEAL.map(e => (
                       <option key={e.id} value={e.id}>{e.label}</option>
@@ -1347,52 +1877,51 @@ export const CrmNegociosModule: React.FC<CrmNegociosProps> = ({ onBackToApp, com
                 </div>
 
                 <div>
-                  <label className="block text-slate-300 font-semibold mb-1">Probabilidade (%)</label>
+                  <label className="block text-slate-700 font-bold uppercase mb-1">Probabilidade (%)</label>
                   <input
                     type="number"
                     min="0"
                     max="100"
                     value={newDeal.probabilidade}
                     onChange={(e) => setNewDeal({ ...newDeal, probabilidade: parseInt(e.target.value) || 0 })}
-                    className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3.5 py-2 text-white font-mono focus:outline-none focus:border-blue-500"
+                    className="w-full bg-[#f8fafc] border border-slate-300 rounded-none px-3 py-2 text-slate-800 font-mono focus:outline-none focus:border-[#003366]"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-slate-300 font-semibold mb-1">Data Prevista de Fecho</label>
+                <label className="block text-slate-700 font-bold uppercase mb-1">Data Prevista de Fecho</label>
                 <input
                   type="date"
                   value={newDeal.data_fecho_prevista}
                   onChange={(e) => setNewDeal({ ...newDeal, data_fecho_prevista: e.target.value })}
-                  className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3.5 py-2 text-white focus:outline-none focus:border-blue-500"
+                  className="w-full bg-[#f8fafc] border border-slate-300 rounded-none px-3 py-2 text-slate-800 focus:outline-none focus:border-[#003366]"
                 />
               </div>
 
               <div>
-                <label className="block text-slate-300 font-semibold mb-1">Observações Comerciais</label>
+                <label className="block text-slate-700 font-bold uppercase mb-1">Observações Comerciais</label>
                 <textarea
                   rows={2}
                   value={newDeal.observacoes}
                   onChange={(e) => setNewDeal({ ...newDeal, observacoes: e.target.value })}
-                  placeholder="Detalhes sobre a negociação..."
-                  className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3.5 py-2 text-white focus:outline-none focus:border-blue-500"
+                  className="w-full bg-[#f8fafc] border border-slate-300 rounded-none px-3 py-2 text-slate-800 focus:outline-none focus:border-[#003366]"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
                 <button
                   type="button"
                   onClick={() => setShowAddDealModal(false)}
-                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold"
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold uppercase rounded-none"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold shadow-lg shadow-blue-600/30"
+                  className="px-5 py-2 bg-[#003366] hover:bg-[#002244] text-white font-bold uppercase rounded-none shadow-sm"
                 >
-                  Guardar Negócio
+                  Salvar Negócio
                 </button>
               </div>
             </form>
@@ -1400,78 +1929,72 @@ export const CrmNegociosModule: React.FC<CrmNegociosProps> = ({ onBackToApp, com
         </div>
       )}
 
-      {/* ── MODAL: NOVO CLIENTE ── */}
+      {/* MODAL: NOVO CLIENTE */}
       {showAddClientModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#0e1628] border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <Users className="w-5 h-5 text-purple-400" />
-                Registar Novo Cliente no Banco
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white border-2 border-[#003366] max-w-lg w-full p-6 shadow-2xl rounded-none space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <h3 className="text-sm font-black text-[#003366] uppercase flex items-center gap-2">
+                <Users className="w-5 h-5 text-blue-600" />
+                Cadastrar Novo Cliente
               </h3>
-              <button 
-                onClick={() => setShowAddClientModal(false)}
-                className="text-slate-400 hover:text-white"
-              >
+              <button onClick={() => setShowAddClientModal(false)} className="text-slate-400 hover:text-slate-700">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveClient} className="space-y-3.5 text-xs">
+            <form onSubmit={handleSaveClient} className="space-y-3 text-xs">
               <div>
-                <label className="block text-slate-300 font-semibold mb-1">Nome Completo / Razão Social *</label>
+                <label className="block text-slate-700 font-bold uppercase mb-1">Nome Completo / Empresa *</label>
                 <input
                   type="text"
                   required
                   value={newClient.nome}
                   onChange={(e) => setNewClient({ ...newClient, nome: e.target.value })}
-                  placeholder="Nome do cliente ou empresa"
-                  className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3.5 py-2 text-white focus:outline-none focus:border-blue-500"
+                  className="w-full bg-[#f8fafc] border border-slate-300 rounded-none px-3 py-2 text-slate-800 focus:outline-none focus:border-[#003366]"
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-300 font-semibold mb-1">NIF / Contribuinte</label>
+                  <label className="block text-slate-700 font-bold uppercase mb-1">NIF / Contribuinte</label>
                   <input
                     type="text"
                     value={newClient.nif}
                     onChange={(e) => setNewClient({ ...newClient, nif: e.target.value })}
-                    placeholder="999999999 ou NIF válido"
-                    className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3.5 py-2 text-white font-mono focus:outline-none focus:border-blue-500"
+                    placeholder="999999999 ou NIF AGT"
+                    className="w-full bg-[#f8fafc] border border-slate-300 rounded-none px-3 py-2 text-slate-800 font-mono focus:outline-none focus:border-[#003366]"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-300 font-semibold mb-1">Telefone</label>
+                  <label className="block text-slate-700 font-bold uppercase mb-1">Telefone</label>
                   <input
                     type="text"
                     value={newClient.telefone}
                     onChange={(e) => setNewClient({ ...newClient, telefone: e.target.value })}
-                    placeholder="+244 9..."
-                    className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3.5 py-2 text-white focus:outline-none focus:border-blue-500"
+                    className="w-full bg-[#f8fafc] border border-slate-300 rounded-none px-3 py-2 text-slate-800 focus:outline-none focus:border-[#003366]"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-300 font-semibold mb-1">Email</label>
+                  <label className="block text-slate-700 font-bold uppercase mb-1">Email</label>
                   <input
                     type="email"
                     value={newClient.email}
                     onChange={(e) => setNewClient({ ...newClient, email: e.target.value })}
-                    placeholder="cliente@exemplo.com"
-                    className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3.5 py-2 text-white focus:outline-none focus:border-blue-500"
+                    className="w-full bg-[#f8fafc] border border-slate-300 rounded-none px-3 py-2 text-slate-800 focus:outline-none focus:border-[#003366]"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-300 font-semibold mb-1">Província</label>
+                  <label className="block text-slate-700 font-bold uppercase mb-1">Província</label>
                   <select
                     value={newClient.provincia}
                     onChange={(e) => setNewClient({ ...newClient, provincia: e.target.value })}
-                    className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-blue-500"
+                    className="w-full bg-[#f8fafc] border border-slate-300 rounded-none px-3 py-2 text-slate-800 focus:outline-none focus:border-[#003366]"
                   >
                     <option value="Luanda">Luanda</option>
                     <option value="Benguela">Benguela</option>
@@ -1484,29 +2007,28 @@ export const CrmNegociosModule: React.FC<CrmNegociosProps> = ({ onBackToApp, com
               </div>
 
               <div>
-                <label className="block text-slate-300 font-semibold mb-1">Endereço / Morada</label>
+                <label className="block text-slate-700 font-bold uppercase mb-1">Endereço / Morada</label>
                 <input
                   type="text"
                   value={newClient.endereco}
                   onChange={(e) => setNewClient({ ...newClient, endereco: e.target.value })}
-                  placeholder="Rua, Bairro, Município"
-                  className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3.5 py-2 text-white focus:outline-none focus:border-blue-500"
+                  className="w-full bg-[#f8fafc] border border-slate-300 rounded-none px-3 py-2 text-slate-800 focus:outline-none focus:border-[#003366]"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
                 <button
                   type="button"
                   onClick={() => setShowAddClientModal(false)}
-                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold"
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold uppercase rounded-none"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold shadow-lg shadow-purple-600/30"
+                  className="px-5 py-2 bg-[#003366] hover:bg-[#002244] text-white font-bold uppercase rounded-none shadow-sm"
                 >
-                  Registar Cliente
+                  Salvar Cliente
                 </button>
               </div>
             </form>
@@ -1514,45 +2036,42 @@ export const CrmNegociosModule: React.FC<CrmNegociosProps> = ({ onBackToApp, com
         </div>
       )}
 
-      {/* ── MODAL: NOVO PROJETO ── */}
+      {/* MODAL: NOVO PROJETO */}
       {showAddProjetoModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#0e1628] border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <FolderKanban className="w-5 h-5 text-amber-400" />
-                Criar Novo Projeto / Contrato
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white border-2 border-[#003366] max-w-lg w-full p-6 shadow-2xl rounded-none space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <h3 className="text-sm font-black text-[#003366] uppercase flex items-center gap-2">
+                <FolderKanban className="w-5 h-5 text-amber-600" />
+                Criar Novo Projeto / Obra
               </h3>
-              <button 
-                onClick={() => setShowAddProjetoModal(false)}
-                className="text-slate-400 hover:text-white"
-              >
+              <button onClick={() => setShowAddProjetoModal(false)} className="text-slate-400 hover:text-slate-700">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveProjeto} className="space-y-3.5 text-xs">
+            <form onSubmit={handleSaveProjeto} className="space-y-3 text-xs">
               <div>
-                <label className="block text-slate-300 font-semibold mb-1">Nome do Projeto *</label>
+                <label className="block text-slate-700 font-bold uppercase mb-1">Nome do Projeto *</label>
                 <input
                   type="text"
                   required
                   value={newProjeto.nome}
                   onChange={(e) => setNewProjeto({ ...newProjeto, nome: e.target.value })}
-                  placeholder="Ex: Implantação de Redes e Servidores"
-                  className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3.5 py-2 text-white focus:outline-none focus:border-blue-500"
+                  placeholder="Ex: Instalação de Servidores e Redes"
+                  className="w-full bg-[#f8fafc] border border-slate-300 rounded-none px-3 py-2 text-slate-800 focus:outline-none focus:border-[#003366]"
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-300 font-semibold mb-1">Cliente Vinculado</label>
+                  <label className="block text-slate-700 font-bold uppercase mb-1">Cliente Vinculado</label>
                   <select
                     value={newProjeto.cliente_nome}
                     onChange={(e) => setNewProjeto({ ...newProjeto, cliente_nome: e.target.value })}
-                    className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-blue-500"
+                    className="w-full bg-[#f8fafc] border border-slate-300 rounded-none px-3 py-2 text-slate-800 focus:outline-none focus:border-[#003366]"
                   >
-                    <option value="">Selecione o cliente...</option>
+                    <option value="">Selecione...</option>
                     {clientes.map(c => (
                       <option key={c.id} value={c.nome}>{c.nome}</option>
                     ))}
@@ -1560,62 +2079,61 @@ export const CrmNegociosModule: React.FC<CrmNegociosProps> = ({ onBackToApp, com
                 </div>
 
                 <div>
-                  <label className="block text-slate-300 font-semibold mb-1">Orçamento Previsto (Kz)</label>
+                  <label className="block text-slate-700 font-bold uppercase mb-1">Orçamento Previsto (Kz)</label>
                   <input
                     type="number"
                     min="0"
                     step="500"
                     value={newProjeto.orcamento}
                     onChange={(e) => setNewProjeto({ ...newProjeto, orcamento: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3.5 py-2 text-white font-mono focus:outline-none focus:border-blue-500"
+                    className="w-full bg-[#f8fafc] border border-slate-300 rounded-none px-3 py-2 text-slate-800 font-mono font-bold focus:outline-none focus:border-[#003366]"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-300 font-semibold mb-1">Data Início</label>
+                  <label className="block text-slate-700 font-bold uppercase mb-1">Data Início</label>
                   <input
                     type="date"
                     value={newProjeto.data_inicio}
                     onChange={(e) => setNewProjeto({ ...newProjeto, data_inicio: e.target.value })}
-                    className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3.5 py-2 text-white focus:outline-none focus:border-blue-500"
+                    className="w-full bg-[#f8fafc] border border-slate-300 rounded-none px-3 py-2 text-slate-800 focus:outline-none focus:border-[#003366]"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-300 font-semibold mb-1">Previsão de Conclusão</label>
+                  <label className="block text-slate-700 font-bold uppercase mb-1">Previsão Término</label>
                   <input
                     type="date"
                     value={newProjeto.data_fim}
                     onChange={(e) => setNewProjeto({ ...newProjeto, data_fim: e.target.value })}
-                    className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3.5 py-2 text-white focus:outline-none focus:border-blue-500"
+                    className="w-full bg-[#f8fafc] border border-slate-300 rounded-none px-3 py-2 text-slate-800 focus:outline-none focus:border-[#003366]"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-slate-300 font-semibold mb-1">Descrição do Escopo</label>
+                <label className="block text-slate-700 font-bold uppercase mb-1">Descrição</label>
                 <textarea
                   rows={2}
                   value={newProjeto.descricao}
                   onChange={(e) => setNewProjeto({ ...newProjeto, descricao: e.target.value })}
-                  placeholder="Escopo e entregáveis principais..."
-                  className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3.5 py-2 text-white focus:outline-none focus:border-blue-500"
+                  className="w-full bg-[#f8fafc] border border-slate-300 rounded-none px-3 py-2 text-slate-800 focus:outline-none focus:border-[#003366]"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
                 <button
                   type="button"
                   onClick={() => setShowAddProjetoModal(false)}
-                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold"
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold uppercase rounded-none"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-semibold shadow-lg shadow-amber-600/30"
+                  className="px-5 py-2 bg-[#003366] hover:bg-[#002244] text-white font-bold uppercase rounded-none shadow-sm"
                 >
                   Gravar Projeto
                 </button>
@@ -1625,58 +2143,55 @@ export const CrmNegociosModule: React.FC<CrmNegociosProps> = ({ onBackToApp, com
         </div>
       )}
 
-      {/* ── MODAL: NOVA ATIVIDADE ── */}
+      {/* MODAL: NOVA ATIVIDADE */}
       {showAddAtividadeModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#0e1628] border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <Calendar className="w-5 h-5 text-emerald-400" />
-                Agendar Interação Comercial
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white border-2 border-[#003366] max-w-lg w-full p-6 shadow-2xl rounded-none space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <h3 className="text-sm font-black text-[#003366] uppercase flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-emerald-600" />
+                Agendar Atividade Comercial
               </h3>
-              <button 
-                onClick={() => setShowAddAtividadeModal(false)}
-                className="text-slate-400 hover:text-white"
-              >
+              <button onClick={() => setShowAddAtividadeModal(false)} className="text-slate-400 hover:text-slate-700">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveAtividade} className="space-y-3.5 text-xs">
+            <form onSubmit={handleSaveAtividade} className="space-y-3 text-xs">
               <div>
-                <label className="block text-slate-300 font-semibold mb-1">Título da Atividade *</label>
+                <label className="block text-slate-700 font-bold uppercase mb-1">Título da Atividade *</label>
                 <input
                   type="text"
                   required
                   value={newAtividade.titulo}
                   onChange={(e) => setNewAtividade({ ...newAtividade, titulo: e.target.value })}
-                  placeholder="Ex: Reunião de Demonstração Técnica"
-                  className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3.5 py-2 text-white focus:outline-none focus:border-blue-500"
+                  placeholder="Ex: Apresentação da Proposta Comercial"
+                  className="w-full bg-[#f8fafc] border border-slate-300 rounded-none px-3 py-2 text-slate-800 focus:outline-none focus:border-[#003366]"
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-300 font-semibold mb-1">Tipo de Interação</label>
+                  <label className="block text-slate-700 font-bold uppercase mb-1">Tipo</label>
                   <select
                     value={newAtividade.tipo}
                     onChange={(e) => setNewAtividade({ ...newAtividade, tipo: e.target.value as AtividadeItem['tipo'] })}
-                    className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-blue-500"
+                    className="w-full bg-[#f8fafc] border border-slate-300 rounded-none px-3 py-2 text-slate-800 focus:outline-none focus:border-[#003366]"
                   >
-                    <option value="reuniao">Reunião Presencial / Online</option>
+                    <option value="reuniao">Reunião</option>
                     <option value="chamada">Chamada Telefónica</option>
                     <option value="email">Envio de Email</option>
-                    <option value="proposta">Apresentação de Proposta</option>
-                    <option value="tarefa">Tarefa Interna</option>
+                    <option value="proposta">Entrega de Proposta</option>
+                    <option value="tarefa">Tarefa</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-slate-300 font-semibold mb-1">Cliente Vinculado</label>
+                  <label className="block text-slate-700 font-bold uppercase mb-1">Cliente</label>
                   <select
                     value={newAtividade.cliente_nome}
                     onChange={(e) => setNewAtividade({ ...newAtividade, cliente_nome: e.target.value })}
-                    className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-blue-500"
+                    className="w-full bg-[#f8fafc] border border-slate-300 rounded-none px-3 py-2 text-slate-800 focus:outline-none focus:border-[#003366]"
                   >
                     <option value="">Selecione...</option>
                     {clientes.map(c => (
@@ -1687,39 +2202,38 @@ export const CrmNegociosModule: React.FC<CrmNegociosProps> = ({ onBackToApp, com
               </div>
 
               <div>
-                <label className="block text-slate-300 font-semibold mb-1">Data e Hora Agendada</label>
+                <label className="block text-slate-700 font-bold uppercase mb-1">Data e Hora</label>
                 <input
                   type="datetime-local"
                   value={newAtividade.data_agendada}
                   onChange={(e) => setNewAtividade({ ...newAtividade, data_agendada: e.target.value })}
-                  className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3.5 py-2 text-white focus:outline-none focus:border-blue-500"
+                  className="w-full bg-[#f8fafc] border border-slate-300 rounded-none px-3 py-2 text-slate-800 focus:outline-none focus:border-[#003366]"
                 />
               </div>
 
               <div>
-                <label className="block text-slate-300 font-semibold mb-1">Notas / Pauta</label>
+                <label className="block text-slate-700 font-bold uppercase mb-1">Notas / Detalhes</label>
                 <textarea
                   rows={2}
                   value={newAtividade.descricao}
                   onChange={(e) => setNewAtividade({ ...newAtividade, descricao: e.target.value })}
-                  placeholder="Assuntos a discutir na reunião..."
-                  className="w-full bg-[#080d1a] border border-slate-700 rounded-xl px-3.5 py-2 text-white focus:outline-none focus:border-blue-500"
+                  className="w-full bg-[#f8fafc] border border-slate-300 rounded-none px-3 py-2 text-slate-800 focus:outline-none focus:border-[#003366]"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
                 <button
                   type="button"
                   onClick={() => setShowAddAtividadeModal(false)}
-                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold"
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold uppercase rounded-none"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold shadow-lg shadow-emerald-600/30"
+                  className="px-5 py-2 bg-[#003366] hover:bg-[#002244] text-white font-bold uppercase rounded-none shadow-sm"
                 >
-                  Salvar Atividade
+                  Agendar
                 </button>
               </div>
             </form>
@@ -1727,74 +2241,315 @@ export const CrmNegociosModule: React.FC<CrmNegociosProps> = ({ onBackToApp, com
         </div>
       )}
 
-      {/* ── MODAL: RELATÓRIO COMERCIAL ── */}
-      {showReportModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#0e1628] border border-slate-800 rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <FileSpreadsheet className="w-5 h-5 text-emerald-400" />
-                Relatório Geral de Gestão CRM
+      {/* ── MODAIS DE EDIÇÃO ── */}
+
+      {/* EDITAR DEAL */}
+      {editingDeal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white border-2 border-[#003366] max-w-lg w-full p-6 shadow-2xl rounded-none space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <h3 className="text-sm font-black text-[#003366] uppercase flex items-center gap-2">
+                <Edit className="w-5 h-5 text-amber-600" />
+                Editar Negócio Comercial
               </h3>
-              <button 
-                onClick={() => setShowReportModal(false)}
-                className="text-slate-400 hover:text-white"
-              >
+              <button onClick={() => setEditingDeal(null)} className="text-slate-400 hover:text-slate-700">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="space-y-4 text-xs">
-              <div className="p-4 rounded-xl bg-[#080d1a] border border-slate-800 space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Total de Clientes no Banco:</span>
-                  <span className="font-bold text-white">{metrics.totalClientes}</span>
+            <form onSubmit={handleSaveEditDeal} className="space-y-3 text-xs">
+              <div>
+                <label className="block text-slate-700 font-bold uppercase mb-1">Título</label>
+                <input
+                  type="text"
+                  required
+                  value={editingDeal.titulo}
+                  onChange={(e) => setEditingDeal({ ...editingDeal, titulo: e.target.value })}
+                  className="w-full bg-[#f8fafc] border border-slate-300 rounded-none px-3 py-2 text-slate-800 focus:outline-none focus:border-[#003366]"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-700 font-bold uppercase mb-1">Cliente</label>
+                  <input
+                    type="text"
+                    value={editingDeal.cliente_nome}
+                    onChange={(e) => setEditingDeal({ ...editingDeal, cliente_nome: e.target.value })}
+                    className="w-full bg-[#f8fafc] border border-slate-300 rounded-none px-3 py-2 text-slate-800 focus:outline-none focus:border-[#003366]"
+                  />
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Clientes com NIF Validado:</span>
-                  <span className="font-bold text-emerald-400">{metrics.clientesComNif}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Total Oportunidades Cadastradas:</span>
-                  <span className="font-bold text-white">{metrics.totalDeals}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Volume Total em Pipeline:</span>
-                  <span className="font-bold text-blue-400 font-mono">{formatKz(metrics.valorTotalPipeline)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Volume Total Ganho (Convertido):</span>
-                  <span className="font-bold text-emerald-400 font-mono">{formatKz(metrics.valorTotalGanho)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Taxa de Conversão:</span>
-                  <span className="font-bold text-indigo-400">{metrics.taxaConversao}%</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Total de Projetos em Execução:</span>
-                  <span className="font-bold text-amber-400">{metrics.totalProjetos}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Orçamento Total de Projetos:</span>
-                  <span className="font-bold text-emerald-400 font-mono">{formatKz(metrics.orcamentoTotalProjetos)}</span>
+
+                <div>
+                  <label className="block text-slate-700 font-bold uppercase mb-1">Valor (Kz)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={editingDeal.valor}
+                    onChange={(e) => setEditingDeal({ ...editingDeal, valor: parseFloat(e.target.value) || 0 })}
+                    className="w-full bg-[#f8fafc] border border-slate-300 rounded-none px-3 py-2 text-slate-800 font-mono font-bold focus:outline-none focus:border-[#003366]"
+                  />
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-700 font-bold uppercase mb-1">Etapa</label>
+                  <select
+                    value={editingDeal.etapa}
+                    onChange={(e) => setEditingDeal({ ...editingDeal, etapa: e.target.value as Deal['etapa'] })}
+                    className="w-full bg-[#f8fafc] border border-slate-300 rounded-none px-3 py-2 text-slate-800 focus:outline-none focus:border-[#003366]"
+                  >
+                    {ETAPAS_DEAL.map(e => (
+                      <option key={e.id} value={e.id}>{e.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-700 font-bold uppercase mb-1">Probabilidade (%)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={editingDeal.probabilidade}
+                    onChange={(e) => setEditingDeal({ ...editingDeal, probabilidade: parseInt(e.target.value) || 0 })}
+                    className="w-full bg-[#f8fafc] border border-slate-300 rounded-none px-3 py-2 text-slate-800 font-mono focus:outline-none focus:border-[#003366]"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
                 <button
-                  onClick={() => window.print()}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold"
+                  type="button"
+                  onClick={() => setEditingDeal(null)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold uppercase rounded-none"
                 >
-                  <Printer className="w-4 h-4" />
-                  Imprimir / Salvar PDF
+                  Cancelar
                 </button>
                 <button
-                  onClick={() => setShowReportModal(false)}
-                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold"
+                  type="submit"
+                  className="px-5 py-2 bg-[#003366] hover:bg-[#002244] text-white font-bold uppercase rounded-none shadow-sm"
                 >
-                  Fechar
+                  Salvar Alterações
                 </button>
               </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* EDITAR CLIENTE */}
+      {editingCliente && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white border-2 border-[#003366] max-w-lg w-full p-6 shadow-2xl rounded-none space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <h3 className="text-sm font-black text-[#003366] uppercase flex items-center gap-2">
+                <Edit className="w-5 h-5 text-amber-600" />
+                Editar Dados do Cliente
+              </h3>
+              <button onClick={() => setEditingCliente(null)} className="text-slate-400 hover:text-slate-700">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditCliente} className="space-y-3 text-xs">
+              <div>
+                <label className="block text-slate-700 font-bold uppercase mb-1">Nome do Cliente</label>
+                <input
+                  type="text"
+                  required
+                  value={editingCliente.nome}
+                  onChange={(e) => setEditingCliente({ ...editingCliente, nome: e.target.value })}
+                  className="w-full bg-[#f8fafc] border border-slate-300 rounded-none px-3 py-2 text-slate-800 focus:outline-none focus:border-[#003366]"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-700 font-bold uppercase mb-1">NIF</label>
+                  <input
+                    type="text"
+                    value={editingCliente.nif || editingCliente.contribuinte || ''}
+                    onChange={(e) => setEditingCliente({ ...editingCliente, nif: e.target.value, contribuinte: e.target.value })}
+                    className="w-full bg-[#f8fafc] border border-slate-300 rounded-none px-3 py-2 text-slate-800 font-mono focus:outline-none focus:border-[#003366]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-700 font-bold uppercase mb-1">Telefone</label>
+                  <input
+                    type="text"
+                    value={editingCliente.telefone || ''}
+                    onChange={(e) => setEditingCliente({ ...editingCliente, telefone: e.target.value })}
+                    className="w-full bg-[#f8fafc] border border-slate-300 rounded-none px-3 py-2 text-slate-800 focus:outline-none focus:border-[#003366]"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-700 font-bold uppercase mb-1">Email</label>
+                  <input
+                    type="email"
+                    value={editingCliente.email || ''}
+                    onChange={(e) => setEditingCliente({ ...editingCliente, email: e.target.value })}
+                    className="w-full bg-[#f8fafc] border border-slate-300 rounded-none px-3 py-2 text-slate-800 focus:outline-none focus:border-[#003366]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-700 font-bold uppercase mb-1">Saldo Inicial (Kz)</label>
+                  <input
+                    type="number"
+                    value={editingCliente.saldo_inicial || 0}
+                    onChange={(e) => setEditingCliente({ ...editingCliente, saldo_inicial: parseFloat(e.target.value) || 0 })}
+                    className="w-full bg-[#f8fafc] border border-slate-300 rounded-none px-3 py-2 text-slate-800 font-mono focus:outline-none focus:border-[#003366]"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setEditingCliente(null)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold uppercase rounded-none"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-[#003366] hover:bg-[#002244] text-white font-bold uppercase rounded-none shadow-sm"
+                >
+                  Salvar Cliente
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* EDITAR PROJETO */}
+      {editingProjeto && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white border-2 border-[#003366] max-w-lg w-full p-6 shadow-2xl rounded-none space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <h3 className="text-sm font-black text-[#003366] uppercase flex items-center gap-2">
+                <Edit className="w-5 h-5 text-amber-600" />
+                Editar Projeto / Obra
+              </h3>
+              <button onClick={() => setEditingProjeto(null)} className="text-slate-400 hover:text-slate-700">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditProjeto} className="space-y-3 text-xs">
+              <div>
+                <label className="block text-slate-700 font-bold uppercase mb-1">Nome do Projeto</label>
+                <input
+                  type="text"
+                  required
+                  value={editingProjeto.nome}
+                  onChange={(e) => setEditingProjeto({ ...editingProjeto, nome: e.target.value })}
+                  className="w-full bg-[#f8fafc] border border-slate-300 rounded-none px-3 py-2 text-slate-800 focus:outline-none focus:border-[#003366]"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-700 font-bold uppercase mb-1">Status</label>
+                  <select
+                    value={editingProjeto.status}
+                    onChange={(e) => setEditingProjeto({ ...editingProjeto, status: e.target.value })}
+                    className="w-full bg-[#f8fafc] border border-slate-300 rounded-none px-3 py-2 text-slate-800 focus:outline-none focus:border-[#003366]"
+                  >
+                    <option value="Em Planeamento">Em Planeamento</option>
+                    <option value="Em Execução">Em Execução</option>
+                    <option value="Em Revisão">Em Revisão</option>
+                    <option value="Concluído">Concluído</option>
+                    <option value="Suspenso">Suspenso</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-700 font-bold uppercase mb-1">Orçamento (Kz)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={editingProjeto.orcamento || 0}
+                    onChange={(e) => setEditingProjeto({ ...editingProjeto, orcamento: parseFloat(e.target.value) || 0 })}
+                    className="w-full bg-[#f8fafc] border border-slate-300 rounded-none px-3 py-2 text-slate-800 font-mono font-bold focus:outline-none focus:border-[#003366]"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-bold uppercase mb-1">Descrição</label>
+                <textarea
+                  rows={2}
+                  value={editingProjeto.descricao || ''}
+                  onChange={(e) => setEditingProjeto({ ...editingProjeto, descricao: e.target.value })}
+                  className="w-full bg-[#f8fafc] border border-slate-300 rounded-none px-3 py-2 text-slate-800 focus:outline-none focus:border-[#003366]"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setEditingProjeto(null)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold uppercase rounded-none"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-[#003366] hover:bg-[#002244] text-white font-bold uppercase rounded-none shadow-sm"
+                >
+                  Salvar Projeto
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL: VER FICHA DETALHADA DO ITEM ── */}
+      {viewItem && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white border-2 border-[#003366] max-w-lg w-full p-6 shadow-2xl rounded-none space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <h3 className="text-sm font-black text-[#003366] uppercase flex items-center gap-2">
+                <Eye className="w-5 h-5 text-blue-600" />
+                {viewItem.title}
+              </h3>
+              <button onClick={() => setViewItem(null)} className="text-slate-400 hover:text-slate-700">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-2 text-xs divide-y divide-slate-100">
+              {Object.entries(viewItem.data).map(([k, v]) => (
+                <div key={k} className="pt-2 flex justify-between items-start gap-4">
+                  <span className="font-bold text-slate-500 uppercase">{k}:</span>
+                  <span className="font-medium text-slate-800 text-right">{String(v || '—')}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+              <button
+                onClick={() => window.print()}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold uppercase rounded-none flex items-center gap-1.5"
+              >
+                <Printer className="w-4 h-4" />
+                Imprimir
+              </button>
+              <button
+                onClick={() => setViewItem(null)}
+                className="px-5 py-2 bg-[#003366] hover:bg-[#002244] text-white text-xs font-bold uppercase rounded-none"
+              >
+                Fechar
+              </button>
             </div>
           </div>
         </div>

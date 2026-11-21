@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  AlertTriangle,
+  Activity,
   ArrowDownLeft,
   ArrowRightLeft,
   ArrowUpRight,
@@ -24,7 +24,6 @@ import {
   Tag,
 } from 'lucide-react';
 import type {
-  Metric,
   Product,
   StockMovement,
   StockSettings,
@@ -60,7 +59,7 @@ interface StockEnterpriseShellProps {
   products: Product[];
   stockMovements: StockMovement[];
   warehouses: Warehouse[];
-  metrics?: Metric[];
+  metrics?: any[];
   companyData?: any;
   activeTaxes?: any[];
   fiscalYear: number;

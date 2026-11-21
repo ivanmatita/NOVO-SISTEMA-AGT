@@ -28,6 +28,8 @@ import { GestaoComprasForm } from './components/purchases/GestaoComprasForm';
 import { StockAtualModule } from './components/stock/StockAtualModule';
 import { StockProductPicker } from './components/stock/StockProductPicker';
 import { StockEntradasReport } from './components/stock/StockEntradasReport';
+import { StockEnterpriseShell } from './components/stock/StockEnterpriseShell';
+import { parseStockSubRouteFromLocation } from './lib/stockPermissions';
 
 
 import ProjectManagementModule from './components/ProjectManagementModule';
@@ -231,6 +233,8 @@ import LicencasModule from './components/LicencasModule';
 import { EmpresaModule } from './components/EmpresaModule';
 import { POSConfigModule } from './components/POSConfigModule';
 import { CRMModule } from './components/CRMModule';
+import { CRMNegocioHub } from './components/crm/CRMNegocioHub';
+import { CRMClientesModule } from './components/crm/CRMClientesModule';
 import { MiniSiteAdmin } from './components/MiniSiteAdmin';
 import { MiniSitePublic } from './components/MiniSitePublic';
 import { AgtValidationModal } from './components/AgtValidationModal';
@@ -3024,6 +3028,7 @@ const hasModulePermission = (user: any, moduleId: string): boolean => {
 const SIDEBAR_MENU_ITEMS = [
   { id: 'dashboard', label: 'Painel de Bordo', icon: LayoutDashboard },
   { id: 'crm_empresas', label: 'CRM EMPRESAS', icon: ShieldAlert, badge: 'SUPER ADM' },
+  { id: 'crm_negocio', label: 'Gestão CRM Negócio', icon: Briefcase, badge: '🚀 NOVO' },
   { id: 'clients', label: 'Clientes', icon: Users },
   { id: 'workplaces', label: 'Locais de Trabalho', icon: Briefcase },
   { id: 'secretary', label: 'Secretaria Beta', icon: Paperclip },
@@ -33549,7 +33554,7 @@ export default function App() {
   const [activeTab, setActiveTabState] = useState(() => {
     // Ler o hash da URL para restaurar o tab correcto ao carregar/refresh (#pos → 'pos')
     const VALID_TABS = [
-      'dashboard','crm_empresas','clients','workplaces','secretary','pos','contracts',
+      'dashboard','crm_empresas','crm_negocio','clients','workplaces','secretary','pos','contracts',
       'electronic_invoices','security','specialized','archive','cartas','invoices',
       'drafts','suppliers','products','financial','accounting','hr','reports',
       'licencas','empresa','taxes','metrics','media','warehouse','caixa','alertas',
@@ -33656,7 +33661,7 @@ export default function App() {
   // Escutar mudanças de hash (botão Voltar/Avançar do browser)
   React.useEffect(() => {
     const VALID_TABS = [
-      'dashboard','crm_empresas','clients','workplaces','secretary','pos','contracts',
+      'dashboard','crm_empresas','crm_negocio','clients','workplaces','secretary','pos','contracts',
       'electronic_invoices','security','specialized','archive','cartas','invoices',
       'drafts','suppliers','products','financial','accounting','hr','reports',
       'licencas','empresa','taxes','metrics','media','warehouse','caixa','alertas',
@@ -35871,6 +35876,8 @@ export default function App() {
                               setActiveTab={setActiveTab}
                             />
                           );
+                        case 'crm_negocio':
+                          return <CRMNegocioHub user={user} companyData={companyData} onNavigate={setActiveTab} />;
                         case 'dashboard':
                           return <EcosystemDashboard stats={stats} issuedDocuments={issuedDocuments} setActiveTab={setActiveTab} />;
                         default:
@@ -36124,14 +36131,10 @@ export default function App() {
                               );
                             case 'clients':
                               return (
-                                <ClientList 
-                                  clients={clients} 
-                                  issuedDocuments={issuedDocuments}
-                                  onRefresh={fetchData} 
-                                  onViewAccount={(client) => {
-                                    setSelectedClientForAccount(client);
-                                    setActiveTab('client-account');
-                                  }}
+                                <CRMClientesModule 
+                                  user={user}
+                                  companyData={{ id: companyData?.id || user?.empresa_id, nome_empresa: companyName }}
+                                  onBack={() => setActiveTab('dashboard')}
                                 />
                               );
                             case 'suppliers':

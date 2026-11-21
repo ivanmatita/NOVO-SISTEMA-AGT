@@ -5,28 +5,78 @@ import { obterEstadoService } from "./obterEstado.service.js";
 
 dotenv.config();
 
-const rawUrl = (process.env.SUPABASE_URL || "").trim();
-const supabaseUrl = rawUrl
-  .replace(/\/rest\/v1\/?$/, "")
-  .replace(/\/auth\/v1\/?$/, "")
-  .replace(/\/$/, "");
-const supabaseServiceKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
-
-const supabaseAdmin = (supabaseUrl && supabaseServiceKey)
-  ? createClient(supabaseUrl, supabaseServiceKey, {
-      auth: { persistSession: false, autoRefreshToken: false }
-    })
-  : null;
-
+let _cachedEnvClient = null;
+let _cachedEnvSignature = "";
 let isProcessing = false;
 let _warnedOnce = false;
+let _lastNetworkWarnAt = 0;
+const NETWORK_WARN_COOLDOWN_MS = 5 * 60 * 1000;
+
+function isTransientNetworkError(err) {
+  const msg = String(err?.message || err || "").toLowerCase();
+  const code = String(err?.code || err?.cause?.code || "").toLowerCase();
+  return (
+    msg.includes("fetch failed") ||
+    msg.includes("failed to fetch") ||
+    msg.includes("econnrefused") ||
+    msg.includes("enotfound") ||
+    msg.includes("etimedout") ||
+    msg.includes("eai_again") ||
+    msg.includes("network") ||
+    msg.includes("socket") ||
+    code === "econnrefused" ||
+    code === "enotfound" ||
+    code === "etimedout" ||
+    code === "eai_again"
+  );
+}
+
+function logNetworkWarningOnce(context, err) {
+  const now = Date.now();
+  if (now - _lastNetworkWarnAt >= NETWORK_WARN_COOLDOWN_MS) {
+    _lastNetworkWarnAt = now;
+    console.warn(`[AGT-QUEUE-WORKER] Conectividade Supabase indisponível (${context}): ${err?.message || err}`);
+  }
+}
+
+function resolveAdminClient(getClient) {
+  if (typeof getClient === "function") {
+    try {
+      const provided = getClient();
+      if (provided) return provided;
+    } catch (e) {
+      // Fallback to env client below
+    }
+  }
+
+  const rawUrl = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "").trim();
+  const supabaseUrl = rawUrl
+    .replace(/\/rest\/v1\/?$/, "")
+    .replace(/\/auth\/v1\/?$/, "")
+    .replace(/\/$/, "");
+  const supabaseServiceKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
+
+  if (!supabaseUrl || !supabaseServiceKey || !/^https?:\/\//i.test(supabaseUrl)) {
+    return null;
+  }
+
+  const signature = `${supabaseUrl}::${supabaseServiceKey.slice(0, 12)}`;
+  if (!_cachedEnvClient || _cachedEnvSignature !== signature) {
+    _cachedEnvClient = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { persistSession: false, autoRefreshToken: false }
+    });
+    _cachedEnvSignature = signature;
+  }
+  return _cachedEnvClient;
+}
 
 /**
  * ==============================================================================
  * EXECUTOR ASSÍNCRONO DE TRANSMISSÃO E POLLING FE
  * ==============================================================================
  */
-export async function runAgtQueueCycle() {
+export async function runAgtQueueCycle(getClient = null) {
+  const supabaseAdmin = resolveAdminClient(getClient);
   if (!supabaseAdmin) {
     if (!_warnedOnce) {
       console.warn("[AGT-QUEUE-WORKER] SupabaseAdmin Client não inicializado. Verifique as credenciais no .env");
@@ -40,7 +90,6 @@ export async function runAgtQueueCycle() {
   }
 
   isProcessing = true;
-  console.log("[AGT-QUEUE-WORKER] Iniciando ciclo de processamento da fila AGT...");
 
   try {
     // --- PARTE A: PROCESSAR ENVIOS DA FILA (PENDING -> POLLING) ---
@@ -53,6 +102,10 @@ export async function runAgtQueueCycle() {
       .limit(5);
 
     if (fetchErr) {
+      if (isTransientNetworkError(fetchErr)) {
+        logNetworkWarningOnce("fila PENDING", fetchErr);
+        return;
+      }
       console.error("[AGT-QUEUE-WORKER] Erro ao buscar itens pendentes na fila:", fetchErr.message);
     } else if (pendingItems && pendingItems.length > 0) {
       console.log(`[AGT-QUEUE-WORKER] Encontrados ${pendingItems.length} itens prontos para transmissão.`);
@@ -169,6 +222,10 @@ export async function runAgtQueueCycle() {
       .limit(5);
 
     if (pollErr) {
+      if (isTransientNetworkError(pollErr)) {
+        logNetworkWarningOnce("fila POLLING", pollErr);
+        return;
+      }
       console.error("[AGT-QUEUE-WORKER] Erro ao buscar itens em estado POLLING:", pollErr.message);
     } else if (pollingItems && pollingItems.length > 0) {
       console.log(`[AGT-QUEUE-WORKER] Polling ativo em curso para ${pollingItems.length} facturas transmitidas.`);
@@ -267,25 +324,28 @@ export async function runAgtQueueCycle() {
     }
 
   } catch (err) {
-    console.error("[AGT-QUEUE-WORKER] Erro crítico não manipulado no ciclo da fila:", err.message);
+    if (isTransientNetworkError(err)) {
+      logNetworkWarningOnce("ciclo geral", err);
+    } else {
+      console.error("[AGT-QUEUE-WORKER] Erro crítico não manipulado no ciclo da fila:", err?.message || err);
+    }
   } finally {
     isProcessing = false;
-    console.log("[AGT-QUEUE-WORKER] Ciclo concluído.");
   }
 }
 
 /**
  * Inicia o worker em background com intervalo definido
  */
-export function startAgtQueueWorker(intervalMs = 15000) {
+export function startAgtQueueWorker(intervalMs = 15000, getClient = null) {
   console.log(`[AGT-QUEUE-WORKER] Serviço de Polling/Fila AGT em background activado (${intervalMs}ms)`);
   
   // Executar imediatamente a primeira vez
-  setTimeout(() => runAgtQueueCycle(), 2000);
+  setTimeout(() => runAgtQueueCycle(getClient), 2000);
 
   // Agendar loop recorrente
   const timer = setInterval(() => {
-    runAgtQueueCycle();
+    runAgtQueueCycle(getClient);
   }, intervalMs);
 
   return timer;

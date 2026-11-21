@@ -164,8 +164,8 @@ export const StockAtualModule: React.FC<StockAtualModuleProps> = ({
 
       const hasPresenceInWarehouse = wId === 'all' || matchesBaseWarehouse || prodMovements.length > 0 || qtdDisponivel >= 0 || true;
 
-      const stockMin = Number(prod.min_stock || 0);
-      const stockMax = Number((prod as any).max_stock || 0);
+      const stockMin = Number(prod.min_stock ?? (prod as any).stock_minimo ?? 0);
+      const stockMax = Number(prod.stock_maximo ?? (prod as any).max_stock ?? 0);
 
       const isLowStock = qtdDisponivel <= stockMin && qtdDisponivel > 0;
       const isZeroOrNegative = qtdDisponivel <= 0;

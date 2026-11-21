@@ -1,11 +1,12 @@
 import { supabase } from '../lib/supabase';
+import { authService } from './authService';
 import { Employee } from '../types';
 import { OperationType, handleSupabaseError } from './dbUtils';
 
 async function getAuthHeaders(): Promise<Record<string, string>> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   try {
-    const session = (await supabase.auth.getSession())?.data?.session;
+    const session = await authService.getSessionSafe() || (await supabase.auth.getSession())?.data?.session;
     if (session?.access_token) {
       headers['Authorization'] = `Bearer ${session.access_token}`;
     }

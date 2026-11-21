@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { authService } from './authService';
 
 export interface Cliente {
   id?: number | string;
@@ -27,11 +28,24 @@ export interface Cliente {
 
 async function getToken(): Promise<string> {
   try {
+    const session = await authService.getSessionSafe();
+    if (session?.access_token) return session.access_token;
+  } catch (e) {}
+
+  try {
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.access_token) return session.access_token;
   } catch (e) {}
 
   if (typeof window !== 'undefined') {
+    try {
+      const fb = sessionStorage.getItem('imatec_fallback_session');
+      if (fb) {
+        const parsed = JSON.parse(fb);
+        if (parsed?.access_token) return parsed.access_token;
+      }
+    } catch (e) {}
+
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
       if (key && (key.startsWith('sb-') || key.includes('auth-token'))) {

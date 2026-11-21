@@ -25,6 +25,8 @@ import accountingHandler from './_handlers/accounting.js';
 import userActivitiesHandler from './_handlers/user-activities.js';
 import stockSyncHandler from './_handlers/stock-sync.js';
 import stockExitHandler from './_handlers/stock-exit.js';
+import stockEnterpriseHandler from './_handlers/stock-enterprise.js';
+import stockAgentsHandler from './_handlers/stock-agents.js';
 
 export default async function handler(req, res) {
   setCORS(res);
@@ -121,14 +123,31 @@ export default async function handler(req, res) {
     return migracaoHandler(req, res);
   }
 
-  // 12.5. Stock — Sincronização Automática Compras → Stock (Idempotente)
-  if (pathname.startsWith('/api/stock')) {
-    return stockSyncHandler(req, res);
-  }
-
-  // 12.6. Stock Saída — Vendas e verificação de disponibilidade
+  // 12.5. Stock Saída — Vendas e verificação de disponibilidade
   if (pathname.startsWith('/api/stock/exit-sale') || pathname.startsWith('/api/stock/check-stock')) {
     return stockExitHandler(req, res);
+  }
+
+  // 12.6. Stock Enterprise — Overview, Operações, Transferências, Inventário, Alertas, Configurações
+  if (
+    pathname.startsWith('/api/stock/overview') ||
+    pathname.startsWith('/api/stock/operation') ||
+    pathname.startsWith('/api/stock/transfer') ||
+    pathname.startsWith('/api/stock/inventory') ||
+    pathname.startsWith('/api/stock/alerts') ||
+    pathname.startsWith('/api/stock/settings')
+  ) {
+    return stockEnterpriseHandler(req, res);
+  }
+
+  // 12.6.5. Stock Agentes IA — Equipa Multiagente Gemini
+  if (pathname.startsWith('/api/stock/agents')) {
+    return stockAgentsHandler(req, res);
+  }
+
+  // 12.7. Stock — Sincronização Automática Compras → Stock (Idempotente)
+  if (pathname.startsWith('/api/stock')) {
+    return stockSyncHandler(req, res);
   }
 
   // 13. Relatórios Fiscais e de Gestão (Profit & Loss / Proveitos e Custos)

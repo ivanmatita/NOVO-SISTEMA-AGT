@@ -98,7 +98,20 @@ export function useRealtime(table: string, onChange: (payload: any) => void) {
  */
 if (typeof window !== "undefined") {
   window.addEventListener("unhandledrejection", (event) => {
-    console.error("Unhandled Promise Rejection:", event.reason);
+    const reasonStr = event.reason ? String(event.reason?.message || event.reason) : "";
+    const lower = reasonStr.toLowerCase();
+    if (
+      lower.includes("websocket") ||
+      lower.includes("hmr") ||
+      lower.includes("hot update") ||
+      lower.includes("connection") ||
+      lower.includes("back-forward cache") ||
+      lower.includes("aborterror")
+    ) {
+      event.preventDefault();
+      return;
+    }
+    console.warn("[Realtime] Unhandled Promise Rejection:", event.reason);
   });
 }
 

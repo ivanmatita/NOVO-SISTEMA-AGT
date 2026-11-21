@@ -9,11 +9,14 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface StockProduct {
-  id: string;
+  id: string | number;
   name: string;
   nome?: string;
   referencia?: string;
   reference?: string;
+  referente?: string;
+  codigo?: string;
+  code?: string;
   descricao?: string;
   description?: string;
   codigo_barras?: string;
@@ -24,13 +27,16 @@ interface StockProduct {
   stock_quantity?: number;
   stock?: number;
   stock_atual?: number;
+  estoque_atual?: number;
   price?: number;
+  preco?: number;
   preco_venda?: number;
   unit?: string;
   unidade?: string;
   tipo?: string;
   taxa_iva?: number;
   iva_rate?: number;
+  iva_taxa?: number;
 }
 
 interface StockProductPickerProps {
@@ -39,6 +45,7 @@ interface StockProductPickerProps {
   onSelect: (product: StockProduct) => void;
   warehouses?: Array<{ id: string | number; name?: string; nome?: string }>;
   selectedWarehouseId?: string;
+  products?: StockProduct[];
 }
 
 export const StockProductPicker: React.FC<StockProductPickerProps> = ({
@@ -47,6 +54,7 @@ export const StockProductPicker: React.FC<StockProductPickerProps> = ({
   onSelect,
   warehouses = [],
   selectedWarehouseId,
+  products: propProducts = [],
 }) => {
   const { user } = useAuth();
   const [products, setProducts] = useState<StockProduct[]>([]);
@@ -62,27 +70,47 @@ export const StockProductPicker: React.FC<StockProductPickerProps> = ({
   }, [isOpen]);
 
   const loadProducts = async () => {
-    if (!user?.empresa_id && !user?.company_id) return;
+    const normalizeStockList = (rows: any[]) =>
+      rows.filter(p => {
+        if (p.is_active === false || p.ativo === false) return false;
+        const qty = Number(p.stock_quantity ?? p.stock ?? p.stock_atual ?? p.estoque_atual ?? 0);
+        return qty > 0;
+      });
+
+    if (!user?.empresa_id && !user?.company_id) {
+      if (propProducts.length > 0) setProducts(normalizeStockList(propProducts));
+      return;
+    }
     const empresaId = user.empresa_id || user.company_id;
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('produtos')
-        .select('id, name, nome, referencia, reference, descricao, description, codigo_barras, barcode, armazem_id, warehouse_id, stock_quantity, stock, stock_atual, estoque_atual, price, preco_venda, unit, unidade, tipo, taxa_iva, iva_rate')
+        .select('id, name, nome, referente, codigo, code, barcode, descricao, description, armazem_id, warehouse_id, stock_quantity, stock, stock_atual, estoque_atual, price, preco, preco_venda, unit, unidade, tipo, iva_taxa, is_active, ativo')
         .eq('empresa_id', empresaId)
-        .eq('is_active', true)
         .order('name', { ascending: true });
-      
-      if (!error && data) {
-        // Só produtos com stock > 0
-        const withStock = data.filter(p => {
-          const qty = Number(p.stock_quantity ?? p.stock ?? p.stock_atual ?? (p as any).estoque_atual ?? 0);
-          return qty > 0;
-        });
-        setProducts(withStock);
+
+      if (error?.code === '42703') {
+        const fallbackRes = await supabase
+          .from('produtos')
+          .select('*')
+          .eq('empresa_id', empresaId)
+          .order('name', { ascending: true });
+        data = fallbackRes.data;
+        error = fallbackRes.error;
+      }
+
+      if (!error && Array.isArray(data)) {
+        const withStock = normalizeStockList(data);
+        setProducts(withStock.length > 0 ? withStock : normalizeStockList(propProducts));
+      } else if (propProducts.length > 0) {
+        setProducts(normalizeStockList(propProducts));
       }
     } catch (err) {
       console.error('[StockProductPicker] Erro ao carregar:', err);
+      if (propProducts.length > 0) {
+        setProducts(normalizeStockList(propProducts));
+      }
     } finally {
       setLoading(false);
     }
@@ -97,7 +125,7 @@ export const StockProductPicker: React.FC<StockProductPickerProps> = ({
       const q = searchTerm.toLowerCase();
       list = list.filter(p =>
         (p.name || p.nome || '').toLowerCase().includes(q) ||
-        (p.referencia || p.reference || '').toLowerCase().includes(q) ||
+        ((p as any).referente || (p as any).codigo || (p as any).code || p.referencia || p.reference || '').toLowerCase().includes(q) ||
         (p.codigo_barras || p.barcode || '').toLowerCase().includes(q)
       );
     }
@@ -108,7 +136,7 @@ export const StockProductPicker: React.FC<StockProductPickerProps> = ({
     Number(p.stock_quantity ?? p.stock ?? p.stock_atual ?? (p as any).estoque_atual ?? 0);
   
   const getPrice = (p: StockProduct) =>
-    Number(p.price ?? p.preco_venda ?? 0);
+    Number(p.price ?? p.preco_venda ?? (p as any).preco ?? 0);
 
   const getWarehouseName = (p: StockProduct) => {
     const wId = p.armazem_id || p.warehouse_id;
@@ -197,8 +225,8 @@ export const StockProductPicker: React.FC<StockProductPickerProps> = ({
                   >
                     <td className="px-4 py-3">
                       <p className="font-semibold text-zinc-900">{p.name || p.nome}</p>
-                      {(p.referencia || p.reference) && (
-                        <p className="text-xs text-zinc-400">Ref: {p.referencia || p.reference}</p>
+                      {((p as any).referente || (p as any).codigo || (p as any).code || p.referencia || p.reference) && (
+                        <p className="text-xs text-zinc-400">Ref: {(p as any).referente || (p as any).codigo || (p as any).code || p.referencia || p.reference}</p>
                       )}
                     </td>
                     <td className="px-4 py-3 text-zinc-600 text-xs">{getWarehouseName(p)}</td>

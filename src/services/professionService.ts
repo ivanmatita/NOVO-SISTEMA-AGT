@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { authService } from './authService';
 import { Profession } from '../types';
 
 const normalizeProfession = (item: any): Profession => {
@@ -43,7 +44,7 @@ export const professionService = {
 
     // 2. Fallback resiliente para a API serverless segura com service_role
     try {
-      const session = (await supabase.auth.getSession())?.data?.session;
+      const session = await authService.getSessionSafe() || (await supabase.auth.getSession())?.data?.session;
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (session?.access_token) {
         headers['Authorization'] = `Bearer ${session.access_token}`;

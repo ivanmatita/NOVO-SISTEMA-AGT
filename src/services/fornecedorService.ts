@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { authService } from './authService';
 
 export interface Fornecedor {
   id?: number | string;
@@ -30,8 +31,10 @@ export interface Fornecedor {
 
 async function getToken(): Promise<string | null> {
   try {
-    const { data: { session } } = await supabase.auth.getSession();
-    return session?.access_token || null;
+    const session = await authService.getSessionSafe();
+    if (session?.access_token) return session.access_token;
+    const { data: { session: sbSession } } = await supabase.auth.getSession();
+    return sbSession?.access_token || null;
   } catch {
     return null;
   }

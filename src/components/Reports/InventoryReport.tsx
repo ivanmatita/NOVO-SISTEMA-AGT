@@ -28,14 +28,14 @@ export const InventoryReport = ({ products, stockMovements, warehouses, onBack }
     return products.filter(p => {
       const matchesSearch = (p.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                            (p.barcode || '').includes(searchTerm);
-      const matchesWarehouse = selectedWarehouse === 'all' || String(p.warehouse_id) === String(selectedWarehouse);
+      const matchesWarehouse = selectedWarehouse === 'all' || String(p.armazem_id || p.warehouse_id) === String(selectedWarehouse);
       return matchesSearch && matchesWarehouse;
     });
   }, [products, searchTerm, selectedWarehouse]);
 
   const stats = useMemo(() => {
-    const totalCostValue = filteredProducts.reduce((acc, p) => acc + (p.stock_quantity * (p.cost_price || 0)), 0);
-    const totalSaleValue = filteredProducts.reduce((acc, p) => acc + (p.stock_quantity * (p.sale_price || 0)), 0);
+    const totalCostValue = filteredProducts.reduce((acc, p) => acc + (p.stock_quantity * (p.cost_price || p.preco_compra || 0)), 0);
+    const totalSaleValue = filteredProducts.reduce((acc, p) => acc + (p.stock_quantity * (p.price || p.preco_venda || p.sale_price || 0)), 0);
     const totalItems = filteredProducts.reduce((acc, p) => acc + p.stock_quantity, 0);
     const lowStockItems = filteredProducts.filter(p => p.stock_quantity <= (p.min_stock || 0)).length;
 
@@ -55,10 +55,10 @@ export const InventoryReport = ({ products, stockMovements, warehouses, onBack }
       'Armazém': p.warehouse_name || 'PADRÃO',
       'Quantity': p.stock_quantity,
       'Unit': p.unit || 'UN',
-      'Preço Custo': p.cost_price || 0,
-      'Preço Venda': p.sale_price || 0,
-      'Custo Total': p.stock_quantity * (p.cost_price || 0),
-      'Venda Total': p.stock_quantity * (p.sale_price || 0)
+      'Preço Custo': p.cost_price || p.preco_compra || 0,
+      'Preço Venda': p.price || p.preco_venda || p.sale_price || 0,
+      'Custo Total': p.stock_quantity * (p.cost_price || p.preco_compra || 0),
+      'Venda Total': p.stock_quantity * (p.price || p.preco_venda || p.sale_price || 0)
     }));
     exportToExcel(data, `Inventario_${selectedDate}.xlsx`, 'Stock');
   };
@@ -192,8 +192,10 @@ export const InventoryReport = ({ products, stockMovements, warehouses, onBack }
             </thead>
             <tbody className="divide-y divide-zinc-100 text-[11px] font-bold">
               {filteredProducts.map((p, idx) => {
-                const totalCost = p.stock_quantity * (p.cost_price || 0);
-                const totalSale = p.stock_quantity * (p.sale_price || 0);
+                const unitCost = p.cost_price || p.preco_compra || 0;
+                const unitSale = p.price || p.preco_venda || p.sale_price || 0;
+                const totalCost = p.stock_quantity * unitCost;
+                const totalSale = p.stock_quantity * unitSale;
                 const isLow = p.stock_quantity <= (p.min_stock || 0);
 
                 return (
@@ -214,8 +216,8 @@ export const InventoryReport = ({ products, stockMovements, warehouses, onBack }
                         {p.stock_quantity} {p.unit || 'UN'}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-right text-zinc-500 font-mono">{formatCurrency(p.cost_price || 0)}</td>
-                    <td className="px-6 py-4 text-right text-zinc-500 font-mono">{formatCurrency(p.sale_price || 0)}</td>
+                    <td className="px-6 py-4 text-right text-zinc-500 font-mono">{formatCurrency(unitCost)}</td>
+                    <td className="px-6 py-4 text-right text-zinc-500 font-mono">{formatCurrency(unitSale)}</td>
                     <td className="px-6 py-4 text-right text-zinc-600">{formatCurrency(totalCost)}</td>
                     <td className="px-6 py-4 text-right font-black text-[#003366] bg-zinc-50/30">{formatCurrency(totalSale)}</td>
                     <td className="px-6 py-4 text-center">

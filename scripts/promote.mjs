@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 /**
  * ============================================================
- * PROMOTE.MJS — Pipeline Staging ? Produção
+ * PROMOTE.MJS ï¿½ Pipeline Staging ? Produï¿½ï¿½o
  * NOVO-SISTEMA-AGT
  * ============================================================
- * REGRA SUPREMA: NADA vai para Produção sem confirmação MANUAL
- * e EXPLÍCITA do administrador neste terminal.
+ * REGRA SUPREMA: NADA vai para Produï¿½ï¿½o sem confirmaï¿½ï¿½o MANUAL
+ * e EXPLï¿½CITA do administrador neste terminal.
  *
  * Uso:
  *   node scripts/promote.mjs              ? Fluxo completo
  *   node scripts/promote.mjs --status     ? Ver release ativa
- *   node scripts/promote.mjs --dry-run    ? Simulação
+ *   node scripts/promote.mjs --dry-run    ? Simulaï¿½ï¿½o
  * ============================================================
  */
 
@@ -161,7 +161,7 @@ async function main(){
   if(statusOnly){ showStatus(); process.exit(0); }
   const rl=readline.createInterface({input:process.stdin,output:process.stdout});
   try {
-    hdr('PIPELINE STAGING -> PRODUCAO — NOVO-SISTEMA-AGT');
+    hdr('PIPELINE STAGING -> PRODUCAO ï¿½ NOVO-SISTEMA-AGT');
     if(isDryRun) warn('MODO DRY-RUN ATIVO: Nenhuma alteracao real sera feita.\n');
 
     const manifest=loadManifest();
@@ -180,7 +180,7 @@ async function main(){
 
     // CONFIRMACAO 2: Texto exato
     log('\n'+sep('-'));
-    log('Confirmacao 2/2: CONFIRMACAO FINAL — PRODUCAO OFICIAL');
+    log('Confirmacao 2/2: CONFIRMACAO FINAL ï¿½ PRODUCAO OFICIAL');
     log(sep('-'));
     log(`\n  Release:              ${manifest.release_id}`);
     log(`  Commit Aprovado:      ${manifest.commit_sha}`);
@@ -193,13 +193,13 @@ async function main(){
     log('\nCONFIRMACOO MANUAL RECEBIDA. Iniciando promocao controlada...\n');
 
     // EXECUCAO
-    hdr('PASSO 1/3 — MIGRATIONS NO SUPABASE PRODUCAO');
+    hdr('PASSO 1/3 ï¿½ MIGRATIONS NO SUPABASE PRODUCAO');
     await applyMigrationsToProd(pendingInProd);
 
-    hdr('PASSO 2/3 — PROMOCAO DO CODIGO PARA main');
+    hdr('PASSO 2/3 ï¿½ PROMOCAO DO CODIGO PARA main');
     await promoteCodeToMain(manifest);
 
-    hdr('PASSO 3/3 — ARQUIVANDO RELEASE');
+    hdr('PASSO 3/3 ï¿½ ARQUIVANDO RELEASE');
     manifest.status='PROMOTED';
     manifest.promotion={ promoted_at:new Date().toISOString(), promoted_by:manifest.approval.approved_by, production_commit_sha:manifest.commit_sha, migrations_applied:pendingInProd, dry_run:isDryRun };
     if(!isDryRun){
@@ -216,7 +216,7 @@ async function main(){
     log('\nProximos passos:');
     log('  1. Aguardar deploy Vercel (~2 min)');
     log('  2. Validar: login, APIs, modulos principais');
-    log('  3. Se falhar: NAO fazer rollback automatico — avalie manualmente\n');
+    log('  3. Se falhar: NAO fazer rollback automatico ï¿½ avalie manualmente\n');
   } finally { rl.close(); }
 }
 

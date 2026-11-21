@@ -33,6 +33,44 @@ async function safeApiFetch(url: string, options: RequestInit = {}, maxAttempts 
   throw new Error('Servidor indisponível após múltiplas tentativas. Verifique a sua ligação.');
 }
 
+const FALLBACK_SESSION_KEY = 'imatec_fallback_session';
+
+function saveFallbackSession(session: any) {
+  sessionCache = session;
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      if (session?.access_token) {
+        sessionStorage.setItem(FALLBACK_SESSION_KEY, JSON.stringify(session));
+      } else {
+        sessionStorage.removeItem(FALLBACK_SESSION_KEY);
+      }
+    }
+  } catch {}
+}
+
+function getFallbackSession(): any {
+  const isNotExpired = (s: any) => {
+    if (!s?.access_token) return false;
+    if (s.expires_at && Number(s.expires_at) * 1000 < Date.now() - 5000) return false;
+    return true;
+  };
+  if (isNotExpired(sessionCache)) return sessionCache;
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      const raw = sessionStorage.getItem(FALLBACK_SESSION_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (isNotExpired(parsed)) {
+          sessionCache = parsed;
+          return parsed;
+        }
+        sessionStorage.removeItem(FALLBACK_SESSION_KEY);
+      }
+    }
+  } catch {}
+  return null;
+}
+
 export const authService = {
   async getSessionSafe() {
     if (sessionLoading) {
@@ -59,15 +97,18 @@ export const authService = {
       
       if (res.error) {
         console.error('Error getting session:', res.error);
-        return null;
+        return getFallbackSession();
       }
       
       const session = res.data.session;
-      sessionCache = session; // Ainda atualizamos o cache global para outros usos, mas não bloqueamos a leitura oficial
-      return session;
+      if (session) {
+        sessionCache = session;
+        return session;
+      }
+      return getFallbackSession();
     } catch (err) {
       console.error('getSessionSafe timeout/error:', err);
-      return null;
+      return getFallbackSession();
     } finally {
       sessionLoading = false;
     }
@@ -118,8 +159,29 @@ export const authService = {
         throw new Error(`Empresa criada com sucesso, mas ocorreu um problema ao iniciar sessão: ${loginError.message}`);
       }
 
+      if (loginData?.session) {
+        saveFallbackSession(loginData.session);
+      }
+
+      // Se a conta já existia no Auth sem perfil/empresa, garantir onboarding pelo servidor
+      const currentUser = await this.getCurrentUser();
+      if (!currentUser && loginData?.session?.access_token) {
+        try {
+          const repairRes = await fetch('/api/auth/repair-onboarding', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${loginData.session.access_token}`
+            }
+          });
+          if (repairRes.ok) {
+            return (await this.getCurrentUser()) as User;
+          }
+        } catch (_) {}
+      }
+
       console.log('[AuthService] Fluxo SaaS concluído com sucesso!');
-      return null as any;
+      return (currentUser || null) as any;
     } catch (err: any) {
       console.error('[AuthService] Falha Crítica no Fluxo SaaS:', err.message);
       throw err;
@@ -180,9 +242,15 @@ export const authService = {
         throw new Error('Falha interna: Sessão não encontrada ou credenciais inválidas.');
       }
 
-      sessionCache = session;
+      saveFallbackSession(session);
 
-      // 1. Tentar buscar Perfil
+      // 0. Tentar primeiro via backend (/api/auth/me) que resolve perfil e empresa com service_role (bypass RLS e multi-ambiente)
+      const meUser = await this.getCurrentUser();
+      if (meUser && meUser.empresa_id) {
+        return meUser;
+      }
+
+      // 1. Tentar buscar Perfil diretamente no cliente se /api/auth/me não retornou empresa completa
       let { data: perfil, error: perfilError } = await supabase
         .from('perfis')
         .select('*')
@@ -208,9 +276,10 @@ export const authService = {
       }
 
 
-      // 2. Se não houver perfil, tentar buscar Empresa (Auto-reparação)
-      if (!perfil) {
+      // 2. Se não houver perfil ou empresa vinculada, executar auto-reparação via servidor
+      if (!perfil || !perfil.empresa_id) {
         console.warn('[AuthService] Perfil não encontrado. Iniciando auto-reparação...');
+        let serverRepairError: string | null = null;
         
         try {
           const token = session.access_token;
@@ -228,24 +297,37 @@ export const authService = {
               if (repairResult.success) {
                 console.log('[AuthService] Onboarding reparado com sucesso pelo servidor:', repairResult.message);
                 sessionCache = session;
-                return await this.getCurrentUser() as User;
+                const repairedUser = await this.getCurrentUser();
+                if (repairedUser) return repairedUser;
               }
             } else {
               const errData = await repairResponse.json().catch(() => ({}));
-              console.warn('[AuthService] Erro na API de reparação:', errData.error || 'Erro desconhecido');
+              serverRepairError = errData.error || `HTTP ${repairResponse.status}`;
+              console.warn('[AuthService] Erro na API de reparação:', serverRepairError);
             }
           }
         } catch (repairErr: any) {
+          serverRepairError = repairErr.message;
           console.warn('[AuthService] Erro ao tentar API de reparação de onboarding:', repairErr.message);
         }
 
-        // --- FALLBACK CLIENT-SIDE ---
+        // --- FALLBACK CLIENT-SIDE (somente se o cliente local possuir auth.uid() válido no mesmo projeto Supabase) ---
+        const { data: verifiedAuthData } = await supabase.auth.getUser();
+        const verifiedUid = verifiedAuthData?.user?.id;
+        if (!verifiedUid || verifiedUid !== authUser.id) {
+          throw new Error(
+            serverRepairError
+              ? `Erro de Onboarding: Não foi possível concluir a associação da empresa no servidor. Detalhe: ${serverRepairError}`
+              : 'Erro de Onboarding: Sessão autenticada não corresponde ao projeto Supabase ativo para criação automática da empresa.'
+          );
+        }
+
         console.log('[AuthService] Fallback: Executando reparação do lado do cliente...');
         
         const { data: company, error: companyErr } = await supabase
           .from('empresas')
           .select('id, nome_empresa')
-          .eq('auth_user_id', authUser.id)
+          .eq('auth_user_id', verifiedUid)
           .limit(1)
           .maybeSingle();
 
@@ -261,7 +343,7 @@ export const authService = {
             .from('empresas')
             .insert([{
               id: newCompanyId,
-              auth_user_id: authUser.id,
+              auth_user_id: verifiedUid,
               nome: compName,
               nome_empresa: compName,
               email: authUser.email,
@@ -275,7 +357,8 @@ export const authService = {
 
           if (createError) {
             console.error('[AuthService] Falha ao criar empresa base:', createError);
-            throw new Error(`Erro de Onboarding: Autenticação ativa, mas não foi possível criar a sua empresa base. Detalhe: ${createError.message}`);
+            const detail = serverRepairError ? `${serverRepairError} | RLS: ${createError.message}` : createError.message;
+            throw new Error(`Erro de Onboarding: Autenticação ativa, mas não foi possível criar a sua empresa base. Detalhe: ${detail}`);
           }
           
           targetCompany = newCompany;
@@ -288,8 +371,8 @@ export const authService = {
         const { error: insertError } = await supabase
           .from('perfis')
           .upsert({
-            id: authUser.id,
-            user_id: authUser.id,
+            id: verifiedUid,
+            user_id: verifiedUid,
             empresa_id: targetCompany.id,
             email: authUser.email,
             username: cleanUsername,
@@ -308,8 +391,8 @@ export const authService = {
            const { error: retryError } = await supabase
              .from('perfis')
              .insert([{
-               id: authUser.id,
-               user_id: authUser.id,
+               id: verifiedUid,
+               user_id: verifiedUid,
                empresa_id: targetCompany.id,
                email: authUser.email,
                username: cleanUsername,
@@ -343,7 +426,7 @@ export const authService = {
     try {
       clearTenantCache();
       await supabase.auth.signOut();
-      sessionCache = null;
+      saveFallbackSession(null);
     } catch (err) {
       console.error('Erro ao sair:', err);
     }
@@ -380,12 +463,16 @@ export const authService = {
           }
         });
         
+        if (res.status === 401) {
+          saveFallbackSession(null);
+        }
+
         if (res.status === 403) {
           const errData = await res.json().catch(() => ({}));
           if (errData.error === 'CONTA_BLOQUEADA') {
             console.warn('[AuthService] Utilizador bloqueado detetado via API. Efetuando logout...');
             await supabase.auth.signOut();
-            sessionCache = null;
+            saveFallbackSession(null);
             alert('O seu acesso foi bloqueado. Contacte o administrador da sua empresa para obter mais informações.');
             window.location.reload();
             return null;
@@ -480,7 +567,7 @@ export const authService = {
       if (perfil && (perfil.ativo === false || perfil.is_active === false)) {
         console.warn('[AuthService] Utilizador com conta bloqueada detetado em getCurrentUser. Efetuando logout...');
         await supabase.auth.signOut();
-        sessionCache = null;
+        saveFallbackSession(null);
         return null;
       }
 
@@ -643,8 +730,12 @@ export const authService = {
 
   onAuthStateChange(callback: (event: string, session: any) => void) {
     return supabase.auth.onAuthStateChange((event, session) => {
-      sessionCache = session;
-      callback(event, session);
+      if (event === 'SIGNED_OUT') {
+        saveFallbackSession(null);
+      } else if (session) {
+        sessionCache = session;
+      }
+      callback(event, session || getFallbackSession());
     });
   }
 };

@@ -11,6 +11,12 @@ import { validateDocumentController } from "./agt/validate-document.controller.j
 import { validateDocumentControllerNew, registerInvoiceController, validateNifController, solicitarSerieController, consultarFacturaController, listarSeriesController, obterEstadoController, listarFacturasController, agtWebhookController } from "./agt/agt.controllers.js";
 import { startAgtQueueWorker } from "./agt/agtQueueWorker.js";
 import { getAGTKeyDiagnostic } from "./agt/rs256.signer.js";
+import secureRhHandler from "./api/_handlers/secure-rh.js";
+import stockExitHandler from "./api/_handlers/stock-exit.js";
+import stockEnterpriseHandler from "./api/_handlers/stock-enterprise.js";
+import stockAgentsHandler from "./api/_handlers/stock-agents.js";
+import migracaoHandler from "./api/_handlers/migracao.js";
+import crmHandler from "./api/_handlers/crm.js";
 
 // ================================================================
 // CARREGAMENTO DE AMBIENTE — SUPORTE MULTI-AMBIENTE
@@ -255,7 +261,8 @@ async function getAuthUserContext(req: express.Request) {
                 username: perfil.username || user.email?.split('@')[0],
                 empresaId: activeCompanyId,
                 role: (resolvedRole || 'user').toLowerCase(),
-                isBlocked: perfil.is_active === false || perfil.ativo === false
+                isBlocked: perfil.is_active === false || perfil.ativo === false,
+                adminClient: resolvedAdminClient
             };
         }
 
@@ -267,7 +274,8 @@ async function getAuthUserContext(req: express.Request) {
                 username: user.email?.split('@')[0],
                 empresaId: ownedCompany.id,
                 role: 'admin',
-                isBlocked: false
+                isBlocked: false,
+                adminClient: resolvedAdminClient
             };
         }
     } catch (err: any) {
@@ -287,7 +295,7 @@ async function resolveTenantEmpresaId(req: express.Request, requestedEmpresaId?:
         return { empresaId: null };
     }
 
-    const isMaster = isSuperAdmin(authCtx.email, authCtx.role);
+    const isMaster = await isSuperAdmin(req);
     if (isMaster) {
         // SuperAdmin pode consultar qualquer empresa ou a sua própria
         return { empresaId: requestedEmpresaId || authCtx.empresaId || null };
@@ -308,7 +316,7 @@ async function resolveTenantEmpresaId(req: express.Request, requestedEmpresaId?:
 
 // Thread-safe and graceful Audit Log writing
 let isLoggingInternal = false;
-async function addAuditLog(userId: string | null, email: string | null, action: string, empresaId: string | null, ip: string, browser: string) {
+async function addAuditLog(userId: string | null, email: string | null, action: string, empresaId: string | null, ip: string, browser: string, adminClient?: any) {
     if (isLoggingInternal) return;
     isLoggingInternal = true;
 
@@ -316,13 +324,14 @@ async function addAuditLog(userId: string | null, email: string | null, action: 
         const timestamp = new Date().toISOString();
         console.log(`[AUDITLOG] [${timestamp}] User: ${email || 'unknown'} (${userId || 'null'}), Action: ${action}, Company: ${empresaId || 'null'}, IP: ${ip}`);
         
-        if (supabaseAdmin) {
+        const targetClient = adminClient || supabaseAdmin;
+        if (targetClient) {
             try {
                 let validEmpresaId = null;
                 if (empresaId && isValidUUID(empresaId)) {
                     // Validar se empresa_id existe antes de inserir para evitar violação de FK
                     try {
-                        const { data: comp } = await supabaseAdmin.from('empresas').select('id').eq('id', empresaId).maybeSingle();
+                        const { data: comp } = await targetClient.from('empresas').select('id').eq('id', empresaId).maybeSingle();
                         if (comp?.id) validEmpresaId = comp.id;
                     } catch (_) {}
                 }
@@ -338,7 +347,7 @@ async function addAuditLog(userId: string | null, email: string | null, action: 
                 if (ip) logObj.ip = ip;
                 if (browser) logObj.navegador = browser;
 
-                const { error } = await supabaseAdmin.from('logs_auditoria').insert([logObj]);
+                const { error } = await targetClient.from('logs_auditoria').insert([logObj]);
                 
                 if (error) {
                     console.warn("[AUDITLOG] Primary log insert fail. Retrying simplified log...", error.message);
@@ -351,7 +360,7 @@ async function addAuditLog(userId: string | null, email: string | null, action: 
                     if (userId && isValidUUID(userId)) minimalLog.user_id = userId;
                     if (email) minimalLog.email = email;
                     
-                    await supabaseAdmin.from('logs_auditoria').insert([minimalLog]);
+                    await targetClient.from('logs_auditoria').insert([minimalLog]);
                 }
             } catch (err: any) {
                 console.warn("[AUDITLOG] Log capture suppressed due to DB error:", err.message);
@@ -650,15 +659,19 @@ app.all("/api/supabase-proxy/*", express.raw({ type: "*/*", limit: "50mb" }), as
   try {
     const subPath = req.originalUrl.substring("/api/supabase-proxy".length);
 
+    const host = (req.headers['x-forwarded-host'] || req.headers.host || '').toString().toLowerCase();
+    const isStagingProxy = host.includes('staging') || host.includes('teste') || host.includes('homologacao') || _isStaging;
+    const targetSupabaseUrl = (isStagingProxy ? STAGING_URL : (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || PROD_URL)).trim();
+
     // Guard: if Supabase URL not configured, return clean error (avoid ENOTFOUND flood)
-    if (!supabaseUrl || supabaseUrl.includes("xxxx") || !supabaseUrl.startsWith("http")) {
+    if (!targetSupabaseUrl || targetSupabaseUrl.includes("xxxx") || !targetSupabaseUrl.startsWith("http")) {
       return res.status(503).json({ 
         error: "Supabase não configurado", 
         message: "Defina VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY no ficheiro .env" 
       });
     }
 
-    const destinationUrl = supabaseUrl + subPath;
+    const destinationUrl = targetSupabaseUrl + subPath;
 
     // Filter and prepare headers to send to Supabase
     const headers: { [key: string]: string } = {};
@@ -916,11 +929,14 @@ app.use((req, res, next) => {
       // Use admin client for DB queries (bypass RLS)
       const client = meResolvedAdmin;
 
-      // Fetch without RLS
+      // Fetch without RLS (check id, user_id, or email)
+      const perfilFilter = user.email
+        ? `id.eq.${user.id},user_id.eq.${user.id},email.eq.${user.email}`
+        : `id.eq.${user.id},user_id.eq.${user.id}`;
       const { data: perfil } = await client
         .from('perfis')
         .select('*')
-        .eq('id', user.id)
+        .or(perfilFilter)
         .maybeSingle();
 
       const companyId = perfil?.company_id || perfil?.empresa_id;
@@ -963,7 +979,8 @@ app.use((req, res, next) => {
             "Login efetuado / Sessão validada",
             companyId,
             (req.ip || req.headers['x-forwarded-for'] || '').toString(),
-            (req.headers['user-agent'] || '').toString()
+            (req.headers['user-agent'] || '').toString(),
+            client
           );
         } catch (_) {}
           
@@ -989,7 +1006,8 @@ app.use((req, res, next) => {
             "Login efetuado / Sessão validada (Proprietário)",
             legacyEmpresa.id,
             (req.ip || req.headers['x-forwarded-for'] || '').toString(),
-            (req.headers['user-agent'] || '').toString()
+            (req.headers['user-agent'] || '').toString(),
+            client
           );
         } catch (_) {}
 
@@ -1022,10 +1040,6 @@ app.use((req, res, next) => {
         return res.status(401).json({ error: "Falta o cabeçalho de autenticação (token JWT)." });
       }
 
-      if (!supabaseAdmin) {
-        return res.status(500).json({ error: "Cliente administrativo do Supabase não configurado." });
-      }
-
       const token = authHeader.split(' ')[1];
 
       // Use HTTP fetch to avoid JWKS JWT kid rotation issues with Supabase SDK
@@ -1039,6 +1053,7 @@ app.use((req, res, next) => {
       const repairFallbackUrl = isStagingRepair ? PROD_URL : STAGING_URL;
       const repairFallbackAnon = isStagingRepair ? PROD_ANON_KEY : STAGING_ANON_KEY;
 
+      let repairResolvedIsStaging = isStagingRepair;
       let repairAuthFetch = await fetch(`${repairPrimaryUrl}/auth/v1/user`, {
         headers: { 'apikey': repairPrimaryAnon, 'Authorization': `Bearer ${token}` }
       });
@@ -1046,6 +1061,9 @@ app.use((req, res, next) => {
         repairAuthFetch = await fetch(`${repairFallbackUrl}/auth/v1/user`, {
           headers: { 'apikey': repairFallbackAnon, 'Authorization': `Bearer ${token}` }
         });
+        if (repairAuthFetch.ok) {
+          repairResolvedIsStaging = !isStagingRepair;
+        }
       }
       if (!repairAuthFetch.ok) {
         console.error("[SERVER-AUTH] Token inválido na reparação: HTTP", repairAuthFetch.status);
@@ -1056,32 +1074,59 @@ app.use((req, res, next) => {
         return res.status(401).json({ error: "Sessão expirada ou token de acesso inválido." });
       }
 
-      console.log(`[SERVER-AUTH] Reparando Onboarding para o Utilizador: ${user.email} (${user.id})`);
+      const repairAdminClient = repairResolvedIsStaging ? supabaseAdminStaging : supabaseAdminProd;
+      if (!repairAdminClient) {
+        return res.status(500).json({ error: "Cliente administrativo do Supabase não configurado." });
+      }
 
-      // 1. Verificar se existe Perfil
-      const { data: perfil } = await supabaseAdmin
+      console.log(`[SERVER-AUTH] Reparando Onboarding [${repairResolvedIsStaging ? 'STAGING' : 'PRODUCTION'}] para o Utilizador: ${user.email} (${user.id})`);
+
+      // 1. Verificar se já existe Perfil (por id, user_id ou email)
+      const perfilFilter = user.email
+        ? `id.eq.${user.id},user_id.eq.${user.id},email.eq.${user.email}`
+        : `id.eq.${user.id},user_id.eq.${user.id}`;
+      const { data: existingPerfil } = await repairAdminClient
         .from('perfis')
         .select('*')
-        .eq('id', user.id)
+        .or(perfilFilter)
         .maybeSingle();
 
-      if (perfil) {
+      if (existingPerfil && (existingPerfil.empresa_id || existingPerfil.company_id)) {
+        const existingCompId = existingPerfil.empresa_id || existingPerfil.company_id;
         console.log("[SERVER-AUTH] Perfil já existe, retornando sucesso.");
-        return res.json({ success: true, message: "Perfil já existente e associado.", companyId: perfil.company_id || perfil.empresa_id });
+        return res.json({ success: true, message: "Perfil já existente e associado.", companyId: existingCompId });
       }
 
       // 2. Verificar se existe Empresa proprietária do utilizador
-      let { data: empresa } = await supabaseAdmin
+      let { data: empresa } = await repairAdminClient
         .from('empresas')
         .select('*')
-        .eq('auth_user_id', user.id)
+        .or(`auth_user_id.eq.${user.id},id.eq.${user.id}`)
         .maybeSingle();
+
+      if (!empresa && user.email) {
+        const { data: empByEmail } = await repairAdminClient
+          .from('empresas')
+          .select('*')
+          .eq('email', user.email)
+          .limit(1)
+          .maybeSingle();
+        if (empByEmail) {
+          empresa = empByEmail;
+          if (!empresa.auth_user_id) {
+            await repairAdminClient
+              .from('empresas')
+              .update({ auth_user_id: user.id })
+              .eq('id', empresa.id);
+          }
+        }
+      }
 
       if (!empresa) {
         console.warn("[SERVER-AUTH] Nenhuma empresa encontrada. Criando nova empresa segura...");
         const newComId = crypto.randomUUID();
-        const compName = `Empresa de ${user.email?.split('@')[0]}`;
-        const { data: newEmpresa, error: empErr } = await supabaseAdmin
+        const compName = `Empresa de ${user.email?.split('@')[0] || 'Utilizador'}`;
+        const { data: newEmpresa, error: empErr } = await repairAdminClient
           .from('empresas')
           .insert([{
             id: newComId,
@@ -1090,6 +1135,9 @@ app.use((req, res, next) => {
             nome_empresa: compName,
             email: user.email,
             plano: 'trial',
+            ambiente: repairResolvedIsStaging ? 'staging' : 'production',
+            status_licenca: 'TRIAL',
+            licenca_ativa: true,
             ativo: true
           }])
           .select('*')
@@ -1103,23 +1151,32 @@ app.use((req, res, next) => {
       }
 
       // 3. Vincular Perfil (using existing columns of perfis in DB)
-      const { error: perfErr } = await supabaseAdmin
+      const baseUsername = (user.email?.split('@')[0] || `user_${user.id.slice(0, 8)}`).trim();
+      const perfilPayload = {
+        id: user.id,
+        user_id: user.id,
+        empresa_id: empresa.id,
+        email: user.email,
+        nome: user.user_metadata?.full_name || empresa.nome_empresa || empresa.nome || baseUsername,
+        role: 'admin',
+        is_admin: true,
+        is_active: true,
+        ativo: true,
+        level: 10,
+        username: baseUsername
+      };
+
+      let { error: perfErr } = await repairAdminClient
         .from('perfis')
-        .upsert({
-          id: user.id,
-          user_id: user.id,
-          empresa_id: empresa.id,
-          email: user.email,
-          nome: user.user_metadata?.full_name || empresa.nome_empresa || empresa.nome || user.email?.split('@')[0],
-          role: 'admin',
-          is_admin: true,
-          is_active: true,
-          ativo: true,
-          level: 10,
-          username: user.email?.split('@')[0]
-        }, {
-          onConflict: 'id'
-        });
+        .upsert(perfilPayload, { onConflict: 'id' });
+
+      if (perfErr && perfErr.message?.toLowerCase().includes('username')) {
+        const retryPayload = { ...perfilPayload, username: `${baseUsername}_${user.id.slice(0, 6)}` };
+        const retryRes = await repairAdminClient
+          .from('perfis')
+          .upsert(retryPayload, { onConflict: 'id' });
+        perfErr = retryRes.error;
+      }
 
       if (perfErr) {
         console.error("[SERVER-AUTH] Erro ao criar perfil seguro:", perfErr);
@@ -1127,24 +1184,26 @@ app.use((req, res, next) => {
       }
 
       // 4. Inserir também na tabela system_users para total consistência (com colunas corretas!)
-      const { error: sysError } = await supabaseAdmin
-        .from('system_users')
-        .upsert({
-          id: user.id,
-          empresa_id: empresa.id,
-          company_name: empresa.nome_empresa,
-          nome: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuário',
-          email: user.email || '',
-          is_admin: true,
-          level: 10,
-          username: user.email?.split('@')[0]
-        }, {
-          onConflict: 'id'
-        });
+      try {
+        const { error: sysError } = await repairAdminClient
+          .from('system_users')
+          .upsert({
+            id: user.id,
+            empresa_id: empresa.id,
+            company_name: empresa.nome_empresa,
+            nome: user.user_metadata?.full_name || baseUsername || 'Usuário',
+            email: user.email || '',
+            is_admin: true,
+            level: 10,
+            username: baseUsername
+          }, {
+            onConflict: 'id'
+          });
 
-      if (sysError) {
-        console.warn("[SERVER-AUTH] Alerta menor de system_users ao reparar onboarding:", sysError.message);
-      }
+        if (sysError) {
+          console.warn("[SERVER-AUTH] Alerta menor de system_users ao reparar onboarding:", sysError.message);
+        }
+      } catch (_) {}
 
       await addAuditLog(
         user.id,
@@ -1152,7 +1211,8 @@ app.use((req, res, next) => {
         "Auto-Reparação concluída via API de Onboarding",
         empresa.id,
         (req.ip || req.headers['x-forwarded-for'] || '').toString(),
-        (req.headers['user-agent'] || '').toString()
+        (req.headers['user-agent'] || '').toString(),
+        repairAdminClient
       );
 
       console.log(`[SERVER-AUTH] Onboarding reparado com sucesso para ${user.email}`);
@@ -1314,24 +1374,24 @@ app.use((req, res, next) => {
       let authData = await authRes.json();
 
       if (!authRes.ok || !authData.access_token) {
-        // Tentar no fallback environment se falhar
-        if (resolvedUrl === primaryUrl) {
-          const fallbackRes = await fetch(`${fallbackUrl}/auth/v1/token?grant_type=password`, {
-            method: "POST",
-            headers: {
-              "apikey": fallbackAnonKey,
-              "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-              email: targetEmail.toLowerCase(),
-              password: cleanPassword
-            })
-          });
-          const fallbackData = await fallbackRes.json();
-          if (fallbackRes.ok && fallbackData.access_token) {
-            authData = fallbackData;
-            authRes = fallbackRes;
-          }
+        // Tentar no ambiente alternativo caso a password pertença ao outro projeto
+        const oppositeUrl = resolvedUrl === primaryUrl ? fallbackUrl : primaryUrl;
+        const oppositeAnonKey = resolvedUrl === primaryUrl ? fallbackAnonKey : primaryAnonKey;
+        const fallbackRes = await fetch(`${oppositeUrl}/auth/v1/token?grant_type=password`, {
+          method: "POST",
+          headers: {
+            "apikey": oppositeAnonKey,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            email: targetEmail.toLowerCase(),
+            password: cleanPassword
+          })
+        });
+        const fallbackData = await fallbackRes.json();
+        if (fallbackRes.ok && fallbackData.access_token) {
+          authData = fallbackData;
+          authRes = fallbackRes;
         }
       }
 
@@ -2978,7 +3038,7 @@ app.use((req, res, next) => {
         return res.status(403).json({ success: false, error: "Utilizador não possui empresa associada.", code: "NO_COMPANY_ASSOCIATED" });
       }
 
-      const adminClient = getActiveAdminClient(req);
+      const adminClient = ctx.adminClient || getActiveAdminClient(req);
       if (!adminClient) return res.status(500).json({ success: false, error: "Database client não inicializado no servidor.", code: "DB_INIT_ERROR" });
 
       console.log(`[SERVER-CLIENTES] Buscando clientes para empresa: ${ctx.empresaId}`);
@@ -5732,8 +5792,8 @@ app.use((req, res, next) => {
       console.log(`[POS-AUTH] Validating password for targetEmail: '${targetEmail}' (user_id: ${user_id})`);
 
       // 5. Check against Supabase Auth signInWithPassword using reliable client config
-      const urlToUse = (supabaseUrl || process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "https://nawqfidnawokqaheqvar.supabase.co").trim();
-      const anonKeyToUse = (supabaseAnonKey || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5hd3FmaWRuYXdva3FhaGVxdmFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyMTgxNDYsImV4cCI6MjA5Mzc5NDE0Nn0.qFkIexxKcQDWax3pfhcgPMR3ZFIsE-gYWTS62i5Edgs").trim();
+      const urlToUse = (_isStaging ? STAGING_URL : (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || PROD_URL)).trim();
+      const anonKeyToUse = (_isStaging ? STAGING_ANON_KEY : (process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.ANON_KEY || PROD_ANON_KEY)).trim();
 
       if (targetEmail && urlToUse && anonKeyToUse) {
         const { createClient } = await import('@supabase/supabase-js');
@@ -7113,7 +7173,7 @@ app.use((req, res, next) => {
     }
   });
 
-  app.post("/api/accounting/movements/delete-batch", async (req, res) => {
+  const batchDeleteMovementsHandler = async (req: express.Request, res: express.Response) => {
     const { ids } = req.body as { ids: string[] };
     if (!ids || !Array.isArray(ids) || ids.length === 0) {
       return res.status(400).json({ error: 'Nenhum movimento selecionado para apagar.' });
@@ -7134,7 +7194,9 @@ app.use((req, res, next) => {
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
-  });
+  };
+  app.post("/api/accounting/movements/delete-batch", batchDeleteMovementsHandler);
+  app.post("/api/accounting/movements/batch-delete", batchDeleteMovementsHandler);
 
   // ============================================================
   //  2. APURAMENTO DE IVA (Supabase & PGC Angola)
@@ -9962,6 +10024,8 @@ app.use((req, res, next) => {
     }
   });
 
+  app.get("/api/crm/audit/resets", (req, res) => crmHandler(req, res));
+
   // Comprovativos de Pagamento CRM (GET & POST)
   app.get("/api/crm/comprovativos", async (req, res) => {
     if (!await isSuperAdmin(req)) return res.status(403).json({ error: "Acesso negado. Apenas administradores autorizados da IMATEC." });
@@ -10586,19 +10650,6 @@ app.use((req, res, next) => {
   });
 
   app.get("/api/receipts", (req, res) => res.json(receipts));
-  // Serve static files in production / standalone
-  const distPath = path.join(process.cwd(), 'dist');
-  if (fs.existsSync(distPath)) {
-    app.use(express.static(distPath));
-    app.get('*', (req: any, res: any) => {
-      const indexPath = path.join(distPath, 'index.html');
-      if (fs.existsSync(indexPath)) {
-        res.sendFile(indexPath);
-      } else {
-        res.status(404).json({ error: 'Not found' });
-      }
-    });
-  }
 
   // Utility to reload PostgREST schema cache
   app.post("/api/admin/reload-schema", async (req, res) => {
@@ -10682,26 +10733,96 @@ app.use((req, res, next) => {
     (typeof _currentFile === 'string' && _currentFile.includes('api'))
   );
 
-  if (!isServerless && (!process.env.NODE_ENV || process.env.NODE_ENV !== 'production' || process.env.STANDALONE_SERVER === 'true')) {
-    try {
-      app.listen(PORT, "0.0.0.0", () => {
-        console.log(`ERP Server running on port ${PORT}`);
-        console.log("[STARTUP] Server is ready to receive connections.");
+  const distPath = path.join(process.cwd(), 'dist');
+  const isDevServer = process.env.NODE_ENV !== 'production';
 
-        // Iniciar o processador e poller assíncrono de facturação AGT em background
-        startAgtQueueWorker(20000);
-
-        // Primeiro disparo em 5 segundos após boot
-        setTimeout(() => { runDailyAgtSeriesSync(); }, 5000);
-
-        // Repetir a cada 24 horas
-        setInterval(() => { runDailyAgtSeriesSync(); }, 24 * 60 * 60 * 1000);
+  const registerStaticFallback = () => {
+    if (fs.existsSync(distPath)) {
+      app.use(express.static(distPath));
+      app.get('*', (req: any, res: any) => {
+        if (req.path.startsWith('/api')) {
+          return res.status(404).json({ error: 'API route not found' });
+        }
+        const indexPath = path.join(distPath, 'index.html');
+        if (fs.existsSync(indexPath)) {
+          res.sendFile(indexPath);
+        } else {
+          res.status(404).json({ error: 'Not found' });
+        }
       });
-    } catch (listenErr: any) {
-      console.warn("[STARTUP] Porta já em uso ou ambiente gerenciado:", listenErr.message);
     }
+  };
+
+  // Mount serverless handlers missing from standalone Express server
+  app.all(["/api/secure-rh", "/api/secure-rh/*", "/api/payroll", "/api/payroll/*"], (req, res) => secureRhHandler(req, res));
+  app.all(["/api/stock/exit-sale", "/api/stock/check-stock"], (req, res) => stockExitHandler(req, res));
+  app.all(["/api/stock/overview", "/api/stock/operation", "/api/stock/transfer", "/api/stock/inventory", "/api/stock/alerts/scan", "/api/stock/settings"], (req, res) => stockEnterpriseHandler(req, res));
+  app.all(["/api/stock/agents", "/api/stock/agents/*"], (req, res) => stockAgentsHandler(req, res));
+  app.all(["/api/migracao", "/api/migracao/*"], (req, res) => migracaoHandler(req, res));
+
+  // CRITICAL: Guard all remaining /api/* requests BEFORE mounting Vite dev middleware
+  // Prevents Vite proxy (/api -> 127.0.0.1:3000) from entering an infinite self-proxy EMFILE loop
+  app.all("/api/*", (req, res) => {
+    return res.status(404).json({ error: "API route not found", path: req.originalUrl });
+  });
+
+  if (!isServerless && isDevServer) {
+    (async () => {
+      try {
+        const vitePkg = 'vite';
+        const { createServer: createViteServer } = await import(vitePkg);
+        const vite = await createViteServer({
+          server: { middlewareMode: true },
+          appType: 'spa',
+        });
+        app.use(vite.middlewares);
+        console.log('[STARTUP] Vite dev middleware mounted.');
+      } catch (viteErr: any) {
+        console.warn('[STARTUP] Vite dev middleware unavailable, using static dist fallback:', viteErr.message);
+        registerStaticFallback();
+      }
+
+      try {
+        app.listen(PORT, "0.0.0.0", () => {
+          console.log(`ERP Server running on port ${PORT}`);
+          console.log("[STARTUP] Server is ready to receive connections.");
+
+          // Iniciar o processador e poller assíncrono de facturação AGT em background
+          startAgtQueueWorker(20000, () => getActiveAdminClient());
+
+          // Primeiro disparo em 5 segundos após boot
+          setTimeout(() => { runDailyAgtSeriesSync(); }, 5000);
+
+          // Repetir a cada 24 horas
+          setInterval(() => { runDailyAgtSeriesSync(); }, 24 * 60 * 60 * 1000);
+        });
+      } catch (listenErr: any) {
+        console.warn("[STARTUP] Porta já em uso ou ambiente gerenciado:", listenErr.message);
+      }
+    })();
   } else {
-    console.log('[STARTUP] Serverless runtime active — API routes initialized.');
+    registerStaticFallback();
+    if (!isServerless) {
+      try {
+        app.listen(PORT, "0.0.0.0", () => {
+          console.log(`ERP Server running on port ${PORT}`);
+          console.log("[STARTUP] Server is ready to receive connections.");
+
+          // Iniciar o processador e poller assíncrono de facturação AGT em background
+          startAgtQueueWorker(20000, () => getActiveAdminClient());
+
+          // Primeiro disparo em 5 segundos após boot
+          setTimeout(() => { runDailyAgtSeriesSync(); }, 5000);
+
+          // Repetir a cada 24 horas
+          setInterval(() => { runDailyAgtSeriesSync(); }, 24 * 60 * 60 * 1000);
+        });
+      } catch (listenErr: any) {
+        console.warn("[STARTUP] Porta já em uso ou ambiente gerenciado:", listenErr.message);
+      }
+    } else {
+      console.log('[STARTUP] Serverless runtime active — API routes initialized.');
+    }
   }
 
 export default function handler(req: any, res: any) {

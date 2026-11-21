@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { authService } from './authService';
 import { OperationType, handleSupabaseError } from './dbUtils';
 
 export interface LocalTrabalho {
@@ -27,7 +28,7 @@ export interface LocalTrabalho {
 export const localTrabalhoService = {
   async getLocaisTrabalho(empresa_id: string): Promise<LocalTrabalho[]> {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const session = await authService.getSessionSafe();
       const token = session?.access_token;
 
       if (!token) {
@@ -58,7 +59,7 @@ export const localTrabalhoService = {
 
   async createLocalTrabalho(local: Omit<LocalTrabalho, 'id'>): Promise<LocalTrabalho> {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const session = await authService.getSessionSafe();
       const token = session?.access_token;
 
       if (!token) {

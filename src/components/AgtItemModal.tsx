@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, Package } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { ArrowLeft, Plus, Package, ChevronDown, Search, X, Maximize2 } from 'lucide-react';
 import { StockProductPicker } from './stock/StockProductPicker';
+import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
 
 export interface AgtItemData {
   id?: string | number;
@@ -47,6 +49,7 @@ export const AgtItemModal: React.FC<AgtItemModalProps> = ({
   onClose,
   onSave
 }) => {
+  const { user } = useAuth();
   const [tipoOperacao, setTipoOperacao] = useState(initialItem?.tipo_operacao || 'IS (1%)');
   const [quantity, setQuantity] = useState<number>(initialItem?.quantity || 1);
   const [description, setDescription] = useState(initialItem?.description || '');
@@ -61,16 +64,44 @@ export const AgtItemModal: React.FC<AgtItemModalProps> = ({
   const [codigoImposto, setCodigoImposto] = useState(initialItem?.codigo_imposto || 'IS_1');
   const [taxaImposto, setTaxaImposto] = useState<number>(initialItem?.taxa_imposto ?? 1);
   const [showStockPicker, setShowStockPicker] = useState<boolean>(false);
+  const [isStockDropdownOpen, setIsStockDropdownOpen] = useState<boolean>(false);
+  const [stockSearch, setStockSearch] = useState<string>('');
+  const [stockWarehouseFilter, setStockWarehouseFilter] = useState<string>('all');
+  const [stockProducts, setStockProducts] = useState<any[]>([]);
+  const [loadingStock, setLoadingStock] = useState<boolean>(false);
+  const [selectedStockLabel, setSelectedStockLabel] = useState<string>('');
   const [selectedProductId, setSelectedProductId] = useState<string | number | undefined>(initialItem?.product_id);
   const [selectedWarehouseId, setSelectedWarehouseId] = useState<string | number | undefined>((initialItem as any)?.warehouse_id);
   const [referencia, setReferencia] = useState<string>(initialItem?.referencia || '');
+  const stockDropdownRef = useRef<HTMLDivElement>(null);
+
+  const mapUnitToSelectOption = (rawUnit?: string): string => {
+    const u = String(rawUnit || '').trim().toLowerCase();
+    if (!u) return 'QUANTIDADE (Qtd)';
+    if (u.includes('unidade') || u === 'un' || u === 'und' || u === 'uni') return 'UNIDADE (Un)';
+    if (u.includes('kilograma') || u.includes('quilo') || u === 'kg') return 'KILOGRAMA (Kg)';
+    if (u.includes('metro') || u === 'm' || u === 'mt') return 'METRO (m)';
+    if (u.includes('caixa') || u === 'cx') return 'CAIXA (Cx)';
+    if (u.includes('hora') || u === 'h' || u === 'hr') return 'HORAS (h)';
+    if (u.includes('serv')) return 'SERVIÇO (Serv)';
+    const exactMatch = [
+      'QUANTIDADE (Qtd)',
+      'UNIDADE (Un)',
+      'KILOGRAMA (Kg)',
+      'METRO (m)',
+      'CAIXA (Cx)',
+      'HORAS (h)',
+      'SERVIÇO (Serv)'
+    ].find(opt => opt.toLowerCase() === u);
+    return exactMatch || 'QUANTIDADE (Qtd)';
+  };
 
   useEffect(() => {
     if (initialItem) {
       setTipoOperacao(initialItem.tipo_operacao || 'IS (1%)');
       setQuantity(initialItem.quantity || 1);
       setDescription(initialItem.description || '');
-      setUnidadeMedida(initialItem.unidade_medida || 'QUANTIDADE (Qtd)');
+      setUnidadeMedida(mapUnitToSelectOption(initialItem.unidade_medida));
       setUnitPrice(initialItem.unit_price || 0);
       setDesconto(initialItem.desconto || 0);
       setValorCredito(initialItem.valor_credito || 0);
@@ -82,10 +113,117 @@ export const AgtItemModal: React.FC<AgtItemModalProps> = ({
       setSelectedProductId(initialItem.product_id);
       setSelectedWarehouseId((initialItem as any).warehouse_id);
       setReferencia(initialItem.referencia || '');
+      setSelectedStockLabel(initialItem.product_id ? (initialItem.description || '') : '');
+      setIsStockDropdownOpen(false);
     } else {
       handleClear();
     }
   }, [initialItem, isOpen]);
+
+  // Fechar dropdown ao clicar fora ou pressionar Escape
+  useEffect(() => {
+    if (!isStockDropdownOpen) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      if (stockDropdownRef.current && !stockDropdownRef.current.contains(event.target as Node)) {
+        setIsStockDropdownOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsStockDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isStockDropdownOpen]);
+
+  // Carregar produtos do stock do Supabase + prop products quando abrir modal ou dropdown
+  useEffect(() => {
+    if (!isOpen) return;
+    const activeProps = (Array.isArray(products) ? products : []).filter(
+      (p: any) => p && p.is_active !== false && p.ativo !== false
+    );
+    if (activeProps.length > 0) {
+      setStockProducts(activeProps);
+    }
+
+    const empresaId = user?.empresa_id || (user as any)?.company_id;
+    if (!empresaId) return;
+
+    let cancelled = false;
+    const fetchStock = async () => {
+      setLoadingStock(true);
+      try {
+        let { data, error } = await supabase
+          .from('produtos')
+          .select('id, name, nome, referente, codigo, code, barcode, descricao, description, armazem_id, warehouse_id, stock_quantity, stock, stock_atual, estoque_atual, price, preco, preco_venda, unit, unidade, tipo, iva_taxa, taxa_imposto, codigo_imposto, motivo_isencao, tax_id, is_active, ativo')
+          .eq('empresa_id', empresaId)
+          .order('name', { ascending: true });
+
+        if (error?.code === '42703') {
+          const fallbackRes = await supabase
+            .from('produtos')
+            .select('*')
+            .eq('empresa_id', empresaId)
+            .order('name', { ascending: true });
+          data = fallbackRes.data;
+          error = fallbackRes.error;
+        }
+
+        if (!cancelled && !error && Array.isArray(data)) {
+          const filteredRows = data.filter((p: any) => p.is_active !== false && p.ativo !== false);
+          setStockProducts(filteredRows.length > 0 ? filteredRows : activeProps);
+        }
+      } catch (err) {
+        console.warn('[AgtItemModal] Fallback para produtos em memória:', err);
+      } finally {
+        if (!cancelled) setLoadingStock(false);
+      }
+    };
+
+    fetchStock();
+    return () => { cancelled = true; };
+  }, [isOpen, user?.empresa_id]);
+
+  const getProductStockQty = (p: any) =>
+    Number(p.stock_quantity ?? p.stock ?? p.stock_atual ?? p.estoque_atual ?? 0);
+
+  const getProductSalePrice = (p: any) =>
+    Number(p.price ?? p.preco_venda ?? p.preco ?? 0);
+
+  const getProductWarehouseName = (p: any) => {
+    const wId = p.armazem_id || p.warehouse_id;
+    if (!wId) return '';
+    const found = warehouses.find((w: any) => String(w.id) === String(wId));
+    return found ? (found.name || found.nome || '') : '';
+  };
+
+  const filteredStockProducts = useMemo(() => {
+    let list = [...stockProducts];
+    if (stockWarehouseFilter !== 'all') {
+      list = list.filter(p => String(p.armazem_id || p.warehouse_id) === String(stockWarehouseFilter));
+    }
+    if (stockSearch.trim()) {
+      const q = stockSearch.trim().toLowerCase();
+      list = list.filter(p =>
+        String(p.name || p.nome || '').toLowerCase().includes(q) ||
+        String(p.referente || p.codigo || p.code || p.referencia || p.reference || '').toLowerCase().includes(q) ||
+        String(p.barcode || p.codigo_barras || '').toLowerCase().includes(q) ||
+        String(p.descricao || p.description || '').toLowerCase().includes(q)
+      );
+    }
+    // Produtos com stock > 0 aparecem primeiro
+    return list.sort((a, b) => {
+      const sa = getProductStockQty(a);
+      const sb = getProductStockQty(b);
+      if ((sa > 0) !== (sb > 0)) return sb > 0 ? 1 : -1;
+      return String(a.name || a.nome || '').localeCompare(String(b.name || b.nome || ''), 'pt');
+    });
+  }, [stockProducts, stockSearch, stockWarehouseFilter]);
 
   const handleClear = () => {
     setTipoOperacao('IS (1%)');
@@ -104,16 +242,67 @@ export const AgtItemModal: React.FC<AgtItemModalProps> = ({
     setSelectedProductId(undefined);
     setSelectedWarehouseId(undefined);
     setReferencia('');
+    setSelectedStockLabel('');
+    setStockSearch('');
+    setIsStockDropdownOpen(false);
   };
 
   const handleSelectStockProduct = (prod: any) => {
-    setDescription(prod.name || prod.nome || '');
-    setUnitPrice(Number(prod.price ?? prod.preco_venda ?? 0));
-    setUnidadeMedida(prod.unit || prod.unidade || 'QUANTIDADE (Qtd)');
+    const prodName = prod.name || prod.nome || '';
+    const prodDesc = prod.descricao || prod.description || '';
+    const finalDesc = prodDesc && prodDesc.toLowerCase() !== prodName.toLowerCase()
+      ? `${prodName} - ${prodDesc}`.slice(0, 200)
+      : prodName.slice(0, 200);
+    const prodRef = prod.referente || prod.referencia || prod.reference || prod.codigo || prod.code || '';
+
+    setDescription(finalDesc);
+    setUnitPrice(getProductSalePrice(prod));
+    setUnidadeMedida(mapUnitToSelectOption(prod.unit || prod.unidade));
     setQuantity(1);
     setSelectedProductId(prod.id);
     setSelectedWarehouseId(prod.warehouse_id || prod.armazem_id);
-    setReferencia(prod.referencia || prod.reference || prod.codigo || '');
+    setReferencia(prodRef);
+    setSelectedStockLabel(prodRef ? `${prodName} (${prodRef})` : prodName);
+
+    // Mapear imposto do produto se configurado
+    const matchedTax = prod.tax_id
+      ? activeTaxes.find((t: any) => String(t.id) === String(prod.tax_id))
+      : undefined;
+    const rawRate = matchedTax?.taxa ?? prod.taxa_imposto ?? prod.iva_taxa;
+    if (rawRate !== undefined && rawRate !== null && rawRate !== '') {
+      const rateNum = Number(rawRate);
+      if (rateNum === 14) {
+        setHasImposto(true);
+        setTemIsencao(false);
+        setTipoImposto('IVA');
+        setTaxaImposto(14);
+        setCodigoImposto('IVA_14');
+        setTipoOperacao('IVA (14%)');
+      } else if (rateNum === 7) {
+        setHasImposto(true);
+        setTemIsencao(false);
+        setTipoImposto('IVA');
+        setTaxaImposto(7);
+        setCodigoImposto('IVA_7');
+        setTipoOperacao('IVA (7%)');
+      } else if (rateNum === 1) {
+        setHasImposto(true);
+        setTemIsencao(false);
+        setTipoImposto('IS');
+        setTaxaImposto(1);
+        setCodigoImposto('IS_1');
+        setTipoOperacao('IS (1%)');
+      } else if (rateNum === 0) {
+        setHasImposto(true);
+        setTemIsencao(true);
+        setTipoImposto('NS');
+        setTaxaImposto(0);
+        setCodigoImposto(prod.motivo_isencao || 'M00');
+        setTipoOperacao('Isenção Artigo 12.º');
+      }
+    }
+
+    setIsStockDropdownOpen(false);
     setShowStockPicker(false);
   };
 
@@ -268,35 +457,171 @@ export const AgtItemModal: React.FC<AgtItemModalProps> = ({
             </div>
           </div>
 
-          {/* Row 2: Descrição com Seletor de Stock Integrado Exclusivamente Aqui */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
+          {/* Row 2: Campo Buscar do Stock (com seta que abre lista de stock) + Descrição */}
+          <div className="space-y-4">
+            <div className="space-y-1.5 relative" ref={stockDropdownRef}>
+              <label className="text-xs font-bold text-zinc-700 flex items-center gap-1.5">
+                <Package size={13} className="text-emerald-700" />
+                <span>Buscar do Stock</span>
+              </label>
+
+              <div className="flex items-stretch">
+                <button
+                  type="button"
+                  onClick={() => setIsStockDropdownOpen(prev => !prev)}
+                  className="flex-1 flex items-center justify-between bg-emerald-50/60 hover:bg-emerald-50 border border-emerald-300 rounded-none px-4 py-2.5 text-sm text-left transition-colors cursor-pointer"
+                  aria-expanded={isStockDropdownOpen}
+                  title="Clique para abrir a lista de produtos do stock"
+                >
+                  <span className={selectedStockLabel ? 'font-semibold text-emerald-950 truncate' : 'text-zinc-500 truncate'}>
+                    {selectedStockLabel || 'Selecionar produto do stock...'}
+                  </span>
+                  <span className="flex items-center gap-2 ml-2 shrink-0">
+                    {selectedStockLabel && (
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedStockLabel('');
+                          setSelectedProductId(undefined);
+                          setSelectedWarehouseId(undefined);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setSelectedStockLabel('');
+                            setSelectedProductId(undefined);
+                            setSelectedWarehouseId(undefined);
+                          }
+                        }}
+                        className="p-0.5 text-zinc-400 hover:text-zinc-700"
+                        title="Limpar seleção de stock"
+                      >
+                        <X size={14} />
+                      </span>
+                    )}
+                    <ChevronDown
+                      size={18}
+                      className={`text-emerald-700 transition-transform duration-150 ${isStockDropdownOpen ? 'rotate-180' : ''}`}
+                    />
+                  </span>
+                </button>
+              </div>
+
+              {/* Lista Dropdown do Stock */}
+              {isStockDropdownOpen && (
+                <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-white border border-zinc-300 shadow-xl flex flex-col max-h-80">
+                  <div className="p-2.5 border-b border-zinc-200 bg-zinc-50 flex flex-wrap items-center gap-2">
+                    <div className="relative flex-1 min-w-[160px]">
+                      <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400" />
+                      <input
+                        type="text"
+                        value={stockSearch}
+                        onChange={(e) => setStockSearch(e.target.value)}
+                        placeholder="Filtrar produto, código ou referência..."
+                        className="w-full pl-8 pr-2.5 py-1.5 text-xs bg-white border border-zinc-300 rounded-none focus:outline-none focus:border-[#0f2a4a]"
+                        autoFocus
+                      />
+                    </div>
+                    {warehouses.length > 0 && (
+                      <select
+                        value={stockWarehouseFilter}
+                        onChange={(e) => setStockWarehouseFilter(e.target.value)}
+                        className="px-2 py-1.5 text-xs bg-white border border-zinc-300 rounded-none focus:outline-none focus:border-[#0f2a4a]"
+                      >
+                        <option value="all">Todos Armazéns</option>
+                        {warehouses.map((w: any) => (
+                          <option key={w.id} value={String(w.id)}>{w.name || w.nome}</option>
+                        ))}
+                      </select>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsStockDropdownOpen(false);
+                        setShowStockPicker(true);
+                      }}
+                      className="px-2 py-1.5 text-[11px] font-bold text-[#0f2a4a] bg-white border border-zinc-300 hover:bg-zinc-100 flex items-center gap-1"
+                      title="Abrir vista completa de stock"
+                    >
+                      <Maximize2 size={12} />
+                      <span>Expandir</span>
+                    </button>
+                  </div>
+
+                  <div className="overflow-y-auto divide-y divide-zinc-100 max-h-60">
+                    {loadingStock && filteredStockProducts.length === 0 ? (
+                      <div className="p-6 text-center text-xs text-zinc-500">
+                        A carregar produtos do stock...
+                      </div>
+                    ) : filteredStockProducts.length === 0 ? (
+                      <div className="p-6 text-center text-xs text-zinc-400">
+                        Nenhum produto encontrado no stock.
+                      </div>
+                    ) : (
+                      filteredStockProducts.map((prod: any) => {
+                        const qty = getProductStockQty(prod);
+                        const priceVal = getProductSalePrice(prod);
+                        const whName = getProductWarehouseName(prod);
+                        const refVal = prod.referente || prod.codigo || prod.code || prod.referencia || '';
+                        const isSelected = selectedProductId && String(selectedProductId) === String(prod.id);
+
+                        return (
+                          <button
+                            key={prod.id}
+                            type="button"
+                            onClick={() => handleSelectStockProduct(prod)}
+                            className={`w-full px-3.5 py-2.5 text-left flex items-center justify-between gap-3 transition-colors cursor-pointer ${
+                              isSelected ? 'bg-emerald-50 border-l-4 border-l-emerald-600' : 'hover:bg-blue-50/70'
+                            }`}
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="text-xs font-bold text-zinc-900 truncate">
+                                {prod.name || prod.nome || 'Sem nome'}
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-500 mt-0.5">
+                                {refVal && <span>Ref: {refVal}</span>}
+                                {whName && <span>• {whName}</span>}
+                                <span>• {prod.unit || prod.unidade || 'Un'}</span>
+                              </div>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <div className="text-xs font-mono font-bold text-[#0f2a4a]">
+                                {priceVal.toLocaleString('pt-AO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kz
+                              </div>
+                              <div className={`text-[11px] font-bold ${qty > 5 ? 'text-emerald-600' : qty > 0 ? 'text-amber-600' : 'text-red-500'}`}>
+                                Stock: {qty}
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2">
               <label className="text-xs font-bold text-zinc-700">
                 Descrição <span className="text-red-500">*</span>
               </label>
-              <button
-                type="button"
-                onClick={() => setShowStockPicker(true)}
-                className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded text-[11px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
-                title="Seleccionar produto do stock disponível"
-              >
-                <Package size={13} className="text-emerald-700" />
-                <span>Buscar do Stock</span>
-              </button>
-            </div>
-            <div className="relative">
-              <textarea
-                rows={3}
-                maxLength={200}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Informe a descrição do produto ou serviço..."
-                className="w-full bg-white border border-zinc-300 rounded-none p-4 text-sm text-zinc-800 focus:outline-none focus:border-[#0f2a4a] resize-none"
-                required
-              />
-              <span className="absolute bottom-2 right-3 text-[11px] text-zinc-400 font-mono">
-                {description.length}/200
-              </span>
+              <div className="relative">
+                <textarea
+                  rows={3}
+                  maxLength={200}
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Informe a descrição do produto ou serviço..."
+                  className="w-full bg-white border border-zinc-300 rounded-none p-4 text-sm text-zinc-800 focus:outline-none focus:border-[#0f2a4a] resize-none"
+                  required
+                />
+                <span className="absolute bottom-2 right-3 text-[11px] text-zinc-400 font-mono">
+                  {description.length}/200
+                </span>
+              </div>
             </div>
           </div>
 
@@ -544,6 +869,7 @@ export const AgtItemModal: React.FC<AgtItemModalProps> = ({
           onClose={() => setShowStockPicker(false)}
           onSelect={handleSelectStockProduct}
           warehouses={warehouses}
+          products={stockProducts}
         />
       )}
     </div>

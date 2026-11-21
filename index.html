@@ -10,12 +10,42 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self' https: data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: data: https://*.supabase.co https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co ws://localhost:* wss: https: blob: https://cdn.jsdelivr.net;">
     <script>
       // Global fail-safe error catcher for diagnosing blank screen issues
+      function isIgnorableNoise(text) {
+        if (!text) return false;
+        var s = String(text);
+        var lower = s.toLowerCase();
+        return (
+          lower.indexOf('websocket') !== -1 ||
+          lower.indexOf('hmr') !== -1 ||
+          lower.indexOf('hot update') !== -1 ||
+          lower.indexOf('back-forward cache') !== -1 ||
+          lower.indexOf('resizeobserver loop') !== -1 ||
+          lower.indexOf('aborterror') !== -1 ||
+          lower.indexOf('the user aborted a request') !== -1 ||
+          lower.indexOf('connection closed') !== -1 ||
+          s === 'Script error.'
+        );
+      }
+
       window.addEventListener('error', function(event) {
-        showErrorBanner('Erro Uncaught (Script/Runtime)', event.message + ' em ' + event.filename + ':' + event.lineno);
+        var msg = (event && event.message) ? String(event.message) : '';
+        if (!msg || isIgnorableNoise(msg)) {
+          return;
+        }
+        var locationInfo = (event.filename ? (' em ' + event.filename + ':' + (event.lineno || 0)) : '');
+        showErrorBanner('Erro Uncaught (Script/Runtime)', msg + locationInfo);
       });
       
       window.addEventListener('unhandledrejection', function(event) {
-        showErrorBanner('Unhandled Promise Rejection', event.reason ? (event.reason.message || String(event.reason)) : 'Erro de Promessa');
+        var reason = event ? event.reason : null;
+        var details = reason ? (reason.message || String(reason)) : 'Erro de Promessa';
+        if (isIgnorableNoise(details)) {
+          if (event && typeof event.preventDefault === 'function') {
+            event.preventDefault();
+          }
+          return;
+        }
+        showErrorBanner('Unhandled Promise Rejection', details);
       });
 
       function showErrorBanner(type, details) {
@@ -72,7 +102,7 @@
           btn.style.fontWeight = 'bold';
           btn.innerText = 'Forçar Recarregamento Completo';
           btn.onclick = function() {
-            window.location.reload(true);
+            window.location.reload();
           };
           container.appendChild(btn);
 

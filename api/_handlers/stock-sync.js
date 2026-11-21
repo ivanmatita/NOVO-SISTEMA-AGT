@@ -6,34 +6,46 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
+import { getEnvConfig } from '../_env.js';
 
-const supabaseAdmin = createClient(
-  process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || ''
-);
+function getAdminForRequest(req) {
+  const cfg = getEnvConfig(req);
+  return createClient(cfg.supabaseUrl, cfg.serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+}
 
 export default async function stockSyncHandler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  const supabaseAdmin = getAdminForRequest(req);
+  const cfg = getEnvConfig(req);
+
   // Verificar autenticação JWT
   const authHeader = req.headers?.authorization || '';
   const token = authHeader.replace('Bearer ', '').trim();
-  
+
   if (!token) {
     return res.status(401).json({ error: 'Token de autenticação obrigatório.' });
   }
 
-  // Validar token e obter user
-  const { data: { user }, error: authErr } = await supabaseAdmin.auth.getUser(token);
-  if (authErr || !user) {
+  // Validar token via HTTP /auth/v1/user (consistente com staging/produção)
+  const authRes = await fetch(`${cfg.supabaseUrl}/auth/v1/user`, {
+    headers: { apikey: cfg.anonKey, Authorization: `Bearer ${token}` },
+  });
+  if (!authRes.ok) {
+    return res.status(401).json({ error: 'Token inválido ou expirado.' });
+  }
+  const user = await authRes.json();
+  if (!user?.id) {
     return res.status(401).json({ error: 'Token inválido ou expirado.' });
   }
 
   const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
   const {
-    empresa_id,
+    empresa_id: requestedEmpresaId,
     purchaseId,
     numeroDocumento,
     tipoDocumento,
@@ -43,8 +55,19 @@ export default async function stockSyncHandler(req, res) {
     itens = []
   } = body || {};
 
+  const [{ data: perfil }, { data: owned }] = await Promise.all([
+    supabaseAdmin.from('perfis').select('empresa_id, company_id, role, is_super_admin').or(`id.eq.${user.id},user_id.eq.${user.id},email.eq.${user.email}`).maybeSingle(),
+    supabaseAdmin.from('empresas').select('id').or(`auth_user_id.eq.${user.id},email.eq.${user.email}`).maybeSingle(),
+  ]);
+  const resolvedTenant = perfil?.empresa_id || perfil?.company_id || owned?.id || null;
+  const isSuper = Boolean(perfil?.is_super_admin || String(perfil?.role || '').toLowerCase() === 'superadmin');
+  const empresa_id = isSuper && requestedEmpresaId ? requestedEmpresaId : resolvedTenant;
+
   if (!empresa_id) {
-    return res.status(400).json({ error: 'empresa_id obrigatório.' });
+    return res.status(403).json({ error: 'Empresa não associada à conta autenticada.' });
+  }
+  if (!isSuper && requestedEmpresaId && String(requestedEmpresaId) !== String(empresa_id)) {
+    return res.status(403).json({ error: 'Acesso negado: violação de isolamento multi-empresa.' });
   }
   if (!itens || itens.length === 0) {
     return res.status(400).json({ error: 'Nenhum item fornecido.' });
@@ -177,6 +200,41 @@ export default async function stockSyncHandler(req, res) {
           prodId = newProd.id;
           prevStock = 0;
           newStock = quantidade;
+        }
+      }
+
+      // 3.5. Sincronizar saldo por armazém em stock_saldos
+      if (prodId && armazemId) {
+        const armKey = String(armazemId);
+        const { data: existingSaldo } = await supabaseAdmin
+          .from('stock_saldos')
+          .select('*')
+          .eq('empresa_id', empresa_id)
+          .eq('product_id', prodId)
+          .eq('armazem_id', armKey)
+          .maybeSingle();
+
+        const curDisp = Number(existingSaldo?.quantidade_disponivel || 0);
+        const nextDisp = curDisp + quantidade;
+        if (existingSaldo) {
+          await supabaseAdmin
+            .from('stock_saldos')
+            .update({
+              quantidade_disponivel: nextDisp,
+              custo_medio: valorUnitario > 0 ? valorUnitario : existingSaldo.custo_medio,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', existingSaldo.id);
+        } else {
+          await supabaseAdmin.from('stock_saldos').insert([{
+            empresa_id,
+            product_id: prodId,
+            armazem_id: armKey,
+            quantidade_disponivel: nextDisp,
+            quantidade_reservada: 0,
+            custo_medio: valorUnitario,
+            updated_at: new Date().toISOString(),
+          }]);
         }
       }
 

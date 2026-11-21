@@ -6,24 +6,28 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
+import { getEnvConfig } from '../_env.js';
 
-const supabaseAdmin = createClient(
-  process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || ''
-);
+function getAdminForRequest(req) {
+  const cfg = getEnvConfig(req);
+  return createClient(cfg.supabaseUrl, cfg.serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false }
+  });
+}
 
 export default async function stockExitHandler(req, res) {
+  const supabaseAdmin = getAdminForRequest(req);
   if (req.method === 'POST' && req.url?.includes('/exit-sale')) {
-    return handleExitSale(req, res);
+    return handleExitSale(req, res, supabaseAdmin);
   }
   if (req.method === 'GET' && req.url?.includes('/check-stock')) {
-    return handleCheckStock(req, res);
+    return handleCheckStock(req, res, supabaseAdmin);
   }
   return res.status(405).json({ error: 'Method not allowed' });
 }
 
 // Verificar stock disponível antes da venda
-async function handleCheckStock(req, res) {
+async function handleCheckStock(req, res, supabaseAdmin) {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const empresa_id = url.searchParams.get('empresa_id');
   const product_id = url.searchParams.get('product_id');
@@ -59,7 +63,7 @@ async function handleCheckStock(req, res) {
 }
 
 // Registar saída automática após venda
-async function handleExitSale(req, res) {
+async function handleExitSale(req, res, supabaseAdmin) {
   // Verificar autenticação JWT
   const authHeader = req.headers?.authorization || '';
   const token = authHeader.replace('Bearer ', '').trim();
@@ -70,11 +74,30 @@ async function handleExitSale(req, res) {
 
   const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
   const {
-    empresa_id, documentId, numeroDocumento, tipoDocumento,
+    empresa_id: requestedEmpresaId, documentId, numeroDocumento, tipoDocumento,
     clienteNome, dataDocumento, ano, itens = []
   } = body || {};
 
-  if (!empresa_id) return res.status(400).json({ error: 'empresa_id obrigatório.' });
+  // Verificar isolamento multi-tenant
+  const { data: perfil } = await supabaseAdmin
+    .from('perfis')
+    .select('empresa_id, company_id, role, is_super_admin')
+    .or(`id.eq.${user.id},user_id.eq.${user.id},email.eq.${user.email}`)
+    .maybeSingle();
+  const { data: owned } = await supabaseAdmin
+    .from('empresas')
+    .select('id')
+    .or(`auth_user_id.eq.${user.id},email.eq.${user.email}`)
+    .maybeSingle();
+
+  const resolvedTenant = perfil?.empresa_id || perfil?.company_id || owned?.id || null;
+  const isSuper = Boolean(perfil?.is_super_admin || String(perfil?.role || '').toLowerCase() === 'superadmin');
+  const empresa_id = isSuper && requestedEmpresaId ? requestedEmpresaId : resolvedTenant;
+
+  if (!empresa_id) return res.status(403).json({ error: 'Empresa não associada à sessão.' });
+  if (!isSuper && requestedEmpresaId && String(requestedEmpresaId) !== String(empresa_id)) {
+    return res.status(403).json({ error: 'Acesso negado: violação multi-empresa.' });
+  }
   if (!itens.length) return res.status(400).json({ error: 'Nenhum item.' });
 
   const results = [];
@@ -94,7 +117,8 @@ async function handleExitSale(req, res) {
 
     const valorUnitario = Number(item.valor_unitario || item.unit_price || 0);
     const armazemId = item.armazem_id || item.warehouse_id;
-    const referenceKey = `venda_${documentId || numeroDocumento}_${descricao.replace(/\s+/g, '_').slice(0, 30)}`;
+    const itemProdKey = item.product_id || item.produto_id || '';
+    const referenceKey = `venda_${documentId || numeroDocumento}_${itemProdKey ? `${String(itemProdKey).slice(0, 12)}_` : ''}${descricao.replace(/\s+/g, '_').slice(0, 28)}`;
 
     try {
       // 1. IDEMPOTÊNCIA — Verificar se já existe saída para este documento+item
@@ -113,27 +137,32 @@ async function handleExitSale(req, res) {
       // 2. Encontrar produto
       let prodId = item.product_id || item.produto_id || null;
       let prevStock = 0;
+      let prodCost = valorUnitario;
 
       if (!prodId) {
         const cleanDesc = descricao.replace(/[,%]/g, ' ').trim();
         const { data: prods } = await supabaseAdmin
           .from('produtos')
-          .select('id, name, nome, stock_quantity, stock, stock_atual')
+          .select('id, name, nome, stock_quantity, stock, stock_atual, cost_price, preco_compra')
           .eq('empresa_id', empresa_id)
           .or(`name.ilike.%${cleanDesc}%,nome.ilike.%${cleanDesc}%`)
           .limit(1);
         if (prods?.length > 0) {
           prodId = prods[0].id;
           prevStock = Number(prods[0].stock_quantity ?? prods[0].stock ?? prods[0].stock_atual ?? 0);
+          prodCost = Number(prods[0].cost_price ?? prods[0].preco_compra ?? valorUnitario);
         }
       } else {
         const { data: prodData } = await supabaseAdmin
           .from('produtos')
-          .select('id, stock_quantity, stock, stock_atual')
+          .select('id, stock_quantity, stock, stock_atual, cost_price, preco_compra')
           .eq('id', prodId)
           .eq('empresa_id', empresa_id)
           .single();
-        if (prodData) prevStock = Number(prodData.stock_quantity ?? prodData.stock ?? prodData.stock_atual ?? 0);
+        if (prodData) {
+          prevStock = Number(prodData.stock_quantity ?? prodData.stock ?? prodData.stock_atual ?? 0);
+          prodCost = Number(prodData.cost_price ?? prodData.preco_compra ?? valorUnitario);
+        }
       }
 
       // 3. Verificar stock suficiente
@@ -145,7 +174,7 @@ async function handleExitSale(req, res) {
 
       const newStock = prevStock - quantidade;
 
-      // 4. Atualizar stock do produto
+      // 4. Atualizar stock do produto e stock_saldos
       if (prodId) {
         await supabaseAdmin
           .from('produtos')
@@ -158,6 +187,25 @@ async function handleExitSale(req, res) {
           })
           .eq('id', prodId)
           .eq('empresa_id', empresa_id);
+
+        if (armazemId) {
+          const { data: saldoRow } = await supabaseAdmin
+            .from('stock_saldos')
+            .select('id, quantidade_disponivel')
+            .eq('empresa_id', empresa_id)
+            .eq('product_id', prodId)
+            .eq('armazem_id', String(armazemId))
+            .maybeSingle();
+          if (saldoRow) {
+            await supabaseAdmin
+              .from('stock_saldos')
+              .update({
+                quantidade_disponivel: Math.max(0, Number(saldoRow.quantidade_disponivel || 0) - quantidade),
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', saldoRow.id);
+          }
+        }
       }
 
       // 5. Registar movimento de SAÍDA

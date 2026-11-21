@@ -28,7 +28,6 @@ import { GestaoComprasForm } from './components/purchases/GestaoComprasForm';
 import { StockAtualModule } from './components/stock/StockAtualModule';
 import { StockProductPicker } from './components/stock/StockProductPicker';
 import { StockEntradasReport } from './components/stock/StockEntradasReport';
-import { CrmNegociosModule } from './components/CrmNegociosModule';
 
 
 import ProjectManagementModule from './components/ProjectManagementModule';
@@ -2829,8 +2828,7 @@ const WorkplaceModule = ({
 
 const PERMISSION_EQUIVALENTS: Record<string, string[]> = {
   dashboard: ['dashboard', 'painel', 'painel_de_bordo', 'painel de bordo'],
-  crm_negocios: ['crm_negocios', 'crm', 'crm negócios', 'crm negocios', 'negocios'],
-  crm_empresas: ['crm_empresas', 'crm empresas'],
+  crm_empresas: ['crm_empresas', 'crm', 'crm empresas'],
   clients: ['clients', 'clientes'],
   workplaces: ['workplaces', 'locais_trabalho', 'locais de trabalho'],
   secretary: ['secretary', 'secretaria', 'secretaria beta', 'secretaria_beta'],
@@ -3025,7 +3023,6 @@ const hasModulePermission = (user: any, moduleId: string): boolean => {
 
 const SIDEBAR_MENU_ITEMS = [
   { id: 'dashboard', label: 'Painel de Bordo', icon: LayoutDashboard },
-  { id: 'crm_negocios', label: 'CRM Negócios', icon: Briefcase, badge: '⚡ NOVO' },
   { id: 'crm_empresas', label: 'CRM EMPRESAS', icon: ShieldAlert, badge: 'SUPER ADM' },
   { id: 'clients', label: 'Clientes', icon: Users },
   { id: 'workplaces', label: 'Locais de Trabalho', icon: Briefcase },
@@ -27357,6 +27354,9 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                               setEditingAgtItemIndex(idx);
                               const tax = activeTaxes.find(t => t.id === item.tax_id || String(t.id) === String(item.tax_id));
                               setEditingAgtItemData({
+                                product_id: item.product_id ?? undefined,
+                                warehouse_id: item.warehouse_id || item.armazem_id,
+                                referencia: item.referencia || '',
                                 tipo_operacao: item.tipo_artigo || 'produto',
                                 quantity: Number(item.quantity) || 1,
                                 description: item.description || '',
@@ -27466,23 +27466,25 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
           isOpen={showStockPicker}
           onClose={() => setShowStockPicker(false)}
           warehouses={warehouses}
+          products={products}
           onSelect={(prod) => {
             const taxDefault = activeTaxes.length > 0 ? activeTaxes[0] : null;
+            const unitVal = Number((prod as any).price ?? (prod as any).preco_venda ?? (prod as any).preco ?? 0);
             const newItem = {
               description: prod.name || (prod as any).nome || '',
               quantity: 1,
-              unit_price: Number((prod as any).price ?? (prod as any).preco_venda ?? 0),
-              total: Number((prod as any).price ?? (prod as any).preco_venda ?? 0),
+              unit_price: unitVal,
+              total: unitVal,
               tipologia: 'Mercadoria',
               desconto: 0,
               tipo_artigo: 'produto',
               tax: taxDefault ? taxDefault.nome + ' (' + taxDefault.taxa + '%)' : 'IVA - 0%',
               tax_id: taxDefault ? taxDefault.id : null,
-              referencia: (prod as any).referencia || (prod as any).reference || '',
+              referencia: (prod as any).referente || (prod as any).codigo || (prod as any).code || (prod as any).referencia || (prod as any).reference || '',
               unidade_medida: (prod as any).unit || (prod as any).unidade || 'QUANTIDADE (Qtd)',
               warehouse_id: prod.warehouse_id || (prod as any).armazem_id,
               armazem_id: (prod as any).armazem_id || prod.warehouse_id,
-              product_id: Number(prod.id) || (prod.id as any),
+              product_id: prod.id,
               comprimento: 0, largura: 0, altura: 0,
             };
             setItems(prev => [...prev, newItem]);
@@ -27512,6 +27514,8 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
             const basePrice = unitPrice * (1 - descontoVal / 100);
             const lineTotal = basePrice * qty + (data.valor_imposto || 0);
 
+            const rawPid = data.product_id;
+            const rawWid = data.warehouse_id || data.armazem_id;
             const newItem: Partial<InvoiceItem> = {
               description: data.description,
               quantity: qty,
@@ -27522,9 +27526,9 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
               total: lineTotal,
               tipo_artigo: data.tipo_operacao || 'produto',
               unidade_medida: data.unidade_medida || 'UN',
-              product_id: data.product_id !== undefined ? Number(data.product_id) : undefined,
-              warehouse_id: data.warehouse_id || data.armazem_id ? Number(data.warehouse_id || data.armazem_id) : undefined,
-              armazem_id: data.armazem_id || data.warehouse_id,
+              product_id: rawPid !== undefined && rawPid !== null && rawPid !== '' ? rawPid : undefined,
+              warehouse_id: rawWid !== undefined && rawWid !== null && rawWid !== '' ? rawWid : undefined,
+              armazem_id: rawWid,
               referencia: data.referencia,
             };
 
@@ -33545,7 +33549,7 @@ export default function App() {
   const [activeTab, setActiveTabState] = useState(() => {
     // Ler o hash da URL para restaurar o tab correcto ao carregar/refresh (#pos → 'pos')
     const VALID_TABS = [
-      'dashboard','crm_negocios','crm_empresas','clients','workplaces','secretary','pos','contracts',
+      'dashboard','crm_empresas','clients','workplaces','secretary','pos','contracts',
       'electronic_invoices','security','specialized','archive','cartas','invoices',
       'drafts','suppliers','products','financial','accounting','hr','reports',
       'licencas','empresa','taxes','metrics','media','warehouse','caixa','alertas',
@@ -33585,18 +33589,26 @@ export default function App() {
     
     // 1. Escuta entre abas do mesmo navegador via localStorage
     const onStorageChange = async (e: StorageEvent) => {
-      if (e.key === permKey && e.newValue) {
-        console.log('[App] Permissões actualizadas via localStorage. Sincronizando...');
-        await refreshUser();
+      try {
+        if (e.key === permKey && e.newValue) {
+          console.log('[App] Permissões actualizadas via localStorage. Sincronizando...');
+          await refreshUser();
+        }
+      } catch (err) {
+        console.warn('[App] Erro ao sincronizar permissões via storage:', err);
       }
     };
     window.addEventListener('storage', onStorageChange);
 
     // 2. Escuta no mesmo contexto de janela via CustomEvent
     const onCustomPermChange = async (e: any) => {
-      if (!e.detail?.userId || e.detail.userId === user.id) {
-        console.log('[App] Permissões actualizadas via evento local. Sincronizando...');
-        await refreshUser();
+      try {
+        if (!e.detail?.userId || e.detail.userId === user.id) {
+          console.log('[App] Permissões actualizadas via evento local. Sincronizando...');
+          await refreshUser();
+        }
+      } catch (err) {
+        console.warn('[App] Erro ao sincronizar permissões via evento:', err);
       }
     };
     window.addEventListener('agt_permissions_changed', onCustomPermChange);
@@ -33613,15 +33625,23 @@ export default function App() {
           filter: `id=eq.${user.id}`
         },
         async (payload: any) => {
-          console.log('[App] Mudança de perfil detetada em tempo real no banco de dados:', payload);
-          await refreshUser();
+          try {
+            console.log('[App] Mudança de perfil detetada em tempo real no banco de dados:', payload);
+            await refreshUser();
+          } catch (err) {
+            console.warn('[App] Erro ao atualizar utilizador via Realtime:', err);
+          }
         }
       )
       .subscribe();
 
     // 4. Verificação ao focar a aba
     const onWindowFocus = async () => {
-      await refreshUser();
+      try {
+        await refreshUser();
+      } catch (err) {
+        console.warn('[App] Erro ao sincronizar utilizador no focus:', err);
+      }
     };
     window.addEventListener('focus', onWindowFocus);
 
@@ -33682,72 +33702,76 @@ export default function App() {
 
   useEffect(() => {
     const loadPrintingConfigs = async () => {
-      const empresaId = user?.empresa_id;
-      let configs: GraphicConfig[] = [];
+      try {
+        const empresaId = user?.empresa_id;
+        let configs: GraphicConfig[] = [];
 
-      // 1. Try serie-specific graphic configs
-      if (printingInvoice?.series_id) {
-        const { data: serieData } = await supabase
-          .from('setup_grafico_series')
-          .select('*')
-          .eq('serie_id', printingInvoice.series_id);
-        if (serieData && serieData.length > 0) {
-          configs = serieData;
+        // 1. Try serie-specific graphic configs
+        if (printingInvoice?.series_id) {
+          const { data: serieData } = await supabase
+            .from('setup_grafico_series')
+            .select('*')
+            .eq('serie_id', printingInvoice.series_id);
+          if (serieData && serieData.length > 0) {
+            configs = serieData;
+          }
         }
-      }
 
-      // 2. Fallback to empresa-level graphic configs (media_biblioteca or configuracoes_graficas)
-      if (configs.length === 0 && empresaId) {
-        const { data: empData } = await supabase
-          .from('configuracoes_graficas')
-          .select('*')
-          .eq('empresa_id', empresaId)
-          .eq('ativo', true);
+        // 2. Fallback to empresa-level graphic configs (media_biblioteca or configuracoes_graficas)
+        if (configs.length === 0 && empresaId) {
+          const { data: empData } = await supabase
+            .from('configuracoes_graficas')
+            .select('*')
+            .eq('empresa_id', empresaId)
+            .eq('ativo', true);
 
-        if (empData && empData.length > 0) {
-          // Map configuracoes_graficas to GraphicConfig format
-          configs = empData.map((c: any) => ({
-            ...c,
-            tipo: c.tipo || 'logotipo',
-            url_imagem: c.logo_url || c.logotipo || c.url_imagem || '',
-            ativo: c.ativo !== false,
-            largura: c.largura || 200,
-            altura: c.altura || 60,
-            posicao_x: c.posicao_x || 0,
-            posicao_y: c.posicao_y || 0,
-            transparencia: c.transparencia || 1,
-            alinhamento: c.alinhamento || 'left',
-          }));
+          if (empData && empData.length > 0) {
+            // Map configuracoes_graficas to GraphicConfig format
+            configs = empData.map((c: any) => ({
+              ...c,
+              tipo: c.tipo || 'logotipo',
+              url_imagem: c.logo_url || c.logotipo || c.url_imagem || '',
+              ativo: c.ativo !== false,
+              largura: c.largura || 200,
+              altura: c.altura || 60,
+              posicao_x: c.posicao_x || 0,
+              posicao_y: c.posicao_y || 0,
+              transparencia: c.transparencia || 1,
+              alinhamento: c.alinhamento || 'left',
+            }));
+          }
         }
-      }
 
-      // 3. Last resort — use media_arquivos biblioteca (type=logo/logotipo)
-      if (configs.length === 0 && empresaId) {
-        const { data: mediaData } = await supabase
-          .from('media_arquivos')
-          .select('*')
-          .eq('empresa_id', empresaId)
-          .eq('ativo', true)
-          .in('tipo', ['logo', 'logotipo', 'sidebar_image', 'menu_logo']);
+        // 3. Last resort — use media_arquivos biblioteca (type=logo/logotipo)
+        if (configs.length === 0 && empresaId) {
+          const { data: mediaData } = await supabase
+            .from('media_arquivos')
+            .select('*')
+            .eq('empresa_id', empresaId)
+            .eq('ativo', true)
+            .in('tipo', ['logo', 'logotipo', 'sidebar_image', 'menu_logo']);
 
-        if (mediaData && mediaData.length > 0) {
-          const logoMedia = mediaData[0];
-          configs = [{
-            id: logoMedia.id,
-            tipo: 'logotipo',
-            url_imagem: logoMedia.url_publica || '',
-            ativo: true,
-            largura: 200,
-            altura: 60,
-            posicao_x: 0,
-            posicao_y: 0,
-            transparencia: 1,
-            alinhamento: 'left',
-          } as unknown as GraphicConfig];
+          if (mediaData && mediaData.length > 0) {
+            const logoMedia = mediaData[0];
+            configs = [{
+              id: logoMedia.id,
+              tipo: 'logotipo',
+              url_imagem: logoMedia.url_publica || '',
+              ativo: true,
+              largura: 200,
+              altura: 60,
+              posicao_x: 0,
+              posicao_y: 0,
+              transparencia: 1,
+              alinhamento: 'left',
+            } as unknown as GraphicConfig];
+          }
         }
-      }
 
-      setPrintingGraphicConfigs(configs);
+        setPrintingGraphicConfigs(configs);
+      } catch (err) {
+        console.warn('[App] Erro ao carregar configurações gráficas:', err);
+      }
     };
     loadPrintingConfigs();
   }, [printingInvoice, user?.empresa_id]);
@@ -35491,7 +35515,7 @@ export default function App() {
   return (
     <ProtectedRoute>
       <div className="min-h-screen bg-[#f4f7f9] text-zinc-800 font-sans selection:bg-[#003366]/10 flex" style={{ overflowX: 'clip' }}>
-        {sidebarOpen && activeTab !== 'crm_negocios' && (
+        {sidebarOpen && (
           <Sidebar 
             activeTab={activeTab} 
             setActiveTab={(t) => {
@@ -35504,7 +35528,7 @@ export default function App() {
         )}
         
         <div className="flex-1 flex flex-col min-w-0 min-h-screen">
-          {activeTab !== 'crm_negocios' && <TopHeader 
+          <TopHeader 
             fiscalYear={fiscalYear} 
             setFiscalYear={setFiscalYear} 
             sidebarOpen={sidebarOpen}
@@ -35538,7 +35562,7 @@ export default function App() {
                 setActiveTab('dashboard');
               }
             }}
-          />}
+          />
           {/* Staging Banner - only visible in non-production environments */}
           <StagingBadge />
           <main className="flex-1 overflow-visible w-full transition-all duration-300">
@@ -35821,13 +35845,6 @@ export default function App() {
                       }
                       
                       switch (activeTab) {
-                        case 'crm_negocios':
-                          return (
-                            <CrmNegociosModule 
-                              onBackToApp={() => setActiveTab('dashboard')} 
-                              companyData={companyData} 
-                            />
-                          );
                         case 'crm_empresas':
                           if (!isImatecAuthorizedAdmin(user, companyData)) {
                             return (

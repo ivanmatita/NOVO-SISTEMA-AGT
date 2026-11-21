@@ -133,29 +133,55 @@ export interface Product {
   referente?: string;
   data_registo?: string;
   armazem?: string;
-  warehouse_id?: number;
+  armazem_id?: number | string | null;
+  warehouse_id?: number | string | null;
   tipo_documento?: string;
   preco_compra?: number;
   cost_price?: number;
   price: number; // preco_venda
+  preco_venda?: number;
   finalidade?: string;
   tipologia?: string;
   unit: string;
   stock_quantity: number;
+  stock?: number;
+  stock_atual?: number;
   min_stock?: number;
+  stock_minimo?: number;
+  stock_maximo?: number;
+  stock_reservado?: number;
   category?: string;
+  categoria?: string;
+  subcategoria?: string;
+  categoria_id?: string | null;
+  unidade_id?: string | null;
   barcode?: string;
+  sku?: string;
+  ean?: string;
+  code?: string;
+  codigo?: string;
+  data_validade?: string | null;
+  controla_lote?: boolean;
+  controla_serie?: boolean;
+  lote_padrao?: string | null;
+  fornecedor_id?: string | null;
+  fornecedor_nome?: string | null;
+  valorizacao_metodo?: string;
+  observacoes?: string;
   created_at?: string;
+  updated_at?: string;
   image?: string;
   image_url?: string;
   image_path?: string;
   nome?: string; // alias for name (PT column)
   tipo?: string; // 'produto' | 'servico' | 'outro'
+  ativo?: boolean;
+  is_active?: boolean;
 }
 
 export interface InvoiceItem {
-  id?: number;
-  product_id?: number | null;
+  id?: number | string;
+  product_id?: number | string | null;
   description: string;
   quantity: number;
   unit_price: number;
@@ -174,7 +200,8 @@ export interface InvoiceItem {
   showDimensions?: boolean;
   tax?: string;
   tax_rate?: number;
-  warehouse_id?: number;
+  warehouse_id?: number | string;
+  armazem_id?: number | string;
   warehouse_responsible?: string;
   data_validade?: string;
   unidade_medida?: string;
@@ -585,15 +612,37 @@ export interface StockMovement {
   product_id: number | string;
   product_name?: string;
   empresa_id?: string;
-  type: 'entry' | 'exit' | 'transfer' | 'adjustment' | 'adjustment_plus' | 'adjustment_minus';
+  type: 'entry' | 'exit' | 'transfer' | 'adjustment' | 'adjustment_plus' | 'adjustment_minus' | 'loss' | 'return' | 'entrada' | 'saida';
+  subtipo?: string;
   quantity: number;
   unit_price: number;
+  custo_unitario?: number;
+  valor_total?: number;
   previous_stock: number;
   current_stock: number;
-  warehouse_id?: number;
-  to_warehouse_id?: number;
+  warehouse_id?: number | string | null;
+  armazem_id?: number | string | null;
+  to_warehouse_id?: number | string | null;
+  armazem_origem_id?: number | string | null;
+  armazem_destino_id?: number | string | null;
+  warehouse_name?: string | null;
+  to_warehouse_name?: string | null;
+  lote_id?: string | null;
+  lote_codigo?: string | null;
+  serial_number?: string | null;
+  data_validade?: string | null;
+  motivo?: string | null;
+  documento_origem?: string | null;
+  numero_documento?: string | null;
+  fornecedor_nome?: string | null;
+  cliente_nome?: string | null;
+  data_documento?: string | null;
+  observacoes?: string | null;
   description?: string;
   reference_id?: string;
+  created_by?: string;
+  created_by_nome?: string;
+  created_by_username?: string;
   created_at: string;
 }
 
@@ -1200,5 +1249,237 @@ export interface StandPeca {
   created_at?: string;
   updated_at?: string;
 }
+
+// ============================================================================
+// MÓDULO AVANÇADO DE STOCK (IMATEC ERP)
+// ============================================================================
+
+export type StockRole = 'admin' | 'gestor_stock' | 'operador' | 'auditor' | 'consulta';
+
+export type StockSubRoute =
+  | 'dashboard'
+  | 'produtos'
+  | 'categorias'
+  | 'entradas'
+  | 'saidas'
+  | 'movimentos'
+  | 'armazens'
+  | 'transferencias'
+  | 'inventario'
+  | 'compras'
+  | 'fornecedores'
+  | 'alertas'
+  | 'relatorios'
+  | 'agentes-ia'
+  | 'configuracoes'
+  | 'precos';
+
+export interface StockCategory {
+  id: string;
+  empresa_id: string;
+  nome: string;
+  name?: string;
+  descricao?: string;
+  parent_id?: string | null;
+  codigo?: string;
+  ativo: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface UnitOfMeasure {
+  id: string;
+  empresa_id: string;
+  sigla: string;
+  nome: string;
+  fator_conversao: number;
+  unidade_base?: string | null;
+  permite_fracao: boolean;
+  ativo: boolean;
+  created_at?: string;
+}
+
+export interface StockBalance {
+  id: string;
+  empresa_id: string;
+  product_id: string;
+  armazem_id: string;
+  quantidade_disponivel: number;
+  quantidade_reservada: number;
+  custo_medio: number;
+  localizacao_corredor?: string | null;
+  updated_at?: string;
+}
+
+export interface StockLot {
+  id: string;
+  empresa_id: string;
+  product_id: string;
+  armazem_id?: string | null;
+  numero_lote?: string | null;
+  numero_serie?: string | null;
+  data_fabrico?: string | null;
+  data_validade?: string | null;
+  quantidade_inicial: number;
+  quantidade_atual: number;
+  custo_unitario: number;
+  fornecedor_id?: string | null;
+  fornecedor_nome?: string | null;
+  estado: 'ativo' | 'esgotado' | 'expirado' | 'bloqueado';
+  observacoes?: string | null;
+  created_at?: string;
+}
+
+export interface StockTransfer {
+  id: string;
+  empresa_id: string;
+  codigo: string;
+  product_id: string;
+  product_name?: string | null;
+  armazem_origem_id: string;
+  armazem_origem_nome?: string | null;
+  armazem_destino_id: string;
+  armazem_destino_nome?: string | null;
+  quantidade: number;
+  custo_unitario: number;
+  valor_total: number;
+  estado: 'pendente' | 'aprovada' | 'concluida' | 'cancelada';
+  lote_codigo?: string | null;
+  observacoes?: string | null;
+  solicitado_por?: string | null;
+  solicitado_por_nome?: string | null;
+  aprovado_por?: string | null;
+  aprovado_por_nome?: string | null;
+  concluido_em?: string | null;
+  created_at: string;
+}
+
+export interface StockInventory {
+  id: string;
+  empresa_id: string;
+  codigo: string;
+  titulo: string;
+  armazem_id?: string | null;
+  armazem_nome?: string | null;
+  estado: 'aberto' | 'em_contagem' | 'aguardando_reconciliacao' | 'reconciliado' | 'cancelado';
+  total_itens: number;
+  total_divergencias: number;
+  valor_diferenca: number;
+  responsavel_id?: string | null;
+  responsavel_nome?: string | null;
+  reconciliado_por?: string | null;
+  reconciliado_por_nome?: string | null;
+  reconciliado_em?: string | null;
+  observacoes?: string | null;
+  created_at: string;
+}
+
+export interface StockInventoryItem {
+  id: string;
+  empresa_id: string;
+  inventario_id: string;
+  product_id: string;
+  product_name?: string | null;
+  sku?: string | null;
+  armazem_id?: string | null;
+  stock_sistema: number;
+  stock_fisico: number | null;
+  diferenca: number;
+  custo_unitario: number;
+  valor_diferenca: number;
+  justificativa?: string | null;
+  reconciliado: boolean;
+  created_at?: string;
+}
+
+export interface StockPurchaseOrderItem {
+  product_id?: string | null;
+  product_name: string;
+  sku?: string | null;
+  quantidade: number;
+  custo_unitario: number;
+  unidade?: string;
+  iva_taxa?: number;
+  total: number;
+}
+
+export interface StockPurchaseOrder {
+  id: string;
+  empresa_id: string;
+  codigo: string;
+  tipo: 'requisicao' | 'ordem_compra';
+  fornecedor_id?: string | null;
+  fornecedor_nome?: string | null;
+  armazem_id?: string | null;
+  armazem_nome?: string | null;
+  estado: 'rascunho' | 'pendente_aprovacao' | 'aprovada' | 'encomendada' | 'recebida_parcial' | 'recebida' | 'cancelada';
+  prioridade: 'baixa' | 'normal' | 'alta' | 'urgente';
+  origem: 'manual' | 'agente_ia' | 'stock_critico';
+  itens: StockPurchaseOrderItem[];
+  subtotal: number;
+  imposto: number;
+  total: number;
+  data_prevista?: string | null;
+  compra_id?: string | null;
+  observacoes?: string | null;
+  solicitado_por?: string | null;
+  solicitado_por_nome?: string | null;
+  aprovado_por?: string | null;
+  aprovado_por_nome?: string | null;
+  aprovado_em?: string | null;
+  recebido_em?: string | null;
+  created_at: string;
+}
+
+export interface StockAlert {
+  id: string;
+  empresa_id: string;
+  product_id?: string | null;
+  product_name?: string | null;
+  armazem_id?: string | null;
+  tipo: 'stock_critico' | 'esgotado' | 'excesso' | 'validade_proxima' | 'expirado' | 'sem_movimento' | 'divergencia_auditoria';
+  severidade: 'baixa' | 'media' | 'alta' | 'critica';
+  titulo: string;
+  mensagem: string;
+  dados?: Record<string, any>;
+  estado: 'ativo' | 'lido' | 'resolvido' | 'ignorado';
+  resolvido_por?: string | null;
+  resolvido_em?: string | null;
+  created_at: string;
+}
+
+export interface StockSettings {
+  id?: string;
+  empresa_id: string;
+  metodo_valorizacao: 'CMP' | 'FIFO' | 'LIFO' | 'POPM' | 'PIPO';
+  permitir_stock_negativo: boolean;
+  bloquear_venda_sem_stock: boolean;
+  dias_alerta_validade: number;
+  dias_sem_movimento: number;
+  aprovar_transferencias: boolean;
+  aprovar_inventarios: boolean;
+  agentes_frequencia_minutos: number;
+  alerta_email: boolean;
+  updated_at?: string;
+}
+
+export interface StockAgentActivity {
+  id: string;
+  empresa_id: string;
+  agente_nome: string;
+  tipo_evento: 'analise' | 'alerta' | 'recomendacao' | 'decisao_humana' | 'erro' | 'chat';
+  titulo: string;
+  resumo?: string | null;
+  detalhes?: Record<string, any>;
+  severidade: 'info' | 'aviso' | 'critico' | 'sucesso';
+  requer_confirmacao: boolean;
+  estado_confirmacao: 'n/a' | 'pendente' | 'aprovado' | 'rejeitado';
+  acao_sugerida?: Record<string, any> | null;
+  executado_por?: string | null;
+  executado_por_nome?: string | null;
+  executado_em?: string | null;
+  created_at: string;
+}
+
 
 

@@ -184,7 +184,7 @@ export async function loadTenantProdutos(
     async () => {
       let query = supabase
         .from('produtos')
-        .select('id, name, nome, codigo, barcode, unit, unidade, price, preco, preco_venda, cost_price, preco_compra, preco_custo, stock_quantity, stock, stock_atual, estoque_atual, min_stock, max_stock, armazem_id, warehouse_id, categoria, category, descricao, description, referencia, reference, tipo, is_active, ativo')
+        .select('id, name, nome, codigo, barcode, unit, unidade, price, preco, preco_venda, cost_price, preco_compra, preco_custo, stock_quantity, stock, stock_atual, estoque_atual, min_stock, stock_minimo, stock_maximo, armazem_id, warehouse_id, categoria, category, descricao, description, referente, tipo, is_active, ativo')
         .eq('empresa_id', empresaId);
 
       if (tipo === 'servico') {
@@ -193,7 +193,19 @@ export async function loadTenantProdutos(
         query = query.not('tipo', 'in', '("servico","service","serviço")');
       }
 
-      const res = await query.order('name');
+      let res = await query.order('name');
+      if (res.error?.code === '42703') {
+        let fallbackQuery = supabase
+          .from('produtos')
+          .select('*')
+          .eq('empresa_id', empresaId);
+        if (tipo === 'servico') {
+          fallbackQuery = fallbackQuery.in('tipo', ['servico', 'service', 'serviço']);
+        } else if (tipo === 'produto') {
+          fallbackQuery = fallbackQuery.not('tipo', 'in', '("servico","service","serviço")');
+        }
+        res = await fallbackQuery.order('name');
+      }
       return {
         data: Array.isArray(res.data) ? res.data : [],
         error: res.error

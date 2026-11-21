@@ -1,4 +1,15 @@
 import { supabase } from '../lib/supabase';
+import { authService } from './authService';
+
+async function getAuthHeaders(includeJson = false): Promise<Record<string, string>> {
+  const headers: Record<string, string> = {};
+  if (includeJson) headers['Content-Type'] = 'application/json';
+  try {
+    const session = await authService.getSessionSafe();
+    if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+  } catch (_) {}
+  return headers;
+}
 
 export const payrollService = {
   async getProcessedPayroll(empresa_id: string, mes_referencia?: string) {
@@ -17,7 +28,8 @@ export const payrollService = {
         const url = mes_referencia 
           ? `/api/secure-rh/payroll?mes_referencia=${encodeURIComponent(mes_referencia)}`
           : '/api/secure-rh/payroll';
-        const res = await fetch(url);
+        const headers = await getAuthHeaders();
+        const res = await fetch(url, { headers });
         if (res.ok) {
           const apiData = await res.json();
           if (Array.isArray(apiData)) {
@@ -42,7 +54,8 @@ export const payrollService = {
         const url = mes_referencia 
           ? `/api/secure-rh/payroll?mes_referencia=${encodeURIComponent(mes_referencia)}`
           : '/api/secure-rh/payroll';
-        const res = await fetch(url);
+        const headers = await getAuthHeaders();
+        const res = await fetch(url, { headers });
         if (res.ok) {
           const apiData = await res.json();
           if (Array.isArray(apiData)) {
@@ -80,9 +93,10 @@ export const payrollService = {
 
       if (error) {
         console.warn('[PayrollService] Erro no upsert Supabase, tentando API segura...', error.message);
+        const headers = await getAuthHeaders(true);
         const res = await fetch('/api/secure-rh/payroll', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers,
           body: JSON.stringify({
             colaborador_id: safeColabId,
             mes_referencia,
@@ -100,9 +114,10 @@ export const payrollService = {
       console.error('[PayrollService] Erro ao salvar:', err);
       // Tentativa direta via API segura
       try {
+        const headers = await getAuthHeaders(true);
         const res = await fetch('/api/secure-rh/payroll', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers,
           body: JSON.stringify({
             colaborador_id: safeColabId,
             mes_referencia,
@@ -133,8 +148,10 @@ export const payrollService = {
        
        if (error) {
          console.warn('[PayrollService] Erro ao deletar no Supabase, tentando API segura...', error.message);
+         const headers = await getAuthHeaders();
          const res = await fetch(`/api/secure-rh/payroll?colaborador_id=${safeColabId}&mes_referencia=${encodeURIComponent(mes_referencia)}`, {
-           method: 'DELETE'
+           method: 'DELETE',
+           headers
          });
          if (res.ok) return true;
          throw error;
@@ -143,8 +160,10 @@ export const payrollService = {
      } catch (err) {
         console.error('[PayrollService] Erro ao desprocessar:', err);
         try {
+          const headers = await getAuthHeaders();
           const res = await fetch(`/api/secure-rh/payroll?colaborador_id=${safeColabId}&mes_referencia=${encodeURIComponent(mes_referencia)}`, {
-            method: 'DELETE'
+            method: 'DELETE',
+            headers
           });
           if (res.ok) return true;
         } catch (_) {}

@@ -1272,7 +1272,8 @@ export type StockSubRoute =
   | 'relatorios'
   | 'agentes-ia'
   | 'configuracoes'
-  | 'precos';
+  | 'precos'
+  | 'producao';
 
 export interface StockCategory {
   id: string;

@@ -193,13 +193,8 @@ export const authService = {
       const cleanUsername = usernameLogin?.trim() || '';
       console.log('[AuthService] Tentativa de login por Username Login:', cleanUsername);
 
-      // Validação estrita: Login por e-mail é expressamente proibido
-      if (cleanUsername.includes('@')) {
-        throw new Error('Acesso inválido: É expressamente proibido utilizar endereço de e-mail para login. Utilize o seu Username Login.');
-      }
-
       if (!cleanUsername) {
-        throw new Error('Por favor, introduza o seu Username Login.');
+        throw new Error('Por favor, introduza o seu Username ou E-mail.');
       }
 
       if (!password) {

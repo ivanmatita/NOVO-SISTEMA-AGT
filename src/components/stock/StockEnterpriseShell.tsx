@@ -48,6 +48,7 @@ import {
 } from './StockPurchasesAlertsSettingsModule';
 import { StockDetailedReportsModule } from './StockDetailedReportsModule';
 import { StockAgentsHubModule } from './StockAgentsHubModule';
+import { StockProducaoModule } from './StockProducaoModule';
 import { BarcodeScannerModal } from './BarcodeScannerModal';
 import { StockExcelImportModal } from './StockExcelImportModal';
 import { WarehouseModule } from '../WarehouseModule';
@@ -93,6 +94,7 @@ export const StockEnterpriseShell: React.FC<StockEnterpriseShellProps> = ({
   products,
   stockMovements,
   warehouses,
+  metrics = [],
   companyData,
   activeTaxes = [],
   fiscalYear,
@@ -188,6 +190,7 @@ export const StockEnterpriseShell: React.FC<StockEnterpriseShellProps> = ({
     { id: 'alertas', label: 'Alertas', icon: Bell, badge: activeAlertsCount },
     { id: 'relatorios', label: 'Relatórios', icon: FileText },
     { id: 'agentes-ia', label: 'Agentes IA (9)', icon: Cpu, badge: pendingAgentCount },
+    { id: 'producao', label: 'Produção', icon: Cpu },
     { id: 'precos', label: 'Tabela Serviços', icon: Tag },
     { id: 'configuracoes', label: 'Configurações', icon: Settings },
   ];
@@ -468,6 +471,18 @@ export const StockEnterpriseShell: React.FC<StockEnterpriseShellProps> = ({
           settings={configuracoes}
           canConfigure={caps.canConfigure}
           onRefresh={handleFullRefresh}
+        />
+      )}
+
+      {activeSubRoute === 'producao' && (
+        <StockProducaoModule
+          user={user}
+          companyData={companyData}
+          warehouses={warehouses}
+          metrics={metrics}
+          activeTaxes={activeTaxes}
+          onRefresh={handleFullRefresh}
+          onNavigateToStock={() => onSubRouteChange('produtos')}
         />
       )}
 

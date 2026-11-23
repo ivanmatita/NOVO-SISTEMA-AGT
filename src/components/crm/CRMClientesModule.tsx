@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   Users, UserPlus, Search, Filter, ArrowLeft, Phone, Mail, 
   MapPin, Building2, FileText, CheckCircle, AlertCircle, Plus, 
-  Trash2, Edit, ChevronRight, Eye, ShieldCheck, DollarSign, Calendar, Globe, Loader2
+  Trash2, Edit, ChevronRight, Eye, ShieldCheck, DollarSign, Calendar, Globe, Loader2,
+  BarChart3, RefreshCw, Printer, Download, MessageSquare, Briefcase, FolderGit2, ShoppingCart
 } from 'lucide-react';
 import { crmNegocioService } from '../../services/crmNegocioService';
 import { validarNIFAGT, NifConsultaResult } from '../../services/agt/validarNIF';
@@ -15,13 +16,18 @@ interface CRMClientesModuleProps {
 }
 
 export const CRMClientesModule: React.FC<CRMClientesModuleProps> = ({ user, companyData, onBack }) => {
-  const [activeSection, setActiveSection] = useState<'lista' | 'novo' | 'detalhe' | 'reclamacoes' | 'segmentacao'>('lista');
+  // 10 sections navigation
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'lista' | 'novo' | 'perfil' | 'contactos' | 'interacoes' | 'atendimento' | 'segmentacao' | 'historico' | 'relatorios'>('dashboard');
   const [clientes, setClientes] = useState<any[]>([]);
   const [reclamacoes, setReclamacoes] = useState<any[]>([]);
   const [interacoes, setInteracoes] = useState<any[]>([]);
+  const [oportunidades, setOportunidades] = useState<any[]>([]);
+  const [projetos, setProjetos] = useState<any[]>([]);
+  const [vendas, setVendas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCliente, setSelectedCliente] = useState<any | null>(null);
+  const [perfilTab, setPerfilTab] = useState<'geral' | 'contactos' | 'negocios' | 'vendas' | 'projetos' | 'atendimento' | 'documentos' | 'historico'>('geral');
 
   // NIF lookup state
   const [nifLoading, setNifLoading] = useState(false);
@@ -29,7 +35,7 @@ export const CRMClientesModule: React.FC<CRMClientesModuleProps> = ({ user, comp
   const nifDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastLookedUpNif = useRef<string>('');
 
-  // Comprehensive Client Form State matching System ClientForm
+  // Form divided into 5 sections: Identificação, Contactos, Localização, Gestão Comercial e Outros Dados
   const [formData, setFormData] = useState({
     nome: '',
     email: '',
@@ -45,6 +51,7 @@ export const CRMClientesModule: React.FC<CRMClientesModuleProps> = ({ user, comp
     whatsapp: '',
     webpage: '',
     tipo_cliente: 'normal',
+    categoria: 'Standard',
     setor_atividade: 'Comércio Geral',
     saldo_inicial: 0,
     responsavel: user?.full_name || 'Comercial',
@@ -63,14 +70,20 @@ export const CRMClientesModule: React.FC<CRMClientesModuleProps> = ({ user, comp
   const loadData = async () => {
     try {
       setLoading(true);
-      const [cls, recs, ints] = await Promise.all([
+      const [cls, recs, ints, ops, projs, vds] = await Promise.all([
         crmNegocioService.getClientes(empresaId),
         crmNegocioService.getReclamacoes(empresaId),
-        crmNegocioService.getInteracoes(empresaId)
+        crmNegocioService.getInteracoes(empresaId),
+        crmNegocioService.getOportunidades(empresaId),
+        crmNegocioService.getProjetos(empresaId),
+        crmNegocioService.getVendasCrm(empresaId)
       ]);
       setClientes(cls);
       setReclamacoes(recs);
       setInteracoes(ints);
+      setOportunidades(ops);
+      setProjetos(projs);
+      setVendas(vds);
     } catch (err) {
       console.error('Erro ao carregar dados de clientes:', err);
       toast.error('Erro ao carregar diretório de clientes.');
@@ -119,12 +132,20 @@ export const CRMClientesModule: React.FC<CRMClientesModuleProps> = ({ user, comp
     }
   };
 
-  const handleCreateClient = async (e: React.FormEvent) => {
+  const handleSaveClient = async (e: React.FormEvent, createAnother = false) => {
     e.preventDefault();
     if (!formData.nome || (!formData.contribuinte && !formData.nif)) {
       toast.error('Por favor preencha o Nome e o NIF / Contribuinte do cliente.');
       return;
     }
+    // Prevent duplication
+    const nifCheck = formData.contribuinte || formData.nif;
+    const isDuplicate = clientes.some(c => (c.nif === nifCheck || c.contribuinte === nifCheck));
+    if (isDuplicate && !selectedCliente) {
+      toast.error(`Já existe um cliente registado com o NIF ${nifCheck}. Duplicação impedida.`);
+      return;
+    }
+
     try {
       const clientPayload = {
         ...formData,
@@ -134,8 +155,15 @@ export const CRMClientesModule: React.FC<CRMClientesModuleProps> = ({ user, comp
         empresa_id: empresaId,
         ativo: formData.ativo
       };
-      await crmNegocioService.createCliente(clientPayload);
-      toast.success('Cliente cadastrado com sucesso no sistema e CRM!');
+
+      if (selectedCliente?.id) {
+        await crmNegocioService.updateCliente(selectedCliente.id, clientPayload);
+        toast.success('Cliente atualizado com sucesso!');
+      } else {
+        await crmNegocioService.createCliente(clientPayload);
+        toast.success('Cliente cadastrado com sucesso no sistema e CRM!');
+      }
+
       setFormData({
         nome: '',
         email: '',
@@ -151,17 +179,44 @@ export const CRMClientesModule: React.FC<CRMClientesModuleProps> = ({ user, comp
         whatsapp: '',
         webpage: '',
         tipo_cliente: 'normal',
+        categoria: 'Standard',
         setor_atividade: 'Comércio Geral',
         saldo_inicial: 0,
         responsavel: user?.full_name || 'Comercial',
         observacoes: '',
         ativo: true
       });
-      setActiveSection('lista');
+      setSelectedCliente(null);
+
+      if (createAnother) {
+        setActiveTab('novo');
+      } else {
+        setActiveTab('lista');
+      }
       loadData();
     } catch (err: any) {
-      console.error('Erro ao criar cliente:', err);
-      toast.error('Erro ao criar cliente: ' + (err.message || 'Erro desconhecido'));
+      console.error('Erro ao guardar cliente:', err);
+      toast.error('Erro ao guardar cliente: ' + (err.message || 'Erro desconhecido'));
+    }
+  };
+
+  const handleArchiveClient = async (cliente: any) => {
+    try {
+      await crmNegocioService.updateCliente(cliente.id, { ativo: false });
+      toast.success('Cliente arquivado com sucesso.');
+      loadData();
+    } catch (err) {
+      toast.error('Erro ao arquivar cliente.');
+    }
+  };
+
+  const handleRestoreClient = async (cliente: any) => {
+    try {
+      await crmNegocioService.updateCliente(cliente.id, { ativo: true });
+      toast.success('Cliente restaurado com sucesso.');
+      loadData();
+    } catch (err) {
+      toast.error('Erro ao restaurar cliente.');
     }
   };
 
@@ -172,13 +227,17 @@ export const CRMClientesModule: React.FC<CRMClientesModuleProps> = ({ user, comp
     c.telefone?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const totalClientes = clientes.length;
+  const clientesAtivos = clientes.filter(c => c.ativo !== false).length;
+  const clientesInativos = clientes.filter(c => c.ativo === false).length;
+
   return (
     <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-6 rounded-xl border border-slate-200 shadow-sm gap-4">
         <div className="flex items-center gap-4">
           <button 
-            onClick={activeSection === 'lista' ? onBack : () => setActiveSection('lista')}
+            onClick={activeTab === 'dashboard' ? onBack : () => setActiveTab('dashboard')}
             className="p-2.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 transition-all"
             title="Voltar"
           >
@@ -186,45 +245,164 @@ export const CRMClientesModule: React.FC<CRMClientesModuleProps> = ({ user, comp
           </button>
           <div>
             <div className="flex items-center gap-2 text-[#003366] font-black text-xs uppercase tracking-widest mb-1">
-              <Users size={16} /> CRM Clientes & Contas Comerciais
+              <Users size={16} /> IMATEC ERP • CRM Gestão Clientes
             </div>
             <h1 className="text-2xl font-black text-slate-900 tracking-tight">
-              {activeSection === 'lista' && 'Diretório Unificado de Clientes'}
-              {activeSection === 'novo' && 'Registar Novo Cliente (Formulário Oficial AGT)'}
-              {activeSection === 'detalhe' && `Perfil Comercial: ${selectedCliente?.nome}`}
-              {activeSection === 'reclamacoes' && 'Gestão de Reclamações e Atendimento'}
-              {activeSection === 'segmentacao' && 'Segmentação e Classificação de Clientes'}
+              {activeTab === 'dashboard' && 'Dashboard de Clientes'}
+              {activeTab === 'lista' && 'Todos os Clientes'}
+              {activeTab === 'novo' && (selectedCliente ? 'Editar Cliente' : 'Registar Novo Cliente')}
+              {activeTab === 'perfil' && `Perfil Individual: ${selectedCliente?.nome}`}
+              {activeTab === 'contactos' && 'Diretório de Contactos'}
+              {activeTab === 'interacoes' && 'Registo de Interações Comerciais'}
+              {activeTab === 'atendimento' && 'Atendimento & Reclamações'}
+              {activeTab === 'segmentacao' && 'Segmentação de Clientes'}
+              {activeTab === 'historico' && 'Histórico de Atividades'}
+              {activeTab === 'relatorios' && 'Relatórios e Indicadores de Clientes'}
             </h1>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          {activeSection === 'lista' && (
-            <>
-              <button 
-                onClick={() => setActiveSection('segmentacao')}
-                className="bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-black uppercase tracking-wider px-4 py-2.5 rounded-lg transition-all shadow-xs flex items-center gap-2"
-              >
-                <Filter size={16} /> Segmentação
-              </button>
-              <button 
-                onClick={() => setActiveSection('reclamacoes')}
-                className="bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-black uppercase tracking-wider px-4 py-2.5 rounded-lg transition-all shadow-xs flex items-center gap-2"
-              >
-                <AlertCircle size={16} /> Reclamações ({reclamacoes.length})
-              </button>
-              <button 
-                onClick={() => setActiveSection('novo')}
-                className="bg-[#003366] hover:bg-[#002244] text-white text-xs font-black uppercase tracking-wider px-4 py-2.5 rounded-lg transition-all shadow-md flex items-center gap-2"
-              >
-                <UserPlus size={16} /> Novo Cliente
-              </button>
-            </>
-          )}
+        <div className="flex flex-wrap items-center gap-2">
+          <button 
+            onClick={() => setActiveTab('dashboard')}
+            className={`px-3 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'dashboard' ? 'bg-[#003366] text-white shadow-xs' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`}
+          >
+            Dashboard
+          </button>
+          <button 
+            onClick={() => setActiveTab('lista')}
+            className={`px-3 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'lista' ? 'bg-[#003366] text-white shadow-xs' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`}
+          >
+            Clientes
+          </button>
+          <button 
+            onClick={() => setActiveTab('interacoes')}
+            className={`px-3 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'interacoes' ? 'bg-[#003366] text-white shadow-xs' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`}
+          >
+            Interações
+          </button>
+          <button 
+            onClick={() => setActiveTab('atendimento')}
+            className={`px-3 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'atendimento' ? 'bg-[#003366] text-white shadow-xs' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`}
+          >
+            Atendimento
+          </button>
+          <button 
+            onClick={() => setActiveTab('segmentacao')}
+            className={`px-3 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'segmentacao' ? 'bg-[#003366] text-white shadow-xs' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`}
+          >
+            Segmentação
+          </button>
+          <button 
+            onClick={() => setActiveTab('relatorios')}
+            className={`px-3 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'relatorios' ? 'bg-[#003366] text-white shadow-xs' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`}
+          >
+            Relatórios
+          </button>
+          <button 
+            onClick={() => { setSelectedCliente(null); setActiveTab('novo'); }}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black uppercase tracking-wider px-4 py-2 rounded-lg transition-all shadow-md flex items-center gap-1.5"
+          >
+            <UserPlus size={16} /> Novo Cliente
+          </button>
         </div>
       </div>
 
-      {/* Content Sections */}
-      {activeSection === 'lista' && (
+      {/* SECTION 1: DASHBOARD CLIENTES */}
+      {activeTab === 'dashboard' && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total de Clientes</p>
+                <h3 className="text-2xl font-black text-slate-900 mt-1">{totalClientes}</h3>
+                <span className="text-[10px] text-emerald-600 font-bold mt-1 inline-flex items-center gap-1">Base sincronizada</span>
+              </div>
+              <div className="w-12 h-12 rounded-xl bg-blue-50 text-[#003366] flex items-center justify-center">
+                <Users size={24} />
+              </div>
+            </div>
+
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Clientes Ativos</p>
+                <h3 className="text-2xl font-black text-emerald-600 mt-1">{clientesAtivos}</h3>
+                <span className="text-[10px] text-emerald-600 font-bold mt-1 inline-flex items-center gap-1">Em atividade comercial</span>
+              </div>
+              <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
+                <CheckCircle size={24} />
+              </div>
+            </div>
+
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Clientes Inativos</p>
+                <h3 className="text-2xl font-black text-rose-600 mt-1">{clientesInativos}</h3>
+                <span className="text-[10px] text-slate-400 font-bold mt-1 inline-flex items-center gap-1">Arquivados</span>
+              </div>
+              <div className="w-12 h-12 rounded-xl bg-rose-50 text-rose-700 flex items-center justify-center">
+                <AlertCircle size={24} />
+              </div>
+            </div>
+
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Interações Registadas</p>
+                <h3 className="text-2xl font-black text-purple-600 mt-1">{interacoes.length}</h3>
+                <span className="text-[10px] text-purple-600 font-bold mt-1 inline-flex items-center gap-1">Atendimento ativo</span>
+              </div>
+              <div className="w-12 h-12 rounded-xl bg-purple-50 text-purple-700 flex items-center justify-center">
+                <MessageSquare size={24} />
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm space-y-4">
+              <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider pb-2 border-b border-slate-100">Ações Rápidas CRM</h3>
+              <div className="grid grid-cols-2 gap-3">
+                <button onClick={() => { setSelectedCliente(null); setActiveTab('novo'); }} className="p-4 bg-slate-50 hover:bg-blue-50 border border-slate-200 rounded-xl text-left transition-all group">
+                  <UserPlus className="text-[#003366] mb-2 group-hover:scale-110 transition-transform" size={20} />
+                  <h4 className="text-xs font-black text-slate-900">Novo Cliente</h4>
+                  <p className="text-[10px] text-slate-500 mt-0.5">Registo completo com validação NIF.</p>
+                </button>
+                <button onClick={() => setActiveTab('interacoes')} className="p-4 bg-slate-50 hover:bg-purple-50 border border-slate-200 rounded-xl text-left transition-all group">
+                  <MessageSquare className="text-purple-700 mb-2 group-hover:scale-110 transition-transform" size={20} />
+                  <h4 className="text-xs font-black text-slate-900">Registar Interação</h4>
+                  <p className="text-[10px] text-slate-500 mt-0.5">Chamadas, reuniões e notas.</p>
+                </button>
+                <button onClick={() => setActiveTab('atendimento')} className="p-4 bg-slate-50 hover:bg-amber-50 border border-slate-200 rounded-xl text-left transition-all group">
+                  <AlertCircle className="text-amber-700 mb-2 group-hover:scale-110 transition-transform" size={20} />
+                  <h4 className="text-xs font-black text-slate-900">Atendimento</h4>
+                  <p className="text-[10px] text-slate-500 mt-0.5">Reclamações e suporte.</p>
+                </button>
+                <button onClick={() => setActiveTab('relatorios')} className="p-4 bg-slate-50 hover:bg-emerald-50 border border-slate-200 rounded-xl text-left transition-all group">
+                  <BarChart3 className="text-emerald-700 mb-2 group-hover:scale-110 transition-transform" size={20} />
+                  <h4 className="text-xs font-black text-slate-900">Relatórios</h4>
+                  <p className="text-[10px] text-slate-500 mt-0.5">Estatísticas comerciais.</p>
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm space-y-4">
+              <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider pb-2 border-b border-slate-100">Últimos Clientes Registados</h3>
+              <div className="space-y-3">
+                {clientes.slice(0, 4).map(c => (
+                  <div key={c.id} className="p-3 bg-slate-50 rounded-lg border border-slate-200 flex justify-between items-center">
+                    <div>
+                      <div className="text-xs font-bold text-slate-900">{c.nome}</div>
+                      <div className="text-[10px] text-slate-400">NIF: {c.nif || c.contribuinte || 'N/D'} • {c.provincia || 'Luanda'}</div>
+                    </div>
+                    <button onClick={() => { setSelectedCliente(c); setActiveTab('perfil'); }} className="text-xs font-black text-[#003366] hover:underline">Ver Perfil →</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SECTION 2: TODOS OS CLIENTES */}
+      {activeTab === 'lista' && (
         <div className="space-y-4">
           <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-4 justify-between items-center">
             <div className="relative w-full md:w-96">
@@ -237,8 +415,9 @@ export const CRMClientesModule: React.FC<CRMClientesModuleProps> = ({ user, comp
                 className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium focus:outline-none focus:border-[#003366]"
               />
             </div>
-            <div className="text-xs font-bold text-slate-500">
-              Total Sincronizado: <span className="text-slate-900 font-black">{filteredClientes.length}</span> clientes ativos
+            <div className="flex items-center gap-3">
+              <button onClick={() => window.print()} className="px-3 py-2 border border-slate-300 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-50 flex items-center gap-1.5"><Printer size={14} /> Imprimir</button>
+              <div className="text-xs font-bold text-slate-500">Total: <span className="text-slate-900 font-black">{filteredClientes.length}</span></div>
             </div>
           </div>
 
@@ -251,7 +430,7 @@ export const CRMClientesModule: React.FC<CRMClientesModuleProps> = ({ user, comp
                     <th className="p-4">NIF / Contribuinte</th>
                     <th className="p-4">Contacto</th>
                     <th className="p-4">Localização</th>
-                    <th className="p-4">Tipo / Setor</th>
+                    <th className="p-4">Categoria</th>
                     <th className="p-4">Estado</th>
                     <th className="p-4 text-center">Ações</th>
                   </tr>
@@ -260,40 +439,44 @@ export const CRMClientesModule: React.FC<CRMClientesModuleProps> = ({ user, comp
                   {filteredClientes.map((c) => (
                     <tr key={c.id} className="hover:bg-slate-50 transition-colors">
                       <td className="p-4">
-                        <div className="font-bold text-slate-900">{c.nome || c.name}</div>
+                        <div className="font-bold text-slate-900">{c.nome}</div>
                         <div className="text-[10px] text-slate-400">{c.email || 'Sem email'}</div>
                       </td>
                       <td className="p-4 font-mono font-bold text-slate-600">{c.nif || c.contribuinte || 'N/D'}</td>
                       <td className="p-4">
                         <div className="flex items-center gap-1.5"><Phone size={12} className="text-slate-400" /> {c.telefone || 'N/D'}</div>
-                        <div className="flex items-center gap-1.5 text-[10px] text-slate-400"><Building2 size={12} /> {c.whatsapp || 'Sem whatsapp'}</div>
                       </td>
                       <td className="p-4">
                         <div className="flex items-center gap-1.5"><MapPin size={12} className="text-slate-400" /> {c.municipio || c.provincia || 'Luanda'}</div>
                       </td>
-                      <td className="p-4">
-                        <span className="bg-blue-50 text-[#003366] px-2.5 py-1 rounded-md text-[10px] font-bold">{c.tipo_cliente || 'Normal'}</span>
-                      </td>
+                      <td className="p-4"><span className="bg-blue-50 text-[#003366] px-2.5 py-1 rounded-md text-[10px] font-bold">{c.tipo_cliente || 'Normal'}</span></td>
                       <td className="p-4">
                         <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${c.ativo !== false ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}`}>
                           {c.ativo !== false ? 'Ativo' : 'Inativo'}
                         </span>
                       </td>
-                      <td className="p-4 text-center">
-                        <button 
-                          onClick={() => { setSelectedCliente(c); setActiveSection('detalhe'); }}
-                          className="p-2 bg-blue-50 text-[#003366] hover:bg-[#003366] hover:text-white rounded-lg transition-all font-bold text-xs inline-flex items-center gap-1 shadow-xs"
-                        >
-                          <Eye size={14} /> Perfil CRM
+                      <td className="p-4 text-center flex items-center justify-center gap-1.5">
+                        <button onClick={() => { setSelectedCliente(c); setActiveTab('perfil'); }} className="p-2 bg-blue-50 text-[#003366] hover:bg-[#003366] hover:text-white rounded-lg transition-all font-bold text-xs inline-flex items-center gap-1" title="Ver Perfil">
+                          <Eye size={14} /> Perfil
                         </button>
+                        <button onClick={() => { setSelectedCliente(c); setFormData({ ...formData, ...c, contribuinte: c.nif || c.contribuinte }); setActiveTab('novo'); }} className="p-2 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-lg transition-all" title="Editar">
+                          <Edit size={14} />
+                        </button>
+                        {c.ativo !== false ? (
+                          <button onClick={() => handleArchiveClient(c)} className="p-2 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-lg transition-all" title="Arquivar">
+                            <Trash2 size={14} />
+                          </button>
+                        ) : (
+                          <button onClick={() => handleRestoreClient(c)} className="p-2 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-lg transition-all" title="Restaurar">
+                            <RefreshCw size={14} />
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}
                   {filteredClientes.length === 0 && !loading && (
                     <tr>
-                      <td colSpan={7} className="p-12 text-center text-slate-400 font-medium text-xs">
-                        Nenhum cliente encontrado no sistema.
-                      </td>
+                      <td colSpan={7} className="p-12 text-center text-slate-400 font-medium text-xs">Nenhum cliente encontrado.</td>
                     </tr>
                   )}
                 </tbody>
@@ -303,158 +486,208 @@ export const CRMClientesModule: React.FC<CRMClientesModuleProps> = ({ user, comp
         </div>
       )}
 
-      {activeSection === 'novo' && (
+      {/* SECTION 3: NOVO CLIENTE / EDITAR (Dividido em 5 secções) */}
+      {activeTab === 'novo' && (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-8 max-w-4xl mx-auto">
           <div className="flex justify-between items-center mb-6 pb-4 border-b border-slate-100">
             <div>
-              <h2 className="text-lg font-black text-slate-900">Registar Novo Cliente (Formulário Oficial AGT & CRM)</h2>
-              <p className="text-xs text-slate-500">Preencha os dados fiscais e de contacto para validação automática.</p>
+              <h2 className="text-lg font-black text-slate-900">{selectedCliente ? 'Editar Cliente' : 'Registar Novo Cliente'}</h2>
+              <p className="text-xs text-slate-500">Formulário oficial dividido em Identificação, Contactos, Localização, Gestão Comercial e Outros Dados.</p>
             </div>
-            <button onClick={() => setActiveSection('lista')} className="text-xs font-bold text-slate-500 hover:text-slate-900">Cancelar</button>
+            <button onClick={() => setActiveTab('lista')} className="text-xs font-bold text-slate-500 hover:text-slate-900">Cancelar</button>
           </div>
 
-          <form onSubmit={handleCreateClient} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">NIF / Contribuinte *</label>
-                <div className="relative">
-                  <input 
-                    type="text" 
-                    name="contribuinte"
-                    required
-                    value={formData.contribuinte}
-                    onChange={handleChange}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono font-bold focus:outline-none focus:border-[#003366]"
-                    placeholder="Introduza o NIF..."
-                  />
-                  {nifLoading && (
-                    <div className="absolute right-3 top-3 text-blue-600 flex items-center gap-1 text-[10px]">
-                      <Loader2 size={14} className="animate-spin" /> A validar AGT...
-                    </div>
+          <form onSubmit={(e) => handleSaveClient(e, false)} className="space-y-6">
+            {/* 1. Identificação */}
+            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-4">
+              <h3 className="text-xs font-black uppercase tracking-wider text-[#003366]">1. Identificação Fiscal</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">NIF / Contribuinte *</label>
+                  <div className="relative">
+                    <input 
+                      type="text" 
+                      name="contribuinte"
+                      required
+                      value={formData.contribuinte}
+                      onChange={handleChange}
+                      className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-xs font-mono font-bold focus:outline-none focus:border-[#003366]"
+                      placeholder="Introduza o NIF..."
+                    />
+                    {nifLoading && (
+                      <div className="absolute right-3 top-3 text-blue-600 flex items-center gap-1 text-[10px]">
+                        <Loader2 size={14} className="animate-spin" /> A validar AGT...
+                      </div>
+                    )}
+                  </div>
+                  {nifResult && nifResult.exists && (
+                    <p className="text-[10px] text-emerald-600 font-bold mt-1 flex items-center gap-1">
+                      <ShieldCheck size={12} /> NIF Válido ({nifResult.estado || 'Ativo'})
+                    </p>
                   )}
                 </div>
-                {nifResult && nifResult.exists && (
-                  <p className="text-[10px] text-emerald-600 font-bold mt-1 flex items-center gap-1">
-                    <ShieldCheck size={12} /> NIF Válido ({nifResult.estado || 'Ativo'})
-                  </p>
-                )}
-              </div>
 
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Nome Completo / Razão Social *</label>
+                  <input 
+                    type="text" 
+                    name="nome"
+                    required
+                    value={formData.nome}
+                    onChange={handleChange}
+                    className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-xs font-bold focus:outline-none focus:border-[#003366]"
+                    placeholder="Nome completo ou denominação social"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* 2. Contactos */}
+            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-4">
+              <h3 className="text-xs font-black uppercase tracking-wider text-[#003366]">2. Contactos</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">E-mail</label>
+                  <input 
+                    type="email" 
+                    name="email"
+                    value={formData.email}
+                    onChange={handleChange}
+                    className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-xs font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Telefone</label>
+                  <input 
+                    type="text" 
+                    name="telefone"
+                    value={formData.telefone}
+                    onChange={handleChange}
+                    className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-xs font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">WhatsApp</label>
+                  <input 
+                    type="text" 
+                    name="whatsapp"
+                    value={formData.whatsapp}
+                    onChange={handleChange}
+                    className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-xs font-bold"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* 3. Localização */}
+            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-4">
+              <h3 className="text-xs font-black uppercase tracking-wider text-[#003366]">3. Localização</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Província</label>
+                  <input 
+                    type="text" 
+                    name="provincia"
+                    value={formData.provincia}
+                    onChange={handleChange}
+                    className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-xs font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Município</label>
+                  <input 
+                    type="text" 
+                    name="municipio"
+                    value={formData.municipio}
+                    onChange={handleChange}
+                    className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-xs font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">País</label>
+                  <input 
+                    type="text" 
+                    name="pais"
+                    value={formData.pais}
+                    onChange={handleChange}
+                    className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-xs font-bold"
+                  />
+                </div>
+              </div>
               <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Nome / Razão Social *</label>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Morada / Endereço</label>
                 <input 
                   type="text" 
-                  name="nome"
-                  required
-                  value={formData.nome}
+                  name="morada"
+                  value={formData.morada}
                   onChange={handleChange}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold focus:outline-none focus:border-[#003366]"
-                  placeholder="Nome completo ou denominação social"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">E-mail</label>
-                <input 
-                  type="email" 
-                  name="email"
-                  value={formData.email}
-                  onChange={handleChange}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold focus:outline-none focus:border-[#003366]"
-                  placeholder="exemplo@dominio.com"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Telefone Principal</label>
-                <input 
-                  type="text" 
-                  name="telefone"
-                  value={formData.telefone}
-                  onChange={handleChange}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold focus:outline-none focus:border-[#003366]"
-                  placeholder="+244 923 000 000"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">WhatsApp</label>
-                <input 
-                  type="text" 
-                  name="whatsapp"
-                  value={formData.whatsapp}
-                  onChange={handleChange}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold focus:outline-none focus:border-[#003366]"
-                  placeholder="+244 923 000 000"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Tipo de Cliente</label>
-                <select 
-                  name="tipo_cliente"
-                  value={formData.tipo_cliente}
-                  onChange={handleChange}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold focus:outline-none focus:border-[#003366]"
-                >
-                  <option value="normal">Normal</option>
-                  <option value="vip">VIP / Premium</option>
-                  <option value="corporativo">Corporativo</option>
-                  <option value="revendedor">Revendedor</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Província</label>
-                <input 
-                  type="text" 
-                  name="provincia"
-                  value={formData.provincia}
-                  onChange={handleChange}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold focus:outline-none focus:border-[#003366]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Município</label>
-                <input 
-                  type="text" 
-                  name="municipio"
-                  value={formData.municipio}
-                  onChange={handleChange}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold focus:outline-none focus:border-[#003366]"
+                  className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-xs font-bold"
                 />
               </div>
             </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Morada / Endereço Completo</label>
-              <input 
-                type="text" 
-                name="morada"
-                value={formData.morada}
-                onChange={handleChange}
-                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold focus:outline-none focus:border-[#003366]"
-                placeholder="Rua, Número, Bairro, Cidade"
-              />
+            {/* 4. Gestão Comercial */}
+            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-4">
+              <h3 className="text-xs font-black uppercase tracking-wider text-[#003366]">4. Gestão Comercial</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Tipo de Cliente</label>
+                  <select 
+                    name="tipo_cliente"
+                    value={formData.tipo_cliente}
+                    onChange={handleChange}
+                    className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-xs font-bold"
+                  >
+                    <option value="normal">Normal</option>
+                    <option value="vip">VIP</option>
+                    <option value="corporativo">Corporativo</option>
+                    <option value="revendedor">Revendedor</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Setor de Atividade</label>
+                  <input 
+                    type="text" 
+                    name="setor_atividade"
+                    value={formData.setor_atividade}
+                    onChange={handleChange}
+                    className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-xs font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Responsável Comercial</label>
+                  <input 
+                    type="text" 
+                    name="responsavel"
+                    value={formData.responsavel}
+                    onChange={handleChange}
+                    className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-xs font-bold"
+                  />
+                </div>
+              </div>
             </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Observações / Notas Comerciais</label>
-              <textarea 
-                name="observacoes"
-                rows={3}
-                value={formData.observacoes}
-                onChange={handleChange}
-                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold focus:outline-none focus:border-[#003366]"
-                placeholder="Notas sobre preferências, histórico ou condições especiais..."
-              />
+            {/* 5. Outros Dados */}
+            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-4">
+              <h3 className="text-xs font-black uppercase tracking-wider text-[#003366]">5. Outros Dados & Observações</h3>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Observações</label>
+                <textarea 
+                  name="observacoes"
+                  rows={3}
+                  value={formData.observacoes}
+                  onChange={handleChange}
+                  className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-xs font-bold"
+                  placeholder="Notas comerciais e histórico..."
+                />
+              </div>
             </div>
 
+            {/* Action Buttons */}
             <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
               <button 
                 type="button" 
-                onClick={() => setActiveSection('lista')}
+                onClick={() => setActiveTab('lista')}
                 className="px-6 py-2.5 border border-slate-300 text-slate-700 rounded-lg text-xs font-black uppercase hover:bg-slate-50 transition-all"
               >
                 Cancelar
@@ -463,74 +696,308 @@ export const CRMClientesModule: React.FC<CRMClientesModuleProps> = ({ user, comp
                 type="submit" 
                 className="px-6 py-2.5 bg-[#003366] text-white rounded-lg text-xs font-black uppercase hover:bg-[#002244] transition-all shadow-md"
               >
-                Guardar Cliente
+                Guardar
+              </button>
+              <button 
+                type="button"
+                onClick={(e) => handleSaveClient(e, true)}
+                className="px-6 py-2.5 bg-emerald-600 text-white rounded-lg text-xs font-black uppercase hover:bg-emerald-700 transition-all shadow-md"
+              >
+                Guardar e Novo
               </button>
             </div>
           </form>
         </div>
       )}
 
-      {activeSection === 'detalhe' && selectedCliente && (
+      {/* SECTION 4: PERFIL INDIVIDUAL (Com separadores) */}
+      {activeTab === 'perfil' && selectedCliente && (
         <div className="space-y-6">
           <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-2xl font-black text-slate-900">{selectedCliente.nome || selectedCliente.name}</h2>
+                <h2 className="text-2xl font-black text-slate-900">{selectedCliente.nome}</h2>
                 <span className="bg-blue-50 text-[#003366] px-3 py-1 rounded-full text-[10px] font-black uppercase">{selectedCliente.tipo_cliente || 'Normal'}</span>
               </div>
-              <p className="text-xs text-slate-500 mt-1 font-mono">NIF: {selectedCliente.nif || selectedCliente.contribuinte || 'N/D'} • Setor: {selectedCliente.setor_atividade || 'Comércio'}</p>
+              <p className="text-xs text-slate-500 mt-1 font-mono">NIF: {selectedCliente.nif || selectedCliente.contribuinte || 'N/D'} • Responsável: {selectedCliente.responsavel || 'Comercial'}</p>
             </div>
-            <button onClick={() => setActiveSection('lista')} className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg text-xs font-black uppercase hover:bg-slate-50">
-              Voltar à Lista
-            </button>
+            <div className="flex gap-2">
+              <button onClick={() => { setFormData({ ...formData, ...selectedCliente, contribuinte: selectedCliente.nif || selectedCliente.contribuinte }); setActiveTab('novo'); }} className="px-4 py-2 bg-amber-600 text-white rounded-lg text-xs font-black uppercase hover:bg-amber-700">Editar</button>
+              <button onClick={() => setActiveTab('lista')} className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg text-xs font-black uppercase hover:bg-slate-50">Voltar à Lista</button>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4">
-              <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 pb-2 border-b border-slate-100">Dados Cadastrais</h3>
-              <div className="space-y-2 text-xs font-medium text-slate-700">
-                <div className="flex items-center gap-2"><Phone size={14} className="text-[#003366]" /> <span>{selectedCliente.telefone || 'Sem telefone'}</span></div>
-                <div className="flex items-center gap-2"><Mail size={14} className="text-[#003366]" /> <span>{selectedCliente.email || 'Sem email'}</span></div>
-                <div className="flex items-center gap-2"><MapPin size={14} className="text-[#003366]" /> <span>{selectedCliente.morada || selectedCliente.endereco || 'Sem endereço'}, {selectedCliente.municipio || 'Luanda'}</span></div>
+          {/* Profile Tabs */}
+          <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-3">
+            {[
+              { id: 'geral', label: 'Dados Gerais' },
+              { id: 'contactos', label: 'Contactos' },
+              { id: 'negocios', label: 'Negócios' },
+              { id: 'vendas', label: 'Vendas' },
+              { id: 'projetos', label: 'Projetos' },
+              { id: 'atendimento', label: 'Atendimento' },
+              { id: 'documentos', label: 'Documentos' },
+              { id: 'historico', label: 'Histórico' }
+            ].map(tab => (
+              <button 
+                key={tab.id}
+                onClick={() => setPerfilTab(tab.id as any)}
+                className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${perfilTab === tab.id ? 'bg-[#003366] text-white shadow-xs' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {perfilTab === 'geral' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="bg-white p-6 rounded-xl border border-slate-200 space-y-4">
+                <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 pb-2 border-b border-slate-100">Informação Geral</h3>
+                <div className="space-y-2 text-xs font-medium text-slate-700">
+                  <div><strong>Nome:</strong> {selectedCliente.nome}</div>
+                  <div><strong>NIF:</strong> {selectedCliente.nif || selectedCliente.contribuinte}</div>
+                  <div><strong>Telefone:</strong> {selectedCliente.telefone || 'N/D'}</div>
+                  <div><strong>E-mail:</strong> {selectedCliente.email || 'N/D'}</div>
+                  <div><strong>Morada:</strong> {selectedCliente.morada || selectedCliente.endereco || 'N/D'}</div>
+                  <div><strong>Localidade:</strong> {selectedCliente.municipio || 'Luanda'}, {selectedCliente.provincia || 'Luanda'}</div>
+                </div>
+              </div>
+              <div className="bg-white p-6 rounded-xl border border-slate-200 space-y-4">
+                <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 pb-2 border-b border-slate-100">Indicadores Comerciais</h3>
+                <div className="space-y-2 text-xs font-medium text-slate-700">
+                  <div><strong>Setor:</strong> {selectedCliente.setor_atividade || 'Geral'}</div>
+                  <div><strong>Estado:</strong> {selectedCliente.ativo !== false ? 'Ativo' : 'Inativo'}</div>
+                  <div><strong>Data de Registo:</strong> {new Date(selectedCliente.created_at || Date.now()).toLocaleDateString()}</div>
+                </div>
               </div>
             </div>
+          )}
 
-            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm md:col-span-2 space-y-4">
-              <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 pb-2 border-b border-slate-100">Histórico de Interações & Reclamações</h3>
+          {perfilTab === 'negocios' && (
+            <div className="bg-white p-6 rounded-xl border border-slate-200 space-y-4">
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 pb-2 border-b border-slate-100">Oportunidades & Negócios Associados</h3>
               <div className="space-y-3">
-                {interacoes.filter(i => i.cliente_id === selectedCliente.id).map(i => (
-                  <div key={i.id} className="p-3 bg-slate-50 rounded-lg border border-slate-200 flex justify-between items-center">
+                {oportunidades.filter(o => String(o.cliente_id) === String(selectedCliente.id)).map(o => (
+                  <div key={o.id} className="p-3 bg-slate-50 rounded-lg border border-slate-200 flex justify-between items-center text-xs">
                     <div>
-                      <div className="text-xs font-bold text-slate-900">{i.assunto}</div>
-                      <div className="text-[10px] text-slate-500 mt-0.5">{i.descricao}</div>
+                      <div className="font-bold text-slate-900">{o.nome} ({o.codigo})</div>
+                      <div className="text-[10px] text-slate-500">Etapa: {o.etapa} • Probabilidade: {o.probabilidade}%</div>
                     </div>
-                    <span className="text-[10px] font-bold text-slate-400">{new Date(i.created_at).toLocaleDateString()}</span>
+                    <span className="font-black text-emerald-600">{new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(o.valor_estimado || 0)}</span>
                   </div>
                 ))}
-                {interacoes.filter(i => i.cliente_id === selectedCliente.id).length === 0 && (
-                  <p className="text-xs text-slate-400 py-6 text-center">Nenhuma interação registada para este cliente.</p>
+                {oportunidades.filter(o => String(o.cliente_id) === String(selectedCliente.id)).length === 0 && (
+                  <p className="text-xs text-slate-400 py-6 text-center">Nenhum negócio associado a este cliente.</p>
                 )}
               </div>
             </div>
+          )}
+
+          {perfilTab === 'vendas' && (
+            <div className="bg-white p-6 rounded-xl border border-slate-200 space-y-4">
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 pb-2 border-b border-slate-100">Vendas & Orçamentos</h3>
+              <div className="space-y-3">
+                {vendas.filter(v => String(v.cliente_id) === String(selectedCliente.id)).map(v => (
+                  <div key={v.id} className="p-3 bg-slate-50 rounded-lg border border-slate-200 flex justify-between items-center text-xs">
+                    <div>
+                      <div className="font-bold text-slate-900">{v.numero}</div>
+                      <div className="text-[10px] text-slate-500">Estado: {v.estado}</div>
+                    </div>
+                    <span className="font-black text-slate-900">{new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(v.total || 0)}</span>
+                  </div>
+                ))}
+                {vendas.filter(v => String(v.cliente_id) === String(selectedCliente.id)).length === 0 && (
+                  <p className="text-xs text-slate-400 py-6 text-center">Nenhuma venda registada para este cliente.</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {perfilTab === 'projetos' && (
+            <div className="bg-white p-6 rounded-xl border border-slate-200 space-y-4">
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 pb-2 border-b border-slate-100">Projetos Associados</h3>
+              <div className="space-y-3">
+                {projetos.filter(p => String(p.cliente_id) === String(selectedCliente.id)).map(p => (
+                  <div key={p.id} className="p-3 bg-slate-50 rounded-lg border border-slate-200 flex justify-between items-center text-xs">
+                    <div>
+                      <div className="font-bold text-slate-900">{p.nome} ({p.codigo})</div>
+                      <div className="text-[10px] text-slate-500">Estado: {p.estado}</div>
+                    </div>
+                    <span className="font-black text-purple-700">{new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(p.orcamento || 0)}</span>
+                  </div>
+                ))}
+                {projetos.filter(p => String(p.cliente_id) === String(selectedCliente.id)).length === 0 && (
+                  <p className="text-xs text-slate-400 py-6 text-center">Nenhum projeto associado.</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {perfilTab === 'atendimento' && (
+            <div className="bg-white p-6 rounded-xl border border-slate-200 space-y-4">
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 pb-2 border-b border-slate-100">Reclamações & Suporte</h3>
+              <div className="space-y-3">
+                {reclamacoes.filter(r => String(r.cliente_id) === String(selectedCliente.id)).map(r => (
+                  <div key={r.id} className="p-3 bg-slate-50 rounded-lg border border-slate-200 flex justify-between items-center text-xs">
+                    <div>
+                      <div className="font-bold text-slate-900">{r.titulo}</div>
+                      <div className="text-[10px] text-slate-500">{r.descricao}</div>
+                    </div>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800">{r.estado}</span>
+                  </div>
+                ))}
+                {reclamacoes.filter(r => String(r.cliente_id) === String(selectedCliente.id)).length === 0 && (
+                  <p className="text-xs text-slate-400 py-6 text-center">Nenhuma reclamação registada.</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {perfilTab === 'documentos' && (
+            <div className="bg-white p-6 rounded-xl border border-slate-200 p-6 text-center text-xs text-slate-500">
+              Nenhum documento anexo ao perfil do cliente.
+            </div>
+          )}
+
+          {perfilTab === 'historico' && (
+            <div className="bg-white p-6 rounded-xl border border-slate-200 space-y-3">
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 pb-2 border-b border-slate-100">Histórico de Atividades</h3>
+              {interacoes.filter(i => String(i.cliente_id) === String(selectedCliente.id)).map(i => (
+                <div key={i.id} className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs">
+                  <div className="font-bold text-slate-900">{i.assunto} ({i.tipo})</div>
+                  <div className="text-[10px] text-slate-500 mt-1">{i.descricao}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* SECTION 5: CONTACTOS */}
+      {activeTab === 'contactos' && (
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
+          <h2 className="text-lg font-black text-slate-900 pb-2 border-b border-slate-100">Diretório Geral de Contactos</h2>
+          <div className="space-y-3">
+            {clientes.map(c => (
+              <div key={c.id} className="p-4 bg-slate-50 rounded-xl border border-slate-200 flex justify-between items-center text-xs">
+                <div>
+                  <div className="font-bold text-slate-900">{c.nome}</div>
+                  <div className="text-slate-500 mt-0.5">📞 {c.telefone || 'Sem telefone'} • ✉️ {c.email || 'Sem email'} • 📱 WhatsApp: {c.whatsapp || 'N/D'}</div>
+                </div>
+                <button onClick={() => { setSelectedCliente(c); setActiveTab('perfil'); }} className="px-3 py-1.5 bg-[#003366] text-white rounded font-bold">Ver Perfil</button>
+              </div>
+            ))}
           </div>
         </div>
       )}
 
-      {activeSection === 'segmentacao' && (
+      {/* SECTION 6: INTERAÇÕES */}
+      {activeTab === 'interacoes' && (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
-          <h2 className="text-lg font-black text-slate-900 pb-2 border-b border-slate-100">Segmentação e Análise de Clientes</h2>
+          <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+            <h2 className="text-lg font-black text-slate-900">Registo de Interações Comerciais (Chamadas, Reuniões, E-mails)</h2>
+          </div>
+          <div className="space-y-3">
+            {interacoes.map(i => (
+              <div key={i.id} className="p-4 bg-slate-50 rounded-xl border border-slate-200 flex justify-between items-center text-xs">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-[#003366]">{i.tipo}</span>
+                    <h4 className="font-black text-slate-900">{i.assunto}</h4>
+                  </div>
+                  <p className="text-slate-600 mt-1">{i.descricao}</p>
+                </div>
+                <div className="text-right text-slate-400 text-[10px]">
+                  <div>{new Date(i.created_at).toLocaleDateString()}</div>
+                  <div className="font-bold text-slate-700">{i.responsavel || 'Comercial'}</div>
+                </div>
+              </div>
+            ))}
+            {interacoes.length === 0 && (
+              <p className="text-xs text-slate-400 py-12 text-center">Nenhuma interação registada.</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* SECTION 7: ATENDIMENTO */}
+      {activeTab === 'atendimento' && (
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
+          <h2 className="text-lg font-black text-slate-900 pb-2 border-b border-slate-100">Gestão de Atendimento e Reclamações</h2>
+          <div className="space-y-3">
+            {reclamacoes.map(r => (
+              <div key={r.id} className="p-4 bg-slate-50 rounded-xl border border-slate-200 flex justify-between items-center text-xs">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono font-black text-amber-700">{r.codigo}</span>
+                    <h4 className="font-black text-slate-900">{r.titulo}</h4>
+                  </div>
+                  <p className="text-slate-600 mt-1">{r.descricao}</p>
+                </div>
+                <div className="text-right">
+                  <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase bg-amber-50 text-amber-800 border border-amber-200">{r.estado}</span>
+                  <div className="text-[10px] text-slate-400 mt-1">Prioridade: {r.prioridade}</div>
+                </div>
+              </div>
+            ))}
+            {reclamacoes.length === 0 && (
+              <p className="text-xs text-slate-400 py-12 text-center">Nenhuma reclamação registada.</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* SECTION 8: SEGMENTAÇÃO */}
+      {activeTab === 'segmentacao' && (
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
+          <h2 className="text-lg font-black text-slate-900 pb-2 border-b border-slate-100">Segmentação e Classificação de Clientes</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
               <h3 className="text-xs font-bold text-blue-900 uppercase">Clientes VIP / Premium</h3>
               <p className="text-2xl font-black text-[#003366] mt-2">{clientes.filter(c => c.tipo_cliente === 'vip').length}</p>
             </div>
             <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-200">
-              <h3 className="text-xs font-bold text-emerald-900 uppercase">Clientes Ativos</h3>
-              <p className="text-2xl font-black text-emerald-700 mt-2">{clientes.filter(c => c.ativo !== false).length}</p>
+              <h3 className="text-xs font-bold text-emerald-900 uppercase">Clientes Corporativos</h3>
+              <p className="text-2xl font-black text-emerald-700 mt-2">{clientes.filter(c => c.tipo_cliente === 'corporativo').length}</p>
             </div>
-            <div className="p-4 bg-amber-50 rounded-xl border border-amber-200">
-              <h3 className="text-xs font-bold text-amber-900 uppercase">Total Geral</h3>
-              <p className="text-2xl font-black text-amber-700 mt-2">{clientes.length}</p>
+            <div className="p-4 bg-purple-50 rounded-xl border border-purple-200">
+              <h3 className="text-xs font-bold text-purple-900 uppercase">Clientes Normais</h3>
+              <p className="text-2xl font-black text-purple-700 mt-2">{clientes.filter(c => c.tipo_cliente === 'normal' || !c.tipo_cliente).length}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SECTION 9: HISTÓRICO */}
+      {activeTab === 'historico' && (
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
+          <h2 className="text-lg font-black text-slate-900 pb-2 border-b border-slate-100">Histórico Geral de Atividades CRM</h2>
+          <div className="space-y-3">
+            {interacoes.map(i => (
+              <div key={i.id} className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs">
+                <div className="font-bold text-slate-900">{i.assunto} — {new Date(i.created_at).toLocaleString()}</div>
+                <div className="text-[10px] text-slate-500 mt-0.5">{i.descricao}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* SECTION 10: RELATÓRIOS */}
+      {activeTab === 'relatorios' && (
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-6">
+          <h2 className="text-lg font-black text-slate-900">Relatórios e Indicadores de Clientes</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+              <h3 className="text-xs font-bold text-slate-700 uppercase">Resumo de Atividade</h3>
+              <p className="text-xs text-slate-600">Total de Clientes no Sistema: <strong>{totalClientes}</strong></p>
+              <p className="text-xs text-slate-600">Taxa de Clientes Ativos: <strong>{totalClientes > 0 ? Math.round((clientesAtivos / totalClientes) * 100) : 0}%</strong></p>
+              <p className="text-xs text-slate-600">Total de Interações: <strong>{interacoes.length}</strong></p>
+            </div>
+            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+              <h3 className="text-xs font-bold text-slate-700 uppercase">Ações de Exportação</h3>
+              <p className="text-xs text-slate-600">Pode imprimir ou exportar o diretório completo de clientes para relatórios corporativos.</p>
+              <button onClick={() => window.print()} className="px-4 py-2 bg-[#003366] text-white rounded-lg text-xs font-bold flex items-center gap-1.5"><Printer size={14} /> Imprimir Relatório</button>
             </div>
           </div>
         </div>

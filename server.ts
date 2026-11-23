@@ -15,6 +15,7 @@ import secureRhHandler from "./api/_handlers/secure-rh.js";
 import stockExitHandler from "./api/_handlers/stock-exit.js";
 import stockEnterpriseHandler from "./api/_handlers/stock-enterprise.js";
 import stockAgentsHandler from "./api/_handlers/stock-agents.js";
+import stockProducaoHandler from "./api/_handlers/stock-producao.js";
 import migracaoHandler from "./api/_handlers/migracao.js";
 import crmHandler from "./api/_handlers/crm.js";
 
@@ -1273,83 +1274,67 @@ app.use((req, res, next) => {
         return res.status(400).json({ error: "Username Login e Palavra-passe são obrigatórios." });
       }
 
-      // Regra estrita: O identificador de acesso NÃO pode ser um endereço de e-mail
-      if (cleanUsername.includes("@")) {
-        return res.status(400).json({ 
-          error: "Acesso inválido: É proibido utilizar endereço de e-mail para login. Utilize exclusivamente o seu Username Login." 
-        });
-      }
+      const host = (req.headers["x-forwarded-host"] || req.headers.host || "").toString().toLowerCase();
+      const isStagingReq =
+        host.includes("staging") ||
+        host.includes("teste") ||
+        host.includes("homologacao") ||
+        _isStaging;
 
-      const host = (req.headers['x-forwarded-host'] || req.headers.host || '').toString().toLowerCase();
-      const isStagingReq = host.includes('staging') || host.includes('teste') || host.includes('homologacao') || _isStaging;
+      const primaryAdmin = isStagingReq ? supabaseAdminStaging : supabaseAdminProd;
       const primaryUrl = isStagingReq ? STAGING_URL : PROD_URL;
       const primaryAnonKey = isStagingReq ? STAGING_ANON_KEY : PROD_ANON_KEY;
+      const fallbackAdmin = isStagingReq ? supabaseAdminProd : supabaseAdminStaging;
       const fallbackUrl = isStagingReq ? PROD_URL : STAGING_URL;
       const fallbackAnonKey = isStagingReq ? PROD_ANON_KEY : STAGING_ANON_KEY;
-      const primaryAdmin = isStagingReq ? supabaseAdminStaging : supabaseAdminProd;
-      const fallbackAdmin = isStagingReq ? supabaseAdminProd : supabaseAdminStaging;
 
-      // 1. Procurar perfil correspondente pelo username
-      let targetEmail = null;
-      let resolvedAdmin = primaryAdmin;
+      // 1. Procurar perfil correspondente pelo username ou permitir email diretamente
+      let targetEmail: string | null = cleanUsername.includes("@") ? cleanUsername : null;
       let resolvedUrl = primaryUrl;
       let resolvedAnonKey = primaryAnonKey;
 
-      const { data: perfilPrimary } = await primaryAdmin
-        .from("perfis")
-        .select("email, username, ativo, is_active")
-        .eq("username", cleanUsername)
-        .maybeSingle();
-
-      if (perfilPrimary?.email) {
-        targetEmail = perfilPrimary.email;
-        if (perfilPrimary.ativo === false || perfilPrimary.is_active === false) {
-          return res.status(403).json({ error: "O seu acesso foi bloqueado. Contacte o administrador da sua empresa." });
-        }
-      } else {
-        // Fallback: tentar busca case-insensitive ou no ambiente alternativo
-        const { data: perfilIlike } = await primaryAdmin
+      const findPerfilByUsername = async (adminClient: any, uname: string) => {
+        const { data: exact } = await adminClient
           .from("perfis")
           .select("email, username, ativo, is_active")
-          .ilike("username", cleanUsername)
-          .maybeSingle();
+          .eq("username", uname)
+          .limit(1);
+        if (exact && exact.length > 0 && exact[0]?.email) return exact[0];
 
-        if (perfilIlike?.email) {
-          targetEmail = perfilIlike.email;
-          if (perfilIlike.ativo === false || perfilIlike.is_active === false) {
+        const { data: ilikeRows } = await adminClient
+          .from("perfis")
+          .select("email, username, ativo, is_active")
+          .ilike("username", uname)
+          .limit(1);
+        if (ilikeRows && ilikeRows.length > 0 && ilikeRows[0]?.email) return ilikeRows[0];
+
+        // Compatibilidade com contas antigas por prefixo de email
+        const { data: prefixRows } = await adminClient
+          .from("perfis")
+          .select("email, username, ativo, is_active")
+          .ilike("email", `${uname}@%`)
+          .limit(1);
+        if (prefixRows && prefixRows.length > 0 && prefixRows[0]?.email) return prefixRows[0];
+
+        return null;
+      };
+
+      if (!targetEmail) {
+        const perfilPrimary = await findPerfilByUsername(primaryAdmin, cleanUsername);
+        if (perfilPrimary?.email) {
+          if (perfilPrimary.ativo === false || perfilPrimary.is_active === false) {
             return res.status(403).json({ error: "O seu acesso foi bloqueado. Contacte o administrador da sua empresa." });
           }
+          targetEmail = perfilPrimary.email;
         } else {
-          // Tentar no fallback admin
-          const { data: perfilFallback } = await fallbackAdmin
-            .from("perfis")
-            .select("email, username, ativo, is_active")
-            .or(`username.eq.${cleanUsername},username.ilike.${cleanUsername}`)
-            .maybeSingle();
-
+          const perfilFallback = await findPerfilByUsername(fallbackAdmin, cleanUsername);
           if (perfilFallback?.email) {
-            targetEmail = perfilFallback.email;
-            resolvedAdmin = fallbackAdmin;
-            resolvedUrl = fallbackUrl;
-            resolvedAnonKey = fallbackAnonKey;
             if (perfilFallback.ativo === false || perfilFallback.is_active === false) {
               return res.status(403).json({ error: "O seu acesso foi bloqueado. Contacte o administrador da sua empresa." });
             }
-          } else {
-            // Fallback de compatibilidade para contas criadas antes da obrigatoriedade do username:
-            // Tenta localizar perfil pelo prefixo do email (ex: user@empresa.com -> username 'user')
-            const { data: perfilByEmailPrefix } = await resolvedAdmin
-              .from("perfis")
-              .select("email, username, ativo, is_active")
-              .or(`email.ilike.${cleanUsername}@%,email.ilike.${cleanUsername}`)
-              .maybeSingle();
-
-            if (perfilByEmailPrefix?.email) {
-              targetEmail = perfilByEmailPrefix.email;
-              if (perfilByEmailPrefix.ativo === false || perfilByEmailPrefix.is_active === false) {
-                return res.status(403).json({ error: "O seu acesso foi bloqueado. Contacte o administrador da sua empresa." });
-              }
-            }
+            targetEmail = perfilFallback.email;
+            resolvedUrl = fallbackUrl;
+            resolvedAnonKey = fallbackAnonKey;
           }
         }
       }
@@ -10758,6 +10743,7 @@ app.use((req, res, next) => {
   app.all(["/api/stock/exit-sale", "/api/stock/check-stock"], (req, res) => stockExitHandler(req, res));
   app.all(["/api/stock/overview", "/api/stock/operation", "/api/stock/transfer", "/api/stock/inventory", "/api/stock/alerts/scan", "/api/stock/settings"], (req, res) => stockEnterpriseHandler(req, res));
   app.all(["/api/stock/agents", "/api/stock/agents/*"], (req, res) => stockAgentsHandler(req, res));
+  app.all(["/api/stock/producoes", "/api/stock/producoes/*"], (req, res) => stockProducaoHandler(req, res));
   app.all(["/api/migracao", "/api/migracao/*"], (req, res) => migracaoHandler(req, res));
 
   // CRITICAL: Guard all remaining /api/* requests BEFORE mounting Vite dev middleware

@@ -191,7 +191,9 @@ export const StockAtualModule: React.FC<StockAtualModuleProps> = ({
         isLowStock,
         isZeroOrNegative,
         docRef,
-        fornecedorNome
+        fornecedorNome,
+        origem: String((prod as any).origem || '').toUpperCase(),
+        producaoId: (prod as any).producao_id || null,
       };
     }).filter(item => item.hasPresence);
   }, [products, stockMovements, warehouses, selectedWarehouseId]);
@@ -205,7 +207,8 @@ export const StockAtualModule: React.FC<StockAtualModuleProps> = ({
         item.descricao.toLowerCase().includes(q) ||
         item.codigo.toLowerCase().includes(q) ||
         item.referencia.toLowerCase().includes(q) ||
-        item.categoria.toLowerCase().includes(q);
+        item.categoria.toLowerCase().includes(q) ||
+        item.origem.toLowerCase().includes(q);
 
       if (!matchesSearch) return false;
 
@@ -468,9 +471,19 @@ export const StockAtualModule: React.FC<StockAtualModuleProps> = ({
                 >
                   {/* 1. Nome do Produto */}
                   <td className="py-2.5 px-3 font-bold text-zinc-900 whitespace-nowrap">
-                    <span className="truncate max-w-[220px] block" title={item.nome}>
-                      {item.nome}
-                    </span>
+                    <div className="flex items-center gap-1.5 max-w-[240px]">
+                      <span className="truncate" title={item.nome}>
+                        {item.nome}
+                      </span>
+                      {(item.origem === 'PRODUÇÃO' || item.origem === 'PRODUCAO' || item.producaoId) && (
+                        <span
+                          className="shrink-0 px-1.5 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 text-[9px] font-black uppercase tracking-wider rounded"
+                          title="Artigo registado via Produção"
+                        >
+                          Produção
+                        </span>
+                      )}
+                    </div>
                   </td>
 
                   {/* 2. Descrição */}

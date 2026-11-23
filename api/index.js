@@ -27,6 +27,7 @@ import stockSyncHandler from './_handlers/stock-sync.js';
 import stockExitHandler from './_handlers/stock-exit.js';
 import stockEnterpriseHandler from './_handlers/stock-enterprise.js';
 import stockAgentsHandler from './_handlers/stock-agents.js';
+import stockProducaoHandler from './_handlers/stock-producao.js';
 
 export default async function handler(req, res) {
   setCORS(res);
@@ -143,6 +144,11 @@ export default async function handler(req, res) {
   // 12.6.5. Stock Agentes IA — Equipa Multiagente Gemini
   if (pathname.startsWith('/api/stock/agents')) {
     return stockAgentsHandler(req, res);
+  }
+
+  // 12.6.6. Stock Produção — Gestão de Produção & Stock
+  if (pathname.startsWith('/api/stock/producoes')) {
+    return stockProducaoHandler(req, res);
   }
 
   // 12.7. Stock — Sincronização Automática Compras → Stock (Idempotente)

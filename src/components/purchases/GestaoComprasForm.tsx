@@ -220,18 +220,24 @@ export const GestaoComprasForm: React.FC<Props> = ({
     if (!Array.isArray(parsed) || parsed.length === 0) return [];
     return parsed.map((it: any) => ({
       uid: uid(),
+      ordem: it.ordem || '',
+      posicao: it.posicao || '',
+      referencia_produto: it.referencia_produto || it.serial_number || '',
       descricao: it.description || it.descricao || '',
-      serial_number: it.serial_number || '',
+      serial_number: it.serial_number || it.referencia_produto || '',
       data_validade: it.data_validade || '',
       quantidade: Number(it.quantity || it.quantidade || 1),
       unidade: it.unidade_medida || it.unidade || 'UN',
-      valor_unitario: Number(it.unit_price || it.valor_unitario || 0),
+      valor_unitario: Number(it.unit_price || it.valor_unitario || it.valor_custo || 0),
+      valor_custo: Number(it.valor_custo ?? it.unit_price ?? it.valor_unitario ?? 0),
+      valor_venda: Number(it.valor_venda || 0),
       tipo_artigo: it.tipo_artigo || it.tipo_operacao || 'Produto',
       desconto_linha: Number(it.desconto || it.desconto_linha || 0),
       tipologia_custo: it.tipologia || it.tipologia_custo || 'Outros Bens de Consumo',
       armazem_id: it.warehouse_id || it.armazem_id || '',
       local_trabalho_id: it.local_trabalho_id || '',
       centro_custo_id: it.centro_custo_id || '',
+      centro_custo_nome: it.centro_custo_nome || '',
       rubrica_id: it.rubrica_id || '',
       rubrica_label: it.rubrica_label || '',
       sujeito_imposto_selo: it.sujeito_imposto_selo || 'Não sujeita',
@@ -582,6 +588,16 @@ export const GestaoComprasForm: React.FC<Props> = ({
             name: it.descricao,
             quantidade: it.quantidade,
             valor_unitario: it.valor_unitario,
+            valor_custo: it.valor_custo ?? it.valor_unitario,
+            valor_venda: it.valor_venda || 0,
+            referencia_produto: it.referencia_produto || it.serial_number || '',
+            tipo_artigo: it.tipo_artigo,
+            tipologia_custo: it.tipologia_custo,
+            data_validade: it.data_validade || null,
+            rubrica: it.rubrica_label || '',
+            ordem: it.ordem || '',
+            posicao: it.posicao || '',
+            centro_custo_id: it.centro_custo_id || '',
             armazem_id: it.armazem_id,
             warehouse_id: it.armazem_id,
             unidade: it.unidade
@@ -631,14 +647,15 @@ export const GestaoComprasForm: React.FC<Props> = ({
             stock_quantity: newStock,
             stock: newStock,
             stock_atual: newStock,
-            estoque_atual: newStock,
-            cost_price: item.valor_unitario,
-            preco_compra: item.valor_unitario,
-            preco_custo: item.valor_unitario,
+            cost_price: item.valor_custo ?? item.valor_unitario,
+            preco_compra: item.valor_custo ?? item.valor_unitario,
+            preco_custo: item.valor_custo ?? item.valor_unitario,
             armazem_id: item.armazem_id,
             unit: item.unidade || 'UN',
             unidade: item.unidade || 'UN',
             updated_at: new Date().toISOString(),
+            ...(item.valor_venda && item.valor_venda > 0 ? { price: item.valor_venda, preco_venda: item.valor_venda } : {}),
+            ...(item.referencia_produto ? { referente: item.referencia_produto, sku: item.referencia_produto, codigo: item.referencia_produto } : {}),
           };
           if (hasNumericWarehouse) updateData.warehouse_id = wNum;
 
@@ -648,25 +665,27 @@ export const GestaoComprasForm: React.FC<Props> = ({
             .eq('id', prod.id)
             .eq('empresa_id', empresaId);
         } else {
+          const salePrice = item.valor_venda && item.valor_venda > 0 ? item.valor_venda : round2((item.valor_custo ?? item.valor_unitario) * 1.3);
           const insertData: any = {
             empresa_id: empresaId,
             name: desc,
             nome: desc,
+            referente: item.referencia_produto || null,
+            sku: item.referencia_produto || null,
+            codigo: item.referencia_produto || null,
             stock_quantity: item.quantidade,
             stock: item.quantidade,
             stock_atual: item.quantidade,
-            estoque_atual: item.quantidade,
-            cost_price: item.valor_unitario,
-            preco_compra: item.valor_unitario,
-            preco_custo: item.valor_unitario,
-            price: round2(item.valor_unitario * 1.3),
-            preco_venda: round2(item.valor_unitario * 1.3),
+            cost_price: item.valor_custo ?? item.valor_unitario,
+            preco_compra: item.valor_custo ?? item.valor_unitario,
+            preco_custo: item.valor_custo ?? item.valor_unitario,
+            price: salePrice,
+            preco_venda: salePrice,
             unit: item.unidade || 'UN',
             unidade: item.unidade || 'UN',
             armazem_id: item.armazem_id,
-            tipo: 'Produto',
             tipologia: item.tipologia_custo || 'Existência de Inventário',
-            is_active: true,
+            active: true,
             ativo: true,
             created_at: new Date().toISOString(),
           };
@@ -1640,7 +1659,11 @@ export const GestaoComprasForm: React.FC<Props> = ({
                             </div>
                             <div className="text-[10px] text-[#6b7280]">
                               {item.tipo_artigo} · {item.unidade || 'UN'} {item.tipologia_custo ? `· ${item.tipologia_custo}` : ''}
+                              {item.referencia_produto && ` · Ref: ${item.referencia_produto}`}
+                              {item.ordem && ` · Ordem: ${item.ordem}`}
+                              {item.posicao && ` (Pos: ${item.posicao})`}
                               {item.rubrica_label && ` · PGC: ${item.rubrica_label}`}
+                              {item.valor_venda ? ` · Venda: ${fmtNum(item.valor_venda)} Kz` : ''}
                             </div>
                             {item.armazem_id && (
                               <div className="text-[10px] text-emerald-600 font-semibold">

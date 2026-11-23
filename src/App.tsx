@@ -29,6 +29,7 @@ import { StockAtualModule } from './components/stock/StockAtualModule';
 import { StockProductPicker } from './components/stock/StockProductPicker';
 import { StockEntradasReport } from './components/stock/StockEntradasReport';
 import { StockEnterpriseShell } from './components/stock/StockEnterpriseShell';
+import { StockProducaoModule } from './components/stock/StockProducaoModule';
 import { parseStockSubRouteFromLocation } from './lib/stockPermissions';
 
 
@@ -184,7 +185,8 @@ import {
   HelpCircle,
   Car,
   Pill,
-  Coins
+  Coins,
+  Cpu
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { jsPDF } from 'jspdf';
@@ -31791,7 +31793,9 @@ const ProductList = ({
   issuedDocuments?: any[]
 }) => {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState('stock');
+  const [activeTab, setActiveTab] = useState(() =>
+    parseStockSubRouteFromLocation() === 'producao' ? 'producao' : 'stock'
+  );
   const [showForm, setShowForm] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
@@ -32221,6 +32225,7 @@ const ProductList = ({
 
   const tabs = [
     { id: 'stock', label: 'Stock Atual', icon: Package },
+    { id: 'producao', label: 'Produção', icon: Cpu },
     { id: 'movements', label: 'Movimentos', icon: History },
     { id: 'warehouse', label: 'Armazéns', icon: Home },
     { id: 'reports', label: 'Relatórios', icon: FileText },
@@ -32368,6 +32373,16 @@ const ProductList = ({
           companyData={companyData}
           fiscalYear={Number(fiscalYear)}
           onRefresh={onRefresh}
+        />
+      ) : activeTab === 'producao' ? (
+        <StockProducaoModule
+          user={user}
+          companyData={companyData}
+          warehouses={warehouses}
+          metrics={metrics}
+          activeTaxes={activeTaxes}
+          onRefresh={onRefresh}
+          onNavigateToStock={() => setActiveTab('stock')}
         />
       ) : activeTab === 'price_table' ? (
         <PriceTableModule 

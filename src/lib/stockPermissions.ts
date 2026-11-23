@@ -184,6 +184,7 @@ export const STOCK_ROUTE_MAP: Record<StockSubRoute, string> = {
   'agentes-ia': '/stock/agentes-ia',
   configuracoes: '/stock/configuracoes',
   precos: '/stock/precos',
+  producao: '/stock/producao',
 };
 
 export function parseStockSubRouteFromLocation(pathname?: string): StockSubRoute | null {

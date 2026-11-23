@@ -17,18 +17,24 @@ import { ArrowLeft, Plus, Calculator, X, AlertCircle, Check } from 'lucide-react
 
 export interface PurchaseLineItem {
   uid: string;
+  ordem?: string;
+  posicao?: string;
+  referencia_produto?: string;
   descricao: string;
   serial_number: string;
   data_validade: string;
   quantidade: number;
   unidade: string;
   valor_unitario: number;
+  valor_custo?: number;
+  valor_venda?: number;
   tipo_artigo: string;
   desconto_linha: number;
   tipologia_custo: string;
   armazem_id: string;
   local_trabalho_id: string;
   centro_custo_id: string;
+  centro_custo_nome?: string;
   rubrica_id: string;
   rubrica_label: string;
   conta_pgc?: string;
@@ -136,11 +142,15 @@ export const PurchaseItemModal: React.FC<PurchaseItemModalProps> = ({
   onClose,
   onSave,
 }) => {
+  const [ordem, setOrdem] = useState('');
+  const [posicao, setPosicao] = useState('');
+  const [referenciaProduto, setReferenciaProduto] = useState('');
   const [descricao, setDescricao] = useState('');
   const [tipoArtigo, setTipoArtigo] = useState('Produto');
   const [tipologiaCusto, setTipologiaCusto] = useState('Outros Bens de Consumo');
   const [armazemId, setArmazemId] = useState('');
   const [localTrabalhoId, setLocalTrabalhoId] = useState('');
+  const [centroCustoId, setCentroCustoId] = useState('');
   const [dataValidade, setDataValidade] = useState('');
 
   // Imposto
@@ -149,10 +159,11 @@ export const PurchaseItemModal: React.FC<PurchaseItemModalProps> = ({
   const [taxNome, setTaxNome] = useState('IVA 14%');
   const [temIsencao, setTemIsencao] = useState(false);
 
-  // Quantidade / Unidade / Preço / Desconto
+  // Quantidade / Unidade / Preço / Custo / Venda / Desconto
   const [quantidade, setQuantidade] = useState<number>(1);
   const [unidade, setUnidade] = useState('QUANTIDADE (Qtd)');
   const [valorUnitario, setValorUnitario] = useState<number>(0);
+  const [valorVenda, setValorVenda] = useState<number>(0);
   const [descontoLinha, setDescontoLinha] = useState<number>(0);
 
   // Rubrica PGC
@@ -173,11 +184,15 @@ export const PurchaseItemModal: React.FC<PurchaseItemModalProps> = ({
     if (!isOpen) return;
 
     if (initialItem) {
+      setOrdem(initialItem.ordem || '');
+      setPosicao(initialItem.posicao || '');
+      setReferenciaProduto(initialItem.referencia_produto || initialItem.serial_number || '');
       setDescricao(initialItem.descricao || '');
       setTipoArtigo(initialItem.tipo_artigo || 'Produto');
       setTipologiaCusto(initialItem.tipologia_custo || 'Outros Bens de Consumo');
       setArmazemId(initialItem.armazem_id || '');
       setLocalTrabalhoId(initialItem.local_trabalho_id || '');
+      setCentroCustoId(initialItem.centro_custo_id || '');
       setDataValidade(initialItem.data_validade || '');
       setTaxId(initialItem.tax_id || '');
       setTaxRate(initialItem.tax_rate ?? 14);
@@ -185,18 +200,23 @@ export const PurchaseItemModal: React.FC<PurchaseItemModalProps> = ({
       setTemIsencao(initialItem.tax_rate === 0);
       setQuantidade(initialItem.quantidade || 1);
       setUnidade(initialItem.unidade || 'QUANTIDADE (Qtd)');
-      setValorUnitario(initialItem.valor_unitario || 0);
+      setValorUnitario(initialItem.valor_custo ?? initialItem.valor_unitario ?? 0);
+      setValorVenda(initialItem.valor_venda || 0);
       setDescontoLinha(initialItem.desconto_linha || 0);
       setRubricaId(initialItem.rubrica_id || '');
       setRubricaLabel(initialItem.rubrica_label || '');
       setContaPgc(initialItem.conta_pgc || (initialItem.rubrica_label?.split('—')[0]?.trim() || ''));
       setPgcSearch(initialItem.rubrica_label || '');
     } else {
+      setOrdem('');
+      setPosicao('');
+      setReferenciaProduto('');
       setDescricao('');
       setTipoArtigo('Produto');
       setTipologiaCusto('Outros Bens de Consumo');
       setArmazemId(armazens.length > 0 ? armazens[0].id : '');
       setLocalTrabalhoId(locais.length > 0 ? locais[0].id : '');
+      setCentroCustoId(metrics.length > 0 ? metrics[0].id : '');
       setDataValidade('');
       const defTax = activeTaxes.length > 0 ? activeTaxes[0] : null;
       setTaxId(defTax ? String(defTax.id) : '');
@@ -206,6 +226,7 @@ export const PurchaseItemModal: React.FC<PurchaseItemModalProps> = ({
       setQuantidade(1);
       setUnidade('QUANTIDADE (Qtd)');
       setValorUnitario(0);
+      setValorVenda(0);
       setDescontoLinha(0);
       setRubricaId('');
       setRubricaLabel('');
@@ -324,20 +345,29 @@ export const PurchaseItemModal: React.FC<PurchaseItemModalProps> = ({
       return;
     }
 
+    const selectedCc = metrics.find(m => String(m.id) === String(centroCustoId));
+    const ccLabel = selectedCc ? (selectedCc.sigla ? `${selectedCc.sigla} — ${selectedCc.descricao || ''}` : selectedCc.descricao) : '';
+
     const item: PurchaseLineItem = {
       uid: initialItem?.uid || Math.random().toString(36).substring(2, 10),
+      ordem: ordem.trim(),
+      posicao: posicao.trim(),
+      referencia_produto: referenciaProduto.trim(),
       descricao: descricao.trim(),
-      serial_number: initialItem?.serial_number || '',
-      data_validade: tipoArtigo === 'Produto' ? dataValidade : '',
+      serial_number: referenciaProduto.trim() || initialItem?.serial_number || '',
+      data_validade: tipoArtigo !== 'Serviço' ? dataValidade : '',
       quantidade: Number(quantidade),
       unidade: unidade || 'UN',
       valor_unitario: round2(Number(valorUnitario)),
+      valor_custo: round2(Number(valorUnitario)),
+      valor_venda: round2(Number(valorVenda) || 0),
       tipo_artigo: tipoArtigo,
       desconto_linha: round2(Number(descontoLinha) || 0),
       tipologia_custo: tipologiaCusto,
       armazem_id: armazemId,
       local_trabalho_id: localTrabalhoId,
-      centro_custo_id: localTrabalhoId,
+      centro_custo_id: centroCustoId || localTrabalhoId,
+      centro_custo_nome: ccLabel || undefined,
       rubrica_id: rubricaId,
       rubrica_label: rubricaLabel,
       conta_pgc: contaPgc || (rubricaLabel.split('—')[0]?.trim() || ''),
@@ -356,15 +386,20 @@ export const PurchaseItemModal: React.FC<PurchaseItemModalProps> = ({
   };
 
   const handleClear = () => {
+    setOrdem('');
+    setPosicao('');
+    setReferenciaProduto('');
     setDescricao('');
     setTipoArtigo('Produto');
     setTipologiaCusto('Outros Bens de Consumo');
     setArmazemId('');
     setLocalTrabalhoId('');
+    setCentroCustoId('');
     setDataValidade('');
     setQuantidade(1);
     setUnidade('QUANTIDADE (Qtd)');
     setValorUnitario(0);
+    setValorVenda(0);
     setDescontoLinha(0);
     setRubricaId('');
     setRubricaLabel('');
@@ -556,7 +591,41 @@ export const PurchaseItemModal: React.FC<PurchaseItemModalProps> = ({
             </div>
           </div>
 
-          {/* LINHA 3: Unidade de medida (largura compacta) + Preço Unitário */}
+          {/* LINHA 1.5: Ordem + Posição + Referência do Produto */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-zinc-700">Ordem</label>
+              <input
+                type="text"
+                value={ordem}
+                onChange={e => setOrdem(e.target.value)}
+                placeholder="Ex: ORD-001"
+                className="w-full bg-white border border-zinc-300 px-2.5 py-1.5 text-xs text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-zinc-700">Posição</label>
+              <input
+                type="text"
+                value={posicao}
+                onChange={e => setPosicao(e.target.value)}
+                placeholder="Ex: 10"
+                className="w-full bg-white border border-zinc-300 px-2.5 py-1.5 text-xs text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-zinc-700">Referência do Produto</label>
+              <input
+                type="text"
+                value={referenciaProduto}
+                onChange={e => setReferenciaProduto(e.target.value)}
+                placeholder="Ex: REF-1002"
+                className="w-full bg-white border border-zinc-300 px-2.5 py-1.5 text-xs font-mono text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none"
+              />
+            </div>
+          </div>
+
+          {/* LINHA 3: Unidade de medida + Valor de Custo (Preço Unitário) */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <label className="text-[11px] font-bold text-zinc-700">
@@ -574,7 +643,7 @@ export const PurchaseItemModal: React.FC<PurchaseItemModalProps> = ({
             </div>
             <div className="space-y-1">
               <label className="text-[11px] font-bold text-zinc-700">
-                Preço Unitário (sem impostos) <span className="text-red-500">*</span>
+                Valor de Custo / Preço Unit. (Kz) <span className="text-red-500">*</span>
               </label>
               <div className="flex gap-1">
                 <input
@@ -602,8 +671,20 @@ export const PurchaseItemModal: React.FC<PurchaseItemModalProps> = ({
             </div>
           </div>
 
-          {/* LINHA 4: Desconto Linha (%) (largura compacta) + Preço com desconto */}
-          <div className="grid grid-cols-2 gap-3">
+          {/* LINHA 4: Valor de Venda + Desconto Linha (%) + Preço com desconto */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-zinc-700">Valor de Venda (Kz)</label>
+              <input
+                type="number"
+                step="any"
+                min="0"
+                value={valorVenda || ''}
+                onChange={e => setValorVenda(parseFloat(e.target.value) || 0)}
+                placeholder="0,00"
+                className="w-full bg-white border border-zinc-300 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 focus:outline-none focus:border-[#0f2a4a] rounded-none text-right font-mono"
+              />
+            </div>
             <div className="space-y-1">
               <label className="text-[11px] font-bold text-zinc-700">Desconto Linha (%)</label>
               <input
@@ -618,7 +699,7 @@ export const PurchaseItemModal: React.FC<PurchaseItemModalProps> = ({
               />
             </div>
             <div className="space-y-1">
-              <label className="text-[11px] font-bold text-zinc-700">Preço com Desconto (Kz)</label>
+              <label className="text-[11px] font-bold text-zinc-700">Líquido Unit. (Kz)</label>
               <input
                 type="text"
                 readOnly
@@ -643,7 +724,7 @@ export const PurchaseItemModal: React.FC<PurchaseItemModalProps> = ({
               </select>
             </div>
             <div className="space-y-1">
-              <label className="text-[11px] font-bold text-zinc-700">Armazém (Entrada em Stock)</label>
+              <label className="text-[11px] font-bold text-zinc-700">Selecionar Armazém (Entrada Stock)</label>
               <select
                 value={armazemId}
                 onChange={e => setArmazemId(e.target.value)}
@@ -659,8 +740,8 @@ export const PurchaseItemModal: React.FC<PurchaseItemModalProps> = ({
             </div>
           </div>
 
-          {/* LINHA 6: Local de Trabalho + Data Validade */}
-          <div className="grid grid-cols-2 gap-3">
+          {/* LINHA 6: Local de Trabalho + Centro de Custo + Data Validade */}
+          <div className="grid grid-cols-3 gap-3">
             <div className="space-y-1">
               <label className="text-[11px] font-bold text-zinc-700">
                 Local de Trabalho <span className="text-red-500">*</span>
@@ -670,7 +751,7 @@ export const PurchaseItemModal: React.FC<PurchaseItemModalProps> = ({
                 onChange={e => setLocalTrabalhoId(e.target.value)}
                 className="w-full bg-white border border-zinc-300 px-2.5 py-1.5 text-xs text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none"
               >
-                <option value="">— Selecione o local de trabalho —</option>
+                <option value="">— Selecione o local —</option>
                 {locais.map(l => (
                   <option key={l.id} value={l.id}>
                     {l.nome || l.name || String(l.id)}
@@ -679,16 +760,31 @@ export const PurchaseItemModal: React.FC<PurchaseItemModalProps> = ({
               </select>
             </div>
             <div className="space-y-1">
+              <label className="text-[11px] font-bold text-zinc-700">Selecionar Centro de Custo</label>
+              <select
+                value={centroCustoId}
+                onChange={e => setCentroCustoId(e.target.value)}
+                className="w-full bg-white border border-zinc-300 px-2.5 py-1.5 text-xs text-zinc-800 focus:outline-none focus:border-[#0f2a4a] rounded-none"
+              >
+                <option value="">— Centro de custo —</option>
+                {metrics.map(m => (
+                  <option key={m.id} value={m.id}>
+                    {m.sigla ? `${m.sigla} — ${m.descricao || ''}` : (m.descricao || String(m.id))}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1">
               <label className="text-[11px] font-bold text-zinc-700">
-                Data de Validade {tipoArtigo !== 'Produto' && <span className="text-zinc-400 font-normal text-[10px]">(apenas Produto)</span>}
+                Data de Validade {tipoArtigo === 'Serviço' && <span className="text-zinc-400 font-normal text-[10px]">(N/A)</span>}
               </label>
               <input
                 type="date"
-                disabled={tipoArtigo !== 'Produto'}
+                disabled={tipoArtigo === 'Serviço'}
                 value={dataValidade}
                 onChange={e => setDataValidade(e.target.value)}
                 className={`w-full border px-2.5 py-1.5 text-xs rounded-none ${
-                  tipoArtigo === 'Produto'
+                  tipoArtigo !== 'Serviço'
                     ? 'bg-white border-zinc-300 text-zinc-800 focus:outline-none focus:border-[#0f2a4a]'
                     : 'bg-zinc-100 border-zinc-200 text-zinc-400 cursor-not-allowed'
                 }`}

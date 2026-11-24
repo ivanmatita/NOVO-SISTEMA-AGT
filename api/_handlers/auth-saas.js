@@ -165,7 +165,6 @@ export default async function handler(req, res) {
           ativo: true,
           licenca_ativa: true,
           status_licenca: 'TRIAL',
-          valor_licenca: valorTotalContratado,
           trial_inicio: trialInicio,
           trial_fim: trialFim,
           data_expiracao_licenca: trialFim

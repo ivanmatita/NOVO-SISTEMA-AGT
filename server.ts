@@ -9153,7 +9153,7 @@ app.use((req, res, next) => {
       if (!await isSuperAdmin(req)) return res.status(403).json({ error: "Acesso negado. Apenas administradores podem aceder ao CRM." });
       if (!supabaseAdmin) return res.status(500).json({ error: "Supabase Admin não disponível" });
 
-      const { data: companies } = await supabaseAdmin.from('config_empresa').select('plano, valor_licenca');
+      const { data: companies } = await supabaseAdmin.from('config_empresa').select('plano');
       const { data: licenses } = await supabaseAdmin.from('licencas_empresas').select('status_licenca, valor_licenca');
       const { data: usersCount } = await supabaseAdmin.from('perfis').select('id', { count: 'exact' });
 
@@ -9208,7 +9208,7 @@ app.use((req, res, next) => {
         
         const rawPlano = lic?.plano || lic?.tipo_licenca || config?.plano || emp.plano;
         const normPlan = normalizeCRMPlan(rawPlano);
-        const precoContratado = Number(lic?.valor_licenca || emp.valor_licenca || PLAN_DEFAULT_PRICES[normPlan] || 65000);
+        const precoContratado = Number(lic?.valor_licenca || PLAN_DEFAULT_PRICES[normPlan] || 65000);
 
         const trialInicio = emp.trial_inicio || lic?.trial_inicio || lic?.data_inicio || emp.created_at;
         const trialFim = emp.trial_fim || lic?.trial_fim || lic?.data_fim || emp.data_expiracao_licenca;
@@ -10772,8 +10772,7 @@ app.use((req, res, next) => {
       await supabaseAdmin.from('config_empresa').upsert({
         empresa_id: license.empresa_id,
         plano: 'active',
-        pacote_licenca: license.tipo_licenca,
-        valor_licenca: license.valor_licenca
+        pacote_licenca: license.tipo_licenca
       }, { onConflict: 'empresa_id' });
 
     } else if (acao === 'bloquear') {

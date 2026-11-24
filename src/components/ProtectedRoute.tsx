@@ -42,25 +42,13 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
             </div>
           )}
         </div>
-        <DiagnosticTools />
       </div>
     );
   }
 
   if (!user) {
-    return (
-      <>
-        <LoginPage />
-        <DiagnosticTools />
-      </>
-    );
+    return <LoginPage />;
   }
 
-  return (
-    <>
-      {children}
-      {/* Show tools on demand or if check fails, but keep it subtle in production */}
-      {showHelper && <DiagnosticTools />}
-    </>
-  );
+  return <>{children}</>;
 };

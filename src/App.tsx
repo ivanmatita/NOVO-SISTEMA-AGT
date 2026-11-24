@@ -30,6 +30,10 @@ import { StockProductPicker } from './components/stock/StockProductPicker';
 import { StockEntradasReport } from './components/stock/StockEntradasReport';
 import { StockEnterpriseShell } from './components/stock/StockEnterpriseShell';
 import { StockProducaoModule } from './components/stock/StockProducaoModule';
+import { StockGestaoArtigosModule } from './components/stock/StockGestaoArtigosModule';
+import { StockRequisicaoMaterialModule } from './components/stock/StockRequisicaoMaterialModule';
+import { StockGestaoSaidasModule } from './components/stock/StockGestaoSaidasModule';
+import { StockValorizacaoStockModule } from './components/stock/StockValorizacaoStockModule';
 import { parseStockSubRouteFromLocation } from './lib/stockPermissions';
 
 
@@ -186,7 +190,8 @@ import {
   Car,
   Pill,
   Coins,
-  Cpu
+  Cpu,
+  TrendingDown
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { jsPDF } from 'jspdf';
@@ -31793,9 +31798,11 @@ const ProductList = ({
   issuedDocuments?: any[]
 }) => {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState(() =>
-    parseStockSubRouteFromLocation() === 'producao' ? 'producao' : 'stock'
-  );
+  const [activeTab, setActiveTab] = useState(() => {
+    const route = parseStockSubRouteFromLocation();
+    if (route) return route;
+    return 'stock';
+  });
   const [showForm, setShowForm] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
@@ -32225,6 +32232,10 @@ const ProductList = ({
 
   const tabs = [
     { id: 'stock', label: 'Stock Atual', icon: Package },
+    { id: 'gestao-artigos', label: 'Gestão de Artigos', icon: BookOpen },
+    { id: 'requisicao-material', label: 'Requisição Material', icon: ClipboardList },
+    { id: 'gestao-saidas', label: 'Gestão de Saídas', icon: TrendingDown },
+    { id: 'valorizacao-stock', label: 'Valorização Stock', icon: Scale },
     { id: 'producao', label: 'Produção', icon: Cpu },
     { id: 'movements', label: 'Movimentos', icon: History },
     { id: 'warehouse', label: 'Armazéns', icon: Home },
@@ -32282,7 +32293,36 @@ const ProductList = ({
         </div>
       </div>
 
-      {activeTab === 'warehouse' ? (
+      {activeTab === 'gestao-artigos' ? (
+        <StockGestaoArtigosModule
+          products={products}
+          stockMovements={stockMovements}
+          warehouses={warehouses}
+          companyData={companyData}
+          onRefresh={onRefresh}
+        />
+      ) : activeTab === 'requisicao-material' ? (
+        <StockRequisicaoMaterialModule
+          empresaId={String(user?.empresa_id || '')}
+          warehouses={warehouses}
+          onRefresh={onRefresh}
+        />
+      ) : activeTab === 'gestao-saidas' ? (
+        <StockGestaoSaidasModule
+          products={products}
+          stockMovements={stockMovements}
+          warehouses={warehouses}
+          companyData={companyData}
+          onRefresh={onRefresh}
+        />
+      ) : activeTab === 'valorizacao-stock' ? (
+        <StockValorizacaoStockModule
+          products={products}
+          stockMovements={stockMovements}
+          warehouses={warehouses}
+          onRefresh={onRefresh}
+        />
+      ) : activeTab === 'warehouse' ? (
         <WarehouseModule onRefresh={onRefresh} />
       ) : activeTab === 'stock' ? (
         <StockAtualModule

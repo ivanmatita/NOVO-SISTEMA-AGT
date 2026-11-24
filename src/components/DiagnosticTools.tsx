@@ -3,6 +3,15 @@ import { supabase, supabaseStatus, checkSupabaseHealth } from '../lib/supabase';
 import { AlertCircle, CheckCircle, Info, RefreshCw, Database, ShieldAlert, Key, Globe, User, Activity } from 'lucide-react';
 
 export const DiagnosticTools: React.FC = () => {
+  // Retorna null por defeito para não atrapalhar as páginas do sistema
+  // Só é exibido se explicitamente passado '?debug=true' ou '?diagnostico=true' na URL
+  const isDebugRequested = typeof window !== 'undefined' && 
+    (window.location.search.includes('debug=true') || window.location.search.includes('diagnostico=true'));
+
+  if (!isDebugRequested) {
+    return null;
+  }
+
   const [health, setHealth] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [showDetails, setShowDetails] = useState(false);

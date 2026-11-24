@@ -1405,9 +1405,9 @@ app.use((req, res, next) => {
       });
     }
 
-    // BLOCK unauthorized non-superadmins from registering companies if logged in
+    // Permitir registo de empresa para utilizadores não autenticados, superadmin e admin
     const authCtx = await getAuthUserContext(req);
-    if (authCtx && authCtx.role !== 'superadmin') {
+    if (authCtx && authCtx.role !== 'superadmin' && authCtx.role !== 'admin') {
       await addAuditLog(
         authCtx.userId,
         authCtx.email || null,
@@ -9286,6 +9286,297 @@ app.use((req, res, next) => {
       res.json(logs || []);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Criar Empresa via CRM (com criação na tabela 'empresas', administrador em 'perfis' e licença ATIVA em 'licencas_empresas')
+  app.post("/api/crm/companies", async (req, res) => {
+    try {
+      if (!await isSuperAdmin(req)) return res.status(403).json({ error: "Acesso negado. Apenas superadministradores podem criar empresas via CRM." });
+      if (!supabaseAdmin) return res.status(500).json({ error: "Supabase Admin não disponível" });
+
+      const authCtx = await getAuthUserContext(req);
+      const {
+        nome_empresa,
+        nome,
+        nif,
+        tipo_empresa,
+        nome_administrador,
+        username,
+        telefone,
+        endereco,
+        provincia,
+        municipio,
+        pais,
+        plano,
+        duracao_dias = 30,
+        modulos,
+        admin_email,
+        email,
+        admin_password,
+        password,
+        valor_licenca
+      } = req.body;
+
+      const finalCompanyName = (nome_empresa || nome || '').trim();
+      const finalEmail = (admin_email || email || '').trim().toLowerCase();
+      const finalPassword = admin_password || password || '123';
+      const finalNif = (nif || '').trim();
+      const finalAdminName = (nome_administrador || finalCompanyName || 'Administrador').trim();
+      const finalUsername = (username || finalEmail.split('@')[0] || 'admin').trim();
+      const finalPlano = plano || 'Profissional';
+      const dias = Number(duracao_dias) || 30;
+      const modulosList = Array.isArray(modulos) ? modulos : ['faturacao', 'stock', 'clientes', 'pos'];
+
+      if (!finalCompanyName) {
+        return res.status(400).json({ error: "Nome da empresa é obrigatório." });
+      }
+      if (!finalEmail) {
+        return res.status(400).json({ error: "Email do administrador é obrigatório." });
+      }
+
+      // 1. Verificar duplicidade de NIF
+      if (finalNif) {
+        const { data: existingNif } = await supabaseAdmin
+          .from('empresas')
+          .select('id, nome_empresa')
+          .eq('nif', finalNif)
+          .maybeSingle();
+
+        if (existingNif) {
+          return res.status(400).json({
+            error: `Já existe uma empresa registada com o NIF ${finalNif} (${existingNif.nome_empresa}).`
+          });
+        }
+      }
+
+      // 2. Criar ou obter utilizador de autenticação (Auth Admin)
+      let userId: string;
+      const authUserResponse = await supabaseAdmin.auth.admin.createUser({
+        email: finalEmail,
+        password: finalPassword,
+        email_confirm: true,
+        user_metadata: {
+          full_name: finalAdminName
+        }
+      });
+
+      if (authUserResponse.error) {
+        const errMsg = authUserResponse.error.message ? authUserResponse.error.message.toLowerCase() : "";
+        const isAlreadyExistent = errMsg.includes('already been registered') || 
+                                  errMsg.includes('already exists') || 
+                                  errMsg.includes('registado') || 
+                                  errMsg.includes('existe') || 
+                                  errMsg.includes('email_exists');
+
+        if (isAlreadyExistent) {
+          const { data: users, error: listError } = await supabaseAdmin.auth.admin.listUsers();
+          if (listError) throw listError;
+          const found = users?.users?.find((u: any) => u.email?.toLowerCase() === finalEmail);
+          if (found) {
+            userId = found.id;
+          } else {
+            const { data: existingProf } = await supabaseAdmin
+              .from('perfis')
+              .select('id, user_id')
+              .eq('email', finalEmail)
+              .maybeSingle();
+            if (existingProf) {
+              userId = existingProf.id || existingProf.user_id;
+            } else {
+              return res.status(400).json({ error: `Erro no utilizador: ${authUserResponse.error.message}` });
+            }
+          }
+        } else {
+          return res.status(400).json({ error: `Erro ao criar utilizador Auth: ${authUserResponse.error.message}` });
+        }
+      } else {
+        userId = authUserResponse.data.user.id;
+      }
+
+      const now = new Date();
+      const startDate = now.toISOString();
+      const endDate = new Date(now.getTime() + dias * 24 * 60 * 60 * 1000).toISOString();
+
+      // 3. Criar empresa na tabela 'empresas'
+      const companyPayload = {
+        auth_user_id: userId,
+        nome: finalCompanyName,
+        nome_empresa: finalCompanyName,
+        nif: finalNif || null,
+        email: finalEmail,
+        telefone: telefone || null,
+        endereco: endereco || null,
+        provincia: provincia || 'Luanda',
+        municipio: municipio || 'Luanda',
+        pais: pais || 'Angola',
+        tipo_empresa: tipo_empresa || 'Comércio Geral',
+        nome_administrador: finalAdminName,
+        plano: finalPlano,
+        status_licenca: 'ATIVA',
+        licenca_ativa: true,
+        data_ativacao_licenca: startDate,
+        data_expiracao_licenca: endDate,
+        ativo: true
+      };
+
+      const { data: company, error: companyError } = await supabaseAdmin
+        .from('empresas')
+        .insert([companyPayload])
+        .select()
+        .single();
+
+      if (companyError) {
+        console.error("[CRM] Erro ao criar empresa:", companyError);
+        return res.status(400).json({ error: `Erro ao criar empresa: ${companyError.message}` });
+      }
+
+      const empresaId = company.id;
+
+      // 4. Inserir perfil do administrador em 'perfis'
+      const profilePayload = {
+        id: userId,
+        user_id: userId,
+        empresa_id: empresaId,
+        email: finalEmail,
+        nome: finalAdminName,
+        role: 'admin',
+        is_admin: true,
+        is_active: true,
+        ativo: true,
+        level: 10,
+        username: finalUsername
+      };
+
+      const { error: profileError } = await supabaseAdmin
+        .from('perfis')
+        .upsert(profilePayload, { onConflict: 'id' });
+
+      if (profileError) {
+        console.warn("[CRM] Aviso ao inserir perfil do administrador:", profileError.message);
+      }
+
+      // Sincronizar em system_users
+      try {
+        await supabaseAdmin
+          .from('system_users')
+          .upsert({
+            id: userId,
+            empresa_id: empresaId,
+            company_name: finalCompanyName,
+            nome: finalAdminName,
+            email: finalEmail,
+            is_admin: true,
+            level: 10,
+            username: finalUsername
+          }, { onConflict: 'id' });
+      } catch (sysErr: any) {
+        console.warn("[CRM] Aviso system_users:", sysErr.message);
+      }
+
+      // 5. Gerar licença em 'licencas_empresas' com status ATIVA
+      const licensePayload = {
+        empresa_id: empresaId,
+        status_licenca: 'ATIVA',
+        status: 'ATIVA',
+        tipo_licenca: finalPlano,
+        tipo_plano: finalPlano,
+        plano: finalPlano,
+        duracao_dias: dias,
+        dias_trial: 0,
+        licenca_ativa: true,
+        estado: 'Ativa',
+        valor_licenca: valor_licenca || (finalPlano === 'Enterprise' ? 150000 : finalPlano === 'Profissional' ? 65000 : finalPlano === 'Standard' ? 55000 : 25000),
+        modulos: JSON.stringify(modulosList),
+        solicitante_email: finalEmail,
+        data_inicio: startDate,
+        data_fim: endDate,
+        data_expiracao: endDate,
+        data_ativacao: startDate,
+        ativada_por: authCtx?.email || 'SuperAdmin CRM',
+        ativado_por: authCtx?.email || 'SuperAdmin CRM',
+        ativo: true,
+        updated_at: startDate
+      };
+
+      const { error: licError } = await supabaseAdmin
+        .from('licencas_empresas')
+        .upsert(licensePayload, { onConflict: 'empresa_id' });
+
+      if (licError) {
+        console.warn("[CRM] Aviso ao criar licencas_empresas:", licError.message);
+      }
+
+      // Sincronização redundante de tabelas de suporte
+      try {
+        await supabaseAdmin.from('licencas_empresa').upsert(licensePayload, { onConflict: 'empresa_id' });
+      } catch (_) {}
+
+      try {
+        await supabaseAdmin.from('config_empresa').upsert({
+          empresa_id: empresaId,
+          nome_empresa: finalCompanyName,
+          nif: finalNif || null,
+          email: finalEmail,
+          telefone: telefone || null,
+          endereco: endereco || null,
+          provincia: provincia || 'Luanda',
+          municipio: municipio || 'Luanda',
+          pais: pais || 'Angola',
+          plano: 'active',
+          pacote_licenca: finalPlano,
+          status_licenca: 'ATIVA',
+          updated_at: startDate
+        }, { onConflict: 'empresa_id' });
+      } catch (_) {}
+
+      try {
+        await supabaseAdmin.from('historico_licencas').insert([{
+          empresa_id: empresaId,
+          acao: 'CRIACAO_EMPRESA_CRM',
+          descricao: `Empresa criada via CRM pelo SuperAdmin ${authCtx?.email || 'superadmin'}. Plano: ${finalPlano} (${dias} dias). Licença ATIVA.`,
+          usuario: authCtx?.email || 'superadmin',
+          plano: finalPlano,
+          status: 'ATIVA',
+          metadata: {
+            plano: finalPlano,
+            duracao_dias: dias,
+            modulos: modulosList
+          }
+        }]);
+      } catch (_) {}
+
+      try {
+        await supabaseAdmin.from('auditoria_crm').insert({
+          empresa_id: empresaId,
+          utilizador_id: authCtx?.userId || 'system',
+          modulo: 'EMPRESAS',
+          acao: 'CRIAR_EMPRESA',
+          descricao: `Empresa '${finalCompanyName}' (NIF: ${finalNif || 'N/A'}) criada com licença ATIVA no plano ${finalPlano}.`,
+          dados_novos: {
+            empresa_id: empresaId,
+            nome_empresa: finalCompanyName,
+            nif: finalNif,
+            email: finalEmail,
+            plano: finalPlano,
+            status_licenca: 'ATIVA'
+          },
+          created_at: startDate
+        });
+      } catch (_) {}
+
+      console.log(`[CRM] Empresa ${finalCompanyName} (ID: ${empresaId}) criada com sucesso com licença ATIVA.`);
+
+      return res.status(201).json({
+        success: true,
+        empresa: company,
+        company,
+        user: { id: userId, email: finalEmail },
+        license: licensePayload
+      });
+    } catch (e: any) {
+      console.error("[CRM] Erro fatal ao criar empresa:", e);
+      return res.status(500).json({ error: e.message });
     }
   });
 

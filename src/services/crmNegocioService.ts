@@ -22,9 +22,28 @@ export const crmNegocioService = {
 
   async createCliente(cliente: any) {
     try {
+      // Filtrar apenas colunas reais da tabela 'clientes' do Supabase para evitar erro PGRST204
+      const allowedCols = new Set([
+        'id', 'empresa_id', 'nome', 'telefone', 'email', 'endereco', 'tipo_entidade',
+        'contribuinte', 'localidade', 'codigo_postal', 'provincia', 'municipio', 'pais',
+        'webpage', 'tipo_cliente', 'saldo_inicial', 'nif', 'address', 'initial_balance',
+        'estado_nif', 'ativo', 'morada', 'notas', 'tipo', 'cidade', 'website',
+        'observacoes', 'is_active', 'activo'
+      ]);
+      const sanitized: any = {};
+      for (const k of Object.keys(cliente || {})) {
+        if (allowedCols.has(k) && cliente[k] !== undefined) {
+          sanitized[k] = cliente[k];
+        }
+      }
+      if (sanitized.nif && !sanitized.contribuinte) sanitized.contribuinte = sanitized.nif;
+      if (sanitized.contribuinte && !sanitized.nif) sanitized.nif = sanitized.contribuinte;
+      if (sanitized.morada && !sanitized.endereco) sanitized.endereco = sanitized.morada;
+      if (sanitized.endereco && !sanitized.morada) sanitized.morada = sanitized.endereco;
+
       const { data, error } = await supabase
         .from('clientes')
-        .insert([cliente])
+        .insert([sanitized])
         .select()
         .single();
       if (error) throw error;
@@ -37,9 +56,27 @@ export const crmNegocioService = {
 
   async updateCliente(id: string, updates: any) {
     try {
+      const allowedCols = new Set([
+        'empresa_id', 'nome', 'telefone', 'email', 'endereco', 'tipo_entidade',
+        'contribuinte', 'localidade', 'codigo_postal', 'provincia', 'municipio', 'pais',
+        'webpage', 'tipo_cliente', 'saldo_inicial', 'nif', 'address', 'initial_balance',
+        'estado_nif', 'ativo', 'morada', 'notas', 'tipo', 'cidade', 'website',
+        'observacoes', 'is_active', 'activo'
+      ]);
+      const sanitized: any = {};
+      for (const k of Object.keys(updates || {})) {
+        if (allowedCols.has(k) && updates[k] !== undefined) {
+          sanitized[k] = updates[k];
+        }
+      }
+      if (sanitized.nif && !sanitized.contribuinte) sanitized.contribuinte = sanitized.nif;
+      if (sanitized.contribuinte && !sanitized.nif) sanitized.nif = sanitized.contribuinte;
+      if (sanitized.morada && !sanitized.endereco) sanitized.endereco = sanitized.morada;
+      if (sanitized.endereco && !sanitized.morada) sanitized.morada = sanitized.endereco;
+
       const { data, error } = await supabase
         .from('clientes')
-        .update(updates)
+        .update(sanitized)
         .eq('id', id)
         .select()
         .single();

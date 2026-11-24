@@ -105,7 +105,7 @@ export const StockGestaoSaidasModule: React.FC<StockGestaoSaidasModuleProps> = (
       // Also fetch from documentos_emitidos (real invoice data)
       const { data: docData } = await supabase
         .from('documentos_emitidos')
-        .select('id, numero, tipo_documento, cliente_nome, client_name, data_emissao, created_at, itens, linhas, items')
+        .select('id, numero_documento, tipo_documento, cliente_nome, client_name, data_emissao, created_at, detalhes')
         .eq('empresa_id', empresaId)
         .in('tipo_documento', ['FT', 'FR', 'FS', 'NC', 'GR'])
         .order('data_emissao', { ascending: false })
@@ -113,16 +113,23 @@ export const StockGestaoSaidasModule: React.FC<StockGestaoSaidasModuleProps> = (
 
       const docRows: SaidaRow[] = [];
       for (const doc of (docData || [])) {
-        const lines = doc.itens || doc.linhas || doc.items || [];
+        let lines: any[] = [];
+        if (doc.detalhes) {
+          if (Array.isArray(doc.detalhes)) {
+            lines = doc.detalhes;
+          } else if (typeof doc.detalhes === 'object') {
+            lines = doc.detalhes.itens || doc.detalhes.linhas || doc.detalhes.items || [];
+          }
+        }
         if (Array.isArray(lines) && lines.length > 0) {
           lines.forEach((ln: any, i: number) => {
             docRows.push({
               id: `doc_${doc.id}_${i}`,
               data_doc: doc.data_emissao || doc.created_at || '',
-              doc_numero: doc.numero || '-',
+              doc_numero: doc.numero_documento || '-',
               doc_tipo: doc.tipo_documento || 'FT',
               cliente: doc.cliente_nome || doc.client_name || 'Consumidor Final',
-              quantidade: Number(ln.quantidade || ln.quantity || ln.qty || 0),
+              quantidade: Number(ln.quantidade || ln.quantity || ln.qty || 1),
               unidade: ln.unidade || ln.unit || 'Un',
               descricao: ln.descricao || ln.produto_nome || ln.name || '-',
               armazem: ln.armazem || 'NA',
@@ -133,12 +140,12 @@ export const StockGestaoSaidasModule: React.FC<StockGestaoSaidasModuleProps> = (
           docRows.push({
             id: `doc_${doc.id}`,
             data_doc: doc.data_emissao || doc.created_at || '',
-            doc_numero: doc.numero || '-',
+            doc_numero: doc.numero_documento || '-',
             doc_tipo: doc.tipo_documento || 'FT',
             cliente: doc.cliente_nome || doc.client_name || 'Consumidor Final',
             quantidade: 1,
             unidade: 'Un',
-            descricao: `${doc.tipo_documento || 'FT'} ${doc.numero || ''}`.trim(),
+            descricao: `${doc.tipo_documento || 'FT'} ${doc.numero_documento || ''}`.trim(),
             armazem: 'NA',
           });
         }

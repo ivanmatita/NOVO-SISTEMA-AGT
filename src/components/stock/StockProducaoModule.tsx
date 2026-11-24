@@ -921,61 +921,6 @@ export const StockProducaoModule: React.FC<StockProducaoModuleProps> = ({
         </div>
       </div>
 
-      {/* SEÇÃO COMPACTA DE CÁLCULOS / KPIS (Tamanho reduzido para elevar a lista) */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
-        <div className="bg-white border border-zinc-200 rounded-none px-3.5 py-2.5 shadow-xs flex items-center justify-between">
-          <div>
-            <span className="text-[9px] font-black uppercase tracking-wider text-zinc-400 block">
-              Total de Produções
-            </span>
-            <strong className="text-lg font-black text-[#003366] font-mono leading-tight">{kpis.total}</strong>
-            <span className="text-[10px] text-zinc-500 block">Custo: {fmtKz(kpis.valor_total_custo)}</span>
-          </div>
-          <div className="w-8 h-8 rounded-none bg-blue-50 text-[#003366] flex items-center justify-center">
-            <Cpu size={16} />
-          </div>
-        </div>
-
-        <div className="bg-white border border-amber-200 rounded-none px-3.5 py-2.5 shadow-xs flex items-center justify-between">
-          <div>
-            <span className="text-[9px] font-black uppercase tracking-wider text-amber-600 block">
-              Em Andamento
-            </span>
-            <strong className="text-lg font-black text-amber-700 font-mono leading-tight">{kpis.em_andamento}</strong>
-            <span className="text-[10px] text-zinc-500 block">Ordens em execução</span>
-          </div>
-          <div className="w-8 h-8 rounded-none bg-amber-50 text-amber-600 flex items-center justify-center">
-            <RefreshCw size={16} />
-          </div>
-        </div>
-
-        <div className="bg-white border border-emerald-200 rounded-none px-3.5 py-2.5 shadow-xs flex items-center justify-between">
-          <div>
-            <span className="text-[9px] font-black uppercase tracking-wider text-emerald-600 block">
-              Concluídas
-            </span>
-            <strong className="text-lg font-black text-emerald-700 font-mono leading-tight">{kpis.concluidas}</strong>
-            <span className="text-[10px] text-zinc-500 block">PVP: {fmtKz(kpis.valor_total_venda)}</span>
-          </div>
-          <div className="w-8 h-8 rounded-none bg-emerald-50 text-emerald-600 flex items-center justify-center">
-            <CheckCircle2 size={16} />
-          </div>
-        </div>
-
-        <div className="bg-white border border-slate-200 rounded-none px-3.5 py-2.5 shadow-xs flex items-center justify-between">
-          <div>
-            <span className="text-[9px] font-black uppercase tracking-wider text-slate-500 block">
-              Bloqueadas / Trancadas
-            </span>
-            <strong className="text-lg font-black text-slate-800 font-mono leading-tight">{kpis.bloqueadas}</strong>
-            <span className="text-[10px] text-zinc-500 block">Protegidas contra alteração</span>
-          </div>
-          <div className="w-8 h-8 rounded-none bg-slate-100 text-slate-700 flex items-center justify-center">
-            <Lock size={16} />
-          </div>
-        </div>
-      </div>
-
       {/* Barra Compacta de Filtros & Pesquisa */}
       <div className="bg-white border border-zinc-200 rounded-none p-2.5 shadow-xs space-y-2">
         <div className="grid grid-cols-1 md:grid-cols-6 gap-2">

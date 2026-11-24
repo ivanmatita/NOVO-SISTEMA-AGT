@@ -242,10 +242,10 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
   };
 
   return (
-    <div className="bg-white p-0 overflow-hidden flex flex-col">
+    <div className="bg-white p-0 overflow-hidden flex flex-col rounded-2xl">
       <div className="shrink-0 p-6 border-b border-zinc-100 bg-zinc-50/50 flex justify-between items-center">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-[#003366] text-white flex items-center justify-center">
+          <div className="w-10 h-10 bg-[#003366] text-white flex items-center justify-center rounded-xl shadow-sm">
             {isSupplier ? <ShoppingBag size={20} /> : <Users size={20} />}
           </div>
           <div>
@@ -255,14 +255,14 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
             <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mt-0.5">{isSupplier ? 'Módulo de Gestão de Fornecedores' : 'Módulo de Gestão de Contas de Clientes'}</p>
           </div>
         </div>
-        <button type="button" onClick={onBack} className="text-zinc-400 hover:text-red-500 transition-colors">
+        <button type="button" onClick={onBack} className="text-zinc-400 hover:text-red-500 transition-colors p-1.5 rounded-lg hover:bg-zinc-100">
           <X size={24} />
         </button>
       </div>
 
       <div className="flex-1 overflow-y-auto p-8 max-h-[70vh]">
         {message && (
-          <div className={`mb-6 p-4 flex items-center gap-3 border ${
+          <div className={`mb-6 p-4 flex items-center gap-3 border rounded-xl ${
             message.type === 'success' ? 'bg-emerald-50 border-emerald-100 text-emerald-800' : 'bg-red-50 border-red-100 text-red-800'
           } animate-in fade-in slide-in-from-top-2`}>
             {message.type === 'success' ? <Check size={20} /> : <AlertCircle size={20} />}
@@ -281,7 +281,7 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
                   name="contribuinte"
                   value={formData.contribuinte} 
                   onChange={handleChange} 
-                  className={`w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-bold ${
+                  className={`w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-bold ${
                     initialData && formData.contribuinte !== '999999999' ? 'opacity-70 cursor-not-allowed bg-zinc-100' : ''
                   } ${nifResult?.exists ? 'border-emerald-400' : ''} ${nifResult && !nifResult.exists && !nifLoading ? 'border-red-400' : ''}`}
                   placeholder="Ex: 5000..." 
@@ -303,7 +303,7 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
                   }
                 }}
                 disabled={nifLoading || !formData.contribuinte}
-                className="bg-zinc-100 hover:bg-zinc-200 text-[#003366] px-3 py-2 text-[10px] font-black uppercase tracking-widest transition-all border border-zinc-200 flex items-center gap-1 shadow-sm active:scale-95 disabled:opacity-50"
+                className="bg-zinc-100 hover:bg-zinc-200 text-[#003366] px-3 py-2 text-[10px] font-black uppercase tracking-widest transition-all border border-zinc-200 flex items-center gap-1 shadow-sm active:scale-95 disabled:opacity-50 rounded-xl"
               >
                 {nifLoading ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />} NIF
               </button>
@@ -321,7 +321,7 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
                 value={formData.name} 
                 onChange={handleChange} 
                 required 
-                className={`w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-bold ${
+                className={`w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-bold ${
                   nifResult?.exists && nifResult.nome ? 'border-emerald-300 bg-emerald-50/30' : ''
                 }`}
                 placeholder="Ex: Empresa de Serviços Lda" 
@@ -346,7 +346,7 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
               name="email"
               value={formData.email} 
               onChange={handleChange} 
-              className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" 
+              className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" 
               placeholder="comercial@exemplo.com" 
             />
           </div>
@@ -358,7 +358,7 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
               name="telefone"
               value={formData.telefone} 
               onChange={handleChange} 
-              className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-mono" 
+              className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-mono" 
               placeholder="+244 9..." 
             />
           </div>
@@ -369,7 +369,7 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
               name="pais"
               value={formData.pais} 
               onChange={handleChange} 
-              className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-bold"
+              className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-bold"
             >
               <option value="Angola">Angola</option>
               <option value="Portugal">Portugal</option>
@@ -385,7 +385,7 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
               name="provincia"
               value={formData.provincia} 
               onChange={handleChange} 
-              className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" 
+              className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" 
               placeholder="Luanda" 
             />
           </div>
@@ -397,7 +397,7 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
               name="municipio"
               value={formData.municipio} 
               onChange={handleChange} 
-              className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" 
+              className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" 
               placeholder="Belas" 
             />
           </div>
@@ -409,7 +409,7 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
               name="localidade"
               value={formData.localidade} 
               onChange={handleChange} 
-              className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" 
+              className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" 
               placeholder="Talatona" 
             />
           </div>
@@ -421,7 +421,7 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
               name="morada"
               value={formData.morada} 
               onChange={handleChange} 
-              className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" 
+              className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" 
               placeholder="Rua, Edifício, Andar..." 
             />
           </div>
@@ -433,7 +433,7 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
               name="codigo_postal"
               value={formData.codigo_postal} 
               onChange={handleChange} 
-              className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" 
+              className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" 
               placeholder="0000-000" 
             />
           </div>
@@ -453,7 +453,7 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
                     name="sigla_banco"
                     value={formData.sigla_banco} 
                     onChange={handleChange} 
-                    className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-bold" 
+                    className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-bold" 
                     placeholder="Ex: BFA, BAI, BCI..." 
                   />
                 </div>
@@ -466,7 +466,7 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
                     name="iban"
                     value={formData.iban} 
                     onChange={handleChange} 
-                    className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-mono" 
+                    className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-mono" 
                     placeholder="AO06 0000..." 
                   />
                 </div>
@@ -479,7 +479,7 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
               name={isSupplier ? "tipo_fornecedor" : "tipo_cliente"}
               value={isSupplier ? formData.tipo_fornecedor : formData.tipo_cliente} 
               onChange={handleChange} 
-              className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-bold uppercase"
+              className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-bold uppercase"
             >
               {isSupplier ? (
                 <>
@@ -510,7 +510,7 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
               name="activo"
               value={formData.activo ? 'true' : 'false'} 
               onChange={(e) => setFormData(prev => ({ ...prev, activo: e.target.value === 'true' }))} 
-              className={`w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-bold uppercase ${
+              className={`w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-bold uppercase ${
                 nifResult?.exists && nifResult.estado ? 'border-emerald-300 bg-emerald-50/30' : ''
               }`}
             >
@@ -531,7 +531,7 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
               name="saldo_inicial"
               value={formData.saldo_inicial} 
               onChange={handleChange} 
-              className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-bold text-right" 
+              className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-bold text-right" 
               placeholder="0,00" 
             />
           </div>
@@ -542,14 +542,14 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
         <button 
           type="button" 
           onClick={onBack} 
-          className="px-8 py-2.5 text-xs font-black uppercase tracking-widest text-zinc-500 hover:text-zinc-800 transition-all active:scale-95"
+          className="px-8 py-2.5 text-xs font-black uppercase tracking-widest text-zinc-500 hover:text-zinc-800 transition-all active:scale-95 rounded-xl border border-zinc-200 hover:bg-zinc-100"
         >
           Cancelar
         </button>
         <button 
           onClick={handleSubmit}
           disabled={loading || authLoading}
-          className="bg-[#003366] text-white px-10 py-2.5 text-xs font-black uppercase tracking-[0.2em] shadow-xl hover:bg-[#002244] transition-all disabled:opacity-50 active:scale-95"
+          className="bg-[#003366] text-white px-10 py-2.5 text-xs font-black uppercase tracking-[0.2em] shadow-xl hover:bg-[#002244] transition-all disabled:opacity-50 active:scale-95 rounded-xl"
         >
           {loading ? 'A processar...' : initialData ? 'Confirmar Alterações' : 'Guardar Registo'}
         </button>

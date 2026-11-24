@@ -3,7 +3,7 @@ import {
   ShoppingCart, Package, Building2, Calculator,
   Search, Filter, RefreshCw, Plus, ArrowRightLeft, SlidersHorizontal,
   FileText, Eye, AlertTriangle, CheckCircle2, ShieldAlert, Download,
-  Layers, ChevronRight, ChevronLeft, Home, TrendingUp, TrendingDown, Clock, Box, Pencil
+  Layers, ChevronRight, ChevronLeft, Home, TrendingUp, TrendingDown, Clock, Box, Pencil, Camera, Image as ImageIcon, Upload
 } from 'lucide-react';
 import { Product, Warehouse, StockMovement } from '../../types';
 import { StockEntradasReport } from './StockEntradasReport';
@@ -51,6 +51,71 @@ export const StockAtualModule: React.FC<StockAtualModuleProps> = ({
   // Paginação
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(25);
+
+  // Upload e gestão de imagem de produtos na lista
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const [uploadingProdId, setUploadingProdId] = useState<string | number | null>(null);
+
+  const handleTriggerUpload = (prodId: string | number) => {
+    setUploadingProdId(prodId);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+      fileInputRef.current.click();
+    }
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !uploadingProdId) return;
+
+    const toastId = toast.loading('A carregar imagem do produto...');
+    try {
+      const empresaId = user?.empresa_id || (user as any)?.company_id || 'geral';
+      const fileExt = file.name.split('.').pop() || 'png';
+      const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+      const filePath = `${empresaId}/produtos/${fileName}`;
+
+      let publicUrl = '';
+      const { error: uploadErr } = await supabase.storage
+        .from('produtos-imagens')
+        .upload(filePath, file, { upsert: true });
+
+      if (uploadErr) {
+        const { error: mediaErr } = await supabase.storage
+          .from('media')
+          .upload(filePath, file, { upsert: true });
+
+        if (!mediaErr) {
+          const { data } = supabase.storage.from('media').getPublicUrl(filePath);
+          publicUrl = data.publicUrl;
+        } else {
+          publicUrl = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.readAsDataURL(file);
+          });
+        }
+      } else {
+        const { data } = supabase.storage.from('produtos-imagens').getPublicUrl(filePath);
+        publicUrl = data.publicUrl;
+      }
+
+      const { error: updateErr } = await supabase
+        .from('produtos')
+        .update({ image_url: publicUrl, image: publicUrl, imagem_url: publicUrl })
+        .eq('id', uploadingProdId);
+
+      if (updateErr) throw updateErr;
+
+      toast.success('Imagem do produto atualizada com sucesso!', { id: toastId });
+      onRefresh();
+    } catch (err: any) {
+      console.error('[StockAtual] Erro ao carregar imagem:', err);
+      toast.error('Erro ao guardar imagem do produto: ' + (err.message || ''), { id: toastId });
+    } finally {
+      setUploadingProdId(null);
+    }
+  };
 
   // Armazém selecionado atualmente (ou todos)
   const currentWarehouse = useMemo(() => {
@@ -442,130 +507,172 @@ export const StockAtualModule: React.FC<StockAtualModuleProps> = ({
       {/* ────────────────────────────────────────────────────────────────────────── */}
       {/* 2. TABELA PRINCIPAL DE STOCK ATUAL COM AS COLUNAS EXIGIDAS                */}
       {/* ────────────────────────────────────────────────────────────────────────── */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleFileChange}
+      />
+
       <div className="bg-white border border-zinc-200 rounded-xl shadow-xs overflow-hidden">
         
-        <div className="overflow-x-auto">
+        <div className="w-full overflow-x-auto">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
               <tr className="bg-[#003366] text-white text-[10px] font-black uppercase tracking-wider whitespace-nowrap">
-                <th className="py-3 px-3">Nome do Produto</th>
-                <th className="py-3 px-3">Descrição</th>
-                <th className="py-3 px-3">Código / Ref.</th>
-                <th className="py-3 px-3">Categoria</th>
-                <th className="py-3 px-3 text-center">Unidade</th>
-                <th className="py-3 px-3">Armazém</th>
-                <th className="py-3 px-3 text-right bg-[#002244]">Qtd Actual</th>
-                <th className="py-3 px-3 text-right">Stock Mín.</th>
-                <th className="py-3 px-3 text-right">Stock Máx.</th>
-                <th className="py-3 px-3 text-right">Preço Venda</th>
-                <th className="py-3 px-3 text-right bg-[#002244]">Valor Total Stock</th>
-                <th className="py-3 px-3 text-center">Estado</th>
-                <th className="py-3 px-3 text-center">Ações</th>
+                <th className="py-2.5 px-2">Produto</th>
+                <th className="py-2.5 px-2">Cód. / Ref.</th>
+                <th className="py-2.5 px-2 text-center">Un.</th>
+                <th className="py-2.5 px-2">Armazém</th>
+                <th className="py-2.5 px-2 text-right bg-[#002244]">Qtd Actual</th>
+                <th className="py-2.5 px-2 text-right">Mín.</th>
+                <th className="py-2.5 px-2 text-right">Máx.</th>
+                <th className="py-2.5 px-2 text-right">Preço Venda</th>
+                <th className="py-2.5 px-2 text-right bg-[#002244]">Total Stock</th>
+                <th className="py-2.5 px-2 text-center">Estado</th>
+                <th className="py-2.5 px-2 text-center">Imagem</th>
+                <th className="py-2.5 px-2 text-center">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-200 text-zinc-700">
-              {paginatedList.map((item) => (
+              {paginatedList.map((item) => {
+                const prodImg = (item.product as any)?.image_url || (item.product as any)?.image || (item.product as any)?.imagem_url || (item.product as any)?.foto_url;
+                const isUploadingThis = uploadingProdId === item.product.id;
+
+                return (
                 <tr 
                   key={item.product.id}
                   className="hover:bg-blue-50/40 transition-colors"
                 >
-                  {/* 1. Nome do Produto */}
-                  <td className="py-2.5 px-3 font-bold text-zinc-900 whitespace-nowrap">
-                    <div className="flex items-center gap-1.5 max-w-[240px]">
-                      <span className="truncate" title={item.nome}>
-                        {item.nome}
-                      </span>
-                      {(item.origem === 'PRODUÇÃO' || item.origem === 'PRODUCAO' || item.producaoId) && (
-                        <span
-                          className="shrink-0 px-1.5 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 text-[9px] font-black uppercase tracking-wider rounded"
-                          title="Artigo registado via Produção"
-                        >
-                          Produção
+                  {/* 1. Nome do Produto (com descrição se aplicável) */}
+                  <td className="py-2 px-2 font-bold text-zinc-900">
+                    <div className="flex flex-col gap-0.5 max-w-[200px]">
+                      <div className="flex items-center gap-1">
+                        <span className="truncate font-semibold text-zinc-900 text-xs" title={item.nome}>
+                          {item.nome}
+                        </span>
+                        {(item.origem === 'PRODUÇÃO' || item.origem === 'PRODUCAO' || item.producaoId) && (
+                          <span
+                            className="shrink-0 px-1 py-0.2 bg-indigo-50 text-indigo-700 border border-indigo-200 text-[8px] font-black uppercase tracking-wider rounded"
+                            title="Artigo registado via Produção"
+                          >
+                            Prod
+                          </span>
+                        )}
+                      </div>
+                      {item.descricao && item.descricao.trim() !== item.nome.trim() && (
+                        <span className="truncate text-[10px] text-zinc-400 font-normal" title={item.descricao}>
+                          {item.descricao}
                         </span>
                       )}
                     </div>
                   </td>
 
-                  {/* 2. Descrição */}
-                  <td className="py-2.5 px-3 text-zinc-500 whitespace-nowrap">
-                    <span className="truncate max-w-[200px] block text-[11px]" title={item.descricao}>
-                      {item.descricao}
-                    </span>
-                  </td>
-
-                  {/* 3. Código ou referência comercial */}
-                  <td className="py-2.5 px-3 font-mono font-bold text-zinc-600 whitespace-nowrap text-[11px]">
+                  {/* 2. Código ou referência comercial */}
+                  <td className="py-2 px-2 font-mono font-bold text-zinc-600 whitespace-nowrap text-[11px]">
                     <div>{item.codigo}</div>
                     {item.referencia && item.referencia !== item.codigo && (
-                      <span className="text-[10px] text-zinc-400 font-normal block">{item.referencia}</span>
+                      <span className="text-[9px] text-zinc-400 font-normal block">{item.referencia}</span>
                     )}
                   </td>
 
-                  {/* 4. Categoria */}
-                  <td className="py-2.5 px-3 text-zinc-600 whitespace-nowrap text-[11px]">
-                    {item.categoria}
-                  </td>
-
-                  {/* 5. Unidade de medida */}
-                  <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                  {/* 3. Unidade de medida */}
+                  <td className="py-2 px-2 text-center whitespace-nowrap">
                     <span className="px-1.5 py-0.5 bg-zinc-100 text-zinc-700 font-mono text-[10px] font-bold rounded">
                       {item.unidade}
                     </span>
                   </td>
 
-                  {/* 6. Armazém */}
-                  <td className="py-2.5 px-3 whitespace-nowrap">
-                    <span className="px-2 py-0.5 bg-zinc-100 text-[#003366] font-bold text-[10px] rounded border border-zinc-200">
+                  {/* 4. Armazém */}
+                  <td className="py-2 px-2 whitespace-nowrap">
+                    <span className="px-1.5 py-0.5 bg-zinc-100 text-[#003366] font-bold text-[10px] rounded border border-zinc-200">
                       {item.armazemNome}
                     </span>
                   </td>
 
-                  {/* 7. Quantidade Actual */}
-                  <td className={`py-2.5 px-3 text-right font-mono font-black whitespace-nowrap text-xs ${
+                  {/* 5. Quantidade Actual */}
+                  <td className={`py-2 px-2 text-right font-mono font-black whitespace-nowrap text-xs ${
                     item.qtdDisponivel > 0 ? 'bg-emerald-50/70 text-emerald-800' : 'bg-rose-50/70 text-rose-800'
                   }`}>
                     {item.qtdDisponivel.toLocaleString('pt-AO')}
                   </td>
 
-                  {/* 8. Stock mínimo */}
-                  <td className="py-2.5 px-3 text-right font-mono text-zinc-500 whitespace-nowrap text-[11px]">
+                  {/* 6. Stock mínimo */}
+                  <td className="py-2 px-2 text-right font-mono text-zinc-500 whitespace-nowrap text-[11px]">
                     {item.stockMin}
                   </td>
 
-                  {/* 9. Stock máximo */}
-                  <td className="py-2.5 px-3 text-right font-mono text-zinc-500 whitespace-nowrap text-[11px]">
+                  {/* 7. Stock máximo */}
+                  <td className="py-2 px-2 text-right font-mono text-zinc-500 whitespace-nowrap text-[11px]">
                     {item.stockMax > 0 ? item.stockMax : '—'}
                   </td>
 
-                  {/* 10. Preço de venda */}
-                  <td className="py-2.5 px-3 text-right font-mono font-bold text-zinc-800 whitespace-nowrap">
+                  {/* 8. Preço de venda */}
+                  <td className="py-2 px-2 text-right font-mono font-bold text-zinc-800 whitespace-nowrap text-[11px]">
                     {item.precoVenda.toLocaleString('pt-AO', { minimumFractionDigits: 2 })} Kz
                   </td>
 
-                  {/* 11. Valor total do stock */}
-                  <td className="py-2.5 px-3 text-right font-mono font-black text-[#003366] bg-blue-50/40 whitespace-nowrap">
+                  {/* 9. Valor total do stock */}
+                  <td className="py-2 px-2 text-right font-mono font-black text-[#003366] bg-blue-50/40 whitespace-nowrap text-[11px]">
                     {item.valorTotalStock.toLocaleString('pt-AO', { minimumFractionDigits: 2 })} Kz
                   </td>
 
-                  {/* 12. Estado do stock */}
-                  <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                  {/* 10. Estado do stock */}
+                  <td className="py-2 px-2 text-center whitespace-nowrap">
                     {item.isZeroOrNegative ? (
-                      <span className="px-2 py-0.5 bg-rose-100 text-rose-800 text-[10px] font-black uppercase rounded">
+                      <span className="px-1.5 py-0.5 bg-rose-100 text-rose-800 text-[9px] font-black uppercase rounded">
                         Esgotado
                       </span>
                     ) : item.isLowStock ? (
-                      <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-[10px] font-black uppercase rounded">
+                      <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 text-[9px] font-black uppercase rounded">
                         Baixo
                       </span>
                     ) : (
-                      <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase rounded">
+                      <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 text-[9px] font-black uppercase rounded">
                         Normal
                       </span>
                     )}
                   </td>
 
-                  {/* 13. Ações */}
-                  <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                  {/* 11. Imagem do Produto no lado direito com upload */}
+                  <td className="py-2 px-2 text-center whitespace-nowrap">
+                    <div className="flex items-center justify-center">
+                      {prodImg ? (
+                        <div 
+                          className="relative group cursor-pointer"
+                          onClick={() => handleTriggerUpload(item.product.id)}
+                          title="Clique para alterar a imagem do produto"
+                        >
+                          <img
+                            src={prodImg}
+                            alt={item.nome}
+                            className="w-8 h-8 rounded-lg object-cover border border-zinc-200 shadow-2xs group-hover:opacity-80 transition-opacity"
+                          />
+                          <div className="absolute inset-0 bg-black/40 rounded-lg opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">
+                            <Camera size={12} />
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleTriggerUpload(item.product.id)}
+                          disabled={isUploadingThis}
+                          className="w-8 h-8 rounded-lg border border-dashed border-zinc-300 hover:border-blue-500 bg-zinc-50 hover:bg-blue-50 text-zinc-400 hover:text-blue-600 flex items-center justify-center transition-colors cursor-pointer"
+                          title="Carregar imagem do produto"
+                        >
+                          {isUploadingThis ? (
+                            <RefreshCw size={12} className="animate-spin text-blue-600" />
+                          ) : (
+                            <Camera size={13} />
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  </td>
+
+                  {/* 12. Ações */}
+                  <td className="py-2 px-2 text-center whitespace-nowrap">
                     <div className="flex items-center justify-center gap-1">
                       {/* Botão de Editar Produto Obrigatório */}
                       {onEditProduct && (
@@ -616,11 +723,12 @@ export const StockAtualModule: React.FC<StockAtualModuleProps> = ({
                   </td>
 
                 </tr>
-              ))}
+              );
+            })}
 
               {filteredList.length === 0 && (
                 <tr>
-                  <td colSpan={13} className="py-16 text-center text-zinc-400 font-bold uppercase tracking-wider">
+                  <td colSpan={12} className="py-16 text-center text-zinc-400 font-bold uppercase tracking-wider">
                     <Box size={36} className="mx-auto text-zinc-300 mb-2" />
                     <span>Nenhum produto encontrado para o armazém seleccionado.</span>
                     <p className="text-xs text-zinc-400 font-normal mt-1 lowercase first-letter:uppercase">

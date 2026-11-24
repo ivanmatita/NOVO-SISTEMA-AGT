@@ -19,7 +19,7 @@ import toast from 'react-hot-toast';
 
 interface Requisicao {
   id: string;
-  linha: number;
+  linha?: number;
   data_emissao: string;
   emissor: string;
   doc_numero: string;
@@ -28,13 +28,15 @@ interface Requisicao {
   destino_armazem: string;
   po_cliente: string;
   requisitante: string;
-  obs: string;
+  observacoes?: string;
+  obs?: string;
   autorizacao_responsavel: string;
-  autorizacao_data: string;
+  autorizacao_data?: string;
   entrega_responsavel: string;
-  entrega_data: string;
+  entrega_data?: string;
   valor: number;
   estado: 'preparacao' | 'certificado';
+  certificado?: boolean;
   empresa_id: string;
   created_at: string;
 }
@@ -133,11 +135,11 @@ export const StockRequisicaoMaterialModule: React.FC<StockRequisicaoMaterialModu
       destino_armazem: item.destino_armazem || '',
       po_cliente: item.po_cliente || '',
       requisitante: item.requisitante || '',
-      obs: item.obs || '',
+      obs: item.observacoes || item.obs || '',
       autorizacao_responsavel: item.autorizacao_responsavel || '',
-      autorizacao_data: item.autorizacao_data?.split('T')[0] || '',
+      autorizacao_data: (item as any).autorizacao_data?.split('T')[0] || '',
       entrega_responsavel: item.entrega_responsavel || '',
-      entrega_data: item.entrega_data?.split('T')[0] || '',
+      entrega_data: (item as any).entrega_data?.split('T')[0] || '',
       valor: item.valor || 0,
     });
     setShowModal(true);
@@ -151,11 +153,22 @@ export const StockRequisicaoMaterialModule: React.FC<StockRequisicaoMaterialModu
     setSaving(true);
     try {
       const payload = {
-        ...form,
         empresa_id: eid,
+        doc_numero: form.doc_numero,
+        serie: 'S12026',
+        data_emissao: form.data_emissao,
+        emissor: form.emissor,
+        origem_armazem: form.origem_armazem || null,
+        destino_obra: form.destino_obra || null,
+        destino_armazem: form.destino_armazem || null,
+        po_cliente: form.po_cliente || null,
+        requisitante: form.requisitante || null,
+        observacoes: form.obs || null,
+        autorizacao_responsavel: form.autorizacao_responsavel || null,
+        entrega_responsavel: form.entrega_responsavel || null,
         valor: Number(form.valor) || 0,
         estado: editItem ? editItem.estado : 'preparacao',
-        linha: editItem ? editItem.linha : (items.length + 1),
+        certificado: editItem ? (editItem.estado === 'certificado') : false,
       };
       if (editItem) {
         const { error } = await supabase.from('stock_requisicoes_material').update(payload).eq('id', editItem.id);
@@ -252,7 +265,7 @@ export const StockRequisicaoMaterialModule: React.FC<StockRequisicaoMaterialModu
       <td className={tdCls}>{item.destino_armazem || '-'}</td>
       <td className={tdCls}>{item.po_cliente || '-'}</td>
       <td className={tdCls}>{item.requisitante || '-'}</td>
-      <td className={tdCls} title={item.obs}>{item.obs ? item.obs.substring(0, 30) + (item.obs.length > 30 ? '…' : '') : '-'}</td>
+      <td className={tdCls} title={item.observacoes || item.obs}>{(item.observacoes || item.obs) ? (item.observacoes || item.obs)!.substring(0, 30) + ((item.observacoes || item.obs)!.length > 30 ? '…' : '') : '-'}</td>
       <td className={tdCls}>
         <div className="text-[10px]">
           <div className="font-medium">{item.autorizacao_responsavel || '-'}</div>

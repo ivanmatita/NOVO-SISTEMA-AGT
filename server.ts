@@ -9242,22 +9242,38 @@ app.use((req, res, next) => {
       if (!await isSuperAdmin(req)) return res.status(403).json({ error: "Acesso negado." });
       if (!supabaseAdmin) return res.status(500).json({ error: "Supabase Admin não disponível" });
 
-      const { data: profiles, error } = await supabaseAdmin
+      const empresaId = req.query.empresa_id as string;
+      let query = supabaseAdmin
         .from('perfis')
         .select('*')
         .order('created_at', { ascending: false });
 
+      if (empresaId) {
+        query = query.or(`empresa_id.eq.${empresaId},company_id.eq.${empresaId}`);
+      }
+
+      const { data: profiles, error } = await query;
+
       if (error) {
          console.warn("Error fetching profiles:", error.message);
+         if (empresaId) {
+           const { data: sysUsers } = await supabaseAdmin
+             .from('system_users')
+             .select('*')
+             .eq('empresa_id', empresaId);
+           return res.json(sysUsers || []);
+         }
          return res.json([]);
       }
       
       const { data: companiesList } = await supabaseAdmin.from('empresas').select('id, nome_empresa, nif');
       
       const hydratedProfiles = (profiles || []).map(p => {
-         const emp = companiesList?.find(c => String(c.id) === String(p.empresa_id));
+         const emp = companiesList?.find(c => String(c.id) === String(p.empresa_id || p.company_id));
+         const resolvedUsername = p.username || p.user_name || (p.email ? p.email.split('@')[0] : 'admin');
          return {
             ...p,
+            username: resolvedUsername,
             empresas: emp ? { nome_empresa: emp.nome_empresa, nif: emp.nif } : null
          }
       });

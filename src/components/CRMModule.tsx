@@ -1718,6 +1718,7 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
             <table className="w-full text-left text-xs border border-zinc-200">
               <thead>
                 <tr className="bg-zinc-50 border-b border-zinc-200 font-bold uppercase text-[10px] text-zinc-500">
+                  <th className="p-3">Username / Login</th>
                   <th className="p-3">Nome / Email</th>
                   <th className="p-3">Cargo / Função</th>
                   <th className="p-3 text-center">Estado</th>
@@ -1728,7 +1729,7 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
               <tbody className="divide-y divide-zinc-100">
                 {companyUsersLoading && displayedCompanyUsers.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="p-8 text-center text-zinc-500">
+                    <td colSpan={6} className="p-8 text-center text-zinc-500">
                       <RefreshCw size={16} className="animate-spin inline mr-2 text-[#003366]" />
                       A carregar utilizadores da empresa...
                     </td>
@@ -1737,19 +1738,25 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                 {displayedCompanyUsers.map(u => {
                   const isActive = u.ativo !== false && u.is_active !== false;
                   const userIdToUse = u.id || u.user_id;
+                  const usernameVal = u.username || u.user_name || (u.email ? u.email.split('@')[0] : 'admin');
                   return (
                     <tr key={String(userIdToUse || u.email)} className="hover:bg-zinc-50">
+                      <td className="p-3">
+                        <span className="font-mono font-bold text-[#003366] bg-blue-50 px-2 py-0.5 border border-blue-200 rounded-none">
+                          {usernameVal}
+                        </span>
+                      </td>
                       <td className="p-3">
                         <p className="font-bold text-zinc-800">{u.full_name || u.nome || u.email}</p>
                         <p className="text-[10px] text-zinc-400 font-mono">{u.email}</p>
                       </td>
                       <td className="p-3 text-zinc-600 uppercase font-mono">{u.role || (u.is_admin ? 'Admin' : 'Operador')}</td>
                       <td className="p-3 text-center">
-                        <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded ${isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+                        <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-none ${isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
                           {isActive ? '✓ ATIVO' : '✗ BLOQUEADO'}
                         </span>
                       </td>
-                      <td className="p-3 font-mono text-zinc-500">{safeFormatDate(u.created_at)}</td>
+                      <td className="p-3 font-mono text-zinc-500">{safeFormatDate(u.created_at || u.date)}</td>
                       <td className="p-3 text-right">
                         <div className="flex items-center justify-end gap-1.5 flex-wrap">
                           <button

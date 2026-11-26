@@ -1344,10 +1344,9 @@ const WorkSiteForm = ({ clients, onBack, onSuccess, initialData }: { clients: Cl
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!clientId) return;
     const client = clients.find(c => String(c.id) === String(clientId));
     onSuccess({
-      client_id: clientId.toString(),
+      client_id: clientId ? clientId.toString() : '',
       client_name: client?.name || '',
       start_date: startDate,
       end_date: endDate,
@@ -1363,99 +1362,101 @@ const WorkSiteForm = ({ clients, onBack, onSuccess, initialData }: { clients: Cl
   };
 
   return (
-    <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
       <div className="space-y-1">
-        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Seleccione um Cliente</label>
+        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Cliente (Opcional)</label>
         <select 
-          value={clientId} onChange={e => setClientId(e.target.value)} required
-          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+          value={clientId} onChange={e => setClientId(e.target.value)}
+          className="w-full bg-zinc-50/50 border border-zinc-200 rounded-xl px-3 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-xs transition-all font-medium"
         >
-          <option value="">Selecionar Cliente...</option>
+          <option value="">Selecionar Cliente (Opcional)...</option>
           {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
       </div>
       <div className="space-y-1">
-        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Titulo da Obra/Serviço</label>
+        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Titulo da Obra/Serviço *</label>
         <input 
           type="text" value={title} onChange={e => setTitle(e.target.value)} required
           placeholder="Digite o título da obra ou serviço"
-          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+          className="w-full bg-zinc-50/50 border border-zinc-200 rounded-xl px-3 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-xs transition-all font-semibold"
         />
       </div>
       <div className="space-y-1">
-        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data de Abertura de Obra/Serviço</label>
+        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Data de Abertura</label>
         <input 
           type="date" value={startDate} onChange={e => setStartDate(e.target.value)} required
-          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+          className="w-full bg-zinc-50/50 border border-zinc-200 rounded-xl px-3 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-xs transition-all"
         />
       </div>
       <div className="space-y-1">
-        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data de Encerramento de Obra/Serviço</label>
+        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Data de Encerramento</label>
         <input 
           type="date" value={endDate} onChange={e => setEndDate(e.target.value)} required
-          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+          className="w-full bg-zinc-50/50 border border-zinc-200 rounded-xl px-3 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-xs transition-all"
         />
       </div>
       <div className="space-y-1">
-        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">COD de Obra/Serv</label>
+        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Código de Obra/Serviço</label>
         <input 
           type="text" value={code} onChange={e => setCode(e.target.value)} required
           placeholder="Código identificador da obra"
-          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+          className="w-full bg-zinc-50/50 border border-zinc-200 rounded-xl px-3 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-xs transition-all"
         />
       </div>
       <div className="space-y-1">
-        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Total de Efectivos por Dia</label>
+        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Total de Efectivos por Dia</label>
         <input 
           type="number" value={staffPerDay} onChange={e => setStaffPerDay(Number(e.target.value))} required
           placeholder="Número de trabalhadores diários"
-          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+          className="w-full bg-zinc-50/50 border border-zinc-200 rounded-xl px-3 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-xs transition-all"
         />
       </div>
       <div className="space-y-1">
-        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Total de Efectivos</label>
+        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Total de Efectivos</label>
         <input 
           type="number" value={totalStaff} onChange={e => setTotalStaff(Number(e.target.value))} required
           placeholder="Total de trabalhadores no projeto"
-          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+          className="w-full bg-zinc-50/50 border border-zinc-200 rounded-xl px-3 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-xs transition-all"
         />
       </div>
       <div className="space-y-1">
-        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Localização da Obra/Serviço</label>
+        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Localização da Obra/Serviço</label>
         <input 
           type="text" value={location} onChange={e => setLocation(e.target.value)} required
           placeholder="Endereço ou coordenadas da obra"
-          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+          className="w-full bg-zinc-50/50 border border-zinc-200 rounded-xl px-3 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-xs transition-all"
         />
       </div>
-      <div className="space-y-1">
-        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Contacto da Obra/Serviço</label>
+      <div className="space-y-1 md:col-span-2">
+        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Contacto de Responsável</label>
         <input 
           type="text" value={contact} onChange={e => setContact(e.target.value)} required
           placeholder="Telefone ou responsável no local"
-          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+          className="w-full bg-zinc-50/50 border border-zinc-200 rounded-xl px-3 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-xs transition-all"
         />
       </div>
-      <div className="space-y-1">
-        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Descrição da Obra/Serviço</label>
+      <div className="space-y-1 md:col-span-2">
+        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Descrição dos Trabalhos</label>
         <textarea 
+          rows={2}
           value={description} onChange={e => setDescription(e.target.value)} required
           placeholder="Breve descrição dos trabalhos a realizar"
-          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm min-h-[80px]"
+          className="w-full bg-zinc-50/50 border border-zinc-200 rounded-xl px-3 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-xs transition-all resize-none"
         />
       </div>
       <div className="md:col-span-2 space-y-1">
-        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Observações</label>
+        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Observações</label>
         <textarea 
+          rows={2}
           value={observations} onChange={e => setObservations(e.target.value)}
           placeholder="Notas adicionais ou restrições"
-          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm min-h-[80px]"
+          className="w-full bg-zinc-50/50 border border-zinc-200 rounded-xl px-3 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-xs transition-all resize-none"
         />
       </div>
-      <div className="md:col-span-2 flex justify-end gap-3">
-        <button type="button" onClick={onBack} className="text-zinc-500 hover:text-zinc-700 text-sm font-medium">Cancelar</button>
-        <button type="submit" className="bg-[#003366] text-white font-bold px-8 py-2.5 rounded-none hover:bg-[#002244] transition-all text-sm shadow-sm">
-          {initialData ? 'Atualizar' : 'Registar'}
+      <div className="md:col-span-2 flex justify-end gap-2.5 pt-2">
+        <button type="button" onClick={onBack} className="px-5 py-2 text-xs font-bold uppercase bg-zinc-100 hover:bg-zinc-200 text-zinc-600 rounded-xl transition-all">Cancelar</button>
+        <button type="submit" className="bg-[#003366] text-white font-bold px-6 py-2 rounded-xl hover:bg-[#002244] transition-all text-xs uppercase shadow-xs">
+          {initialData ? 'Atualizar' : 'Registar Local'}
         </button>
       </div>
     </form>
@@ -2646,8 +2647,7 @@ const WorkplaceModule = ({
     const client = clients?.find(c => String(c.id) === String(clientId));
     
     const payload = {
-      client_id: clientId,
-
+      client_id: clientId || null,
       client_name: client?.name || '',
       title: name,
       location,
@@ -2756,76 +2756,83 @@ const WorkplaceModule = ({
       </div>
 
       {showForm && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-zinc-900/60 backdrop-blur-sm">
           <motion.div 
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-4xl max-h-[90vh] overflow-y-auto bg-white p-8 rounded-none shadow-2xl"
+            className="w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-white p-5 sm:p-6 rounded-2xl shadow-2xl border border-zinc-100 relative"
           >
-            <div className="flex justify-between items-center mb-6 border-b border-zinc-100 pb-4">
-              <h3 className="font-bold text-[#003366] text-xl uppercase tracking-tight text-center w-full">
-                {editingWorkplace ? 'Atualizar Local de Trabalho' : 'Novo Local de Trabalho'}
-              </h3>
-              <button type="button" onClick={() => { setShowForm(false); setEditingWorkplace(null); }} className="text-zinc-400 hover:text-zinc-600 absolute right-8">
-                <X size={24} />
+            <div className="flex justify-between items-center mb-4 border-b border-zinc-100 pb-3">
+              <div>
+                <h3 className="font-black text-[#003366] text-base uppercase tracking-tight">
+                  {editingWorkplace ? 'Atualizar Local de Trabalho' : 'Novo Local de Trabalho'}
+                </h3>
+                <p className="text-[11px] text-zinc-400 font-medium">Preencha os dados do posto / obra para registo oficial</p>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => { setShowForm(false); setEditingWorkplace(null); }} 
+                className="w-8 h-8 rounded-full bg-zinc-100 hover:bg-zinc-200 text-zinc-500 hover:text-zinc-700 flex items-center justify-center transition-all"
+              >
+                <X size={18} />
               </button>
             </div>
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Seleccione um Cliente</label>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Cliente (Opcional)</label>
                   <select 
-                    value={clientId} onChange={e => setClientId(e.target.value)} required
-                    className="w-full border border-zinc-200 bg-white rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]"
+                    value={clientId} onChange={e => setClientId(e.target.value)}
+                    className="w-full border border-zinc-200 bg-zinc-50/50 hover:bg-white rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-[#003366] focus:bg-white transition-all text-zinc-700 font-medium"
                   >
-                    <option value="">Selecionar Cliente...</option>
+                    <option value="">Selecionar Cliente (Opcional)...</option>
                     {clients?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Código</label>
-                  <input type="text" value={code} onChange={e => setCode(e.target.value)} className="w-full border border-zinc-200 bg-white rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" placeholder="Ex: OBRA-001" />
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Código</label>
+                  <input type="text" value={code} onChange={e => setCode(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50/50 hover:bg-white rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-[#003366] focus:bg-white transition-all" placeholder="Ex: OBRA-001" />
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Titulo da Obra/Serviço (Nome)</label>
-                  <input type="text" required value={name} onChange={e => setName(e.target.value)} className="w-full border border-zinc-200 bg-white rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" placeholder="Ex: Edifício Kilamba" />
+                <div className="space-y-1 sm:col-span-2">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Título da Obra / Serviço (Nome) *</label>
+                  <input type="text" required value={name} onChange={e => setName(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50/50 hover:bg-white rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-[#003366] focus:bg-white transition-all font-semibold" placeholder="Ex: Edifício Kilamba" />
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Localização</label>
-                  <input type="text" value={location} onChange={e => setLocation(e.target.value)} className="w-full border border-zinc-200 bg-white rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" placeholder="Ex: Luanda, Talatona" />
+                <div className="space-y-1 sm:col-span-2">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Localização</label>
+                  <input type="text" value={location} onChange={e => setLocation(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50/50 hover:bg-white rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-[#003366] focus:bg-white transition-all" placeholder="Ex: Luanda, Talatona" />
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data de Abertura de Obra/Serviço</label>
-                  <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} required className="w-full border border-zinc-200 bg-white rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Data de Abertura</label>
+                  <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} required className="w-full border border-zinc-200 bg-zinc-50/50 hover:bg-white rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-[#003366] focus:bg-white transition-all" />
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data de Encerramento de Obra/Serviço</label>
-                  <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} required className="w-full border border-zinc-200 bg-white rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Data de Encerramento</label>
+                  <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} required className="w-full border border-zinc-200 bg-zinc-50/50 hover:bg-white rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-[#003366] focus:bg-white transition-all" />
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Total de Pessoal</label>
-                  <input type="number" value={totalStaff} onChange={e => setTotalStaff(Number(e.target.value))} className="w-full border border-zinc-200 bg-white rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Total de Pessoal</label>
+                  <input type="number" value={totalStaff} onChange={e => setTotalStaff(Number(e.target.value))} className="w-full border border-zinc-200 bg-zinc-50/50 hover:bg-white rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-[#003366] focus:bg-white transition-all" />
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Pessoal por Dia</label>
-                  <input type="number" value={staffPerDay} onChange={e => setStaffPerDay(Number(e.target.value))} className="w-full border border-zinc-200 bg-white rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Pessoal por Dia</label>
+                  <input type="number" value={staffPerDay} onChange={e => setStaffPerDay(Number(e.target.value))} className="w-full border border-zinc-200 bg-zinc-50/50 hover:bg-white rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-[#003366] focus:bg-white transition-all" />
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Contacto</label>
-                  <input type="text" value={contact} onChange={e => setContact(e.target.value)} className="w-full border border-zinc-200 bg-white rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+                <div className="space-y-1 sm:col-span-2">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Contacto de Responsável</label>
+                  <input type="text" value={contact} onChange={e => setContact(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50/50 hover:bg-white rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-[#003366] focus:bg-white transition-all" placeholder="Telefone ou nome do encarregado" />
                 </div>
-                <div className="col-span-1 md:col-span-2 space-y-1.5">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Descrição</label>
-                  <input type="text" value={description} onChange={e => setDescription(e.target.value)} className="w-full border border-zinc-200 bg-white rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+                <div className="col-span-1 sm:col-span-2 space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Descrição</label>
+                  <input type="text" value={description} onChange={e => setDescription(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50/50 hover:bg-white rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-[#003366] focus:bg-white transition-all" placeholder="Breve descrição dos trabalhos" />
                 </div>
-                <div className="col-span-1 md:col-span-2 space-y-1.5">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Observações</label>
-                  <textarea value={observations} onChange={e => setObservations(e.target.value)} className="w-full border border-zinc-200 bg-white rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] min-h-[80px]" />
+                <div className="col-span-1 sm:col-span-2 space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Observações</label>
+                  <textarea rows={2} value={observations} onChange={e => setObservations(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50/50 hover:bg-white rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-[#003366] focus:bg-white transition-all resize-none" placeholder="Observações adicionais..." />
                 </div>
               </div>
-              <div className="flex justify-end gap-4 mt-6 border-t border-zinc-100 pt-6">
-                <button type="button" onClick={() => { setShowForm(false); setEditingWorkplace(null); }} className="px-6 py-2.5 font-bold text-sm tracking-widest bg-zinc-100 text-zinc-500 hover:bg-zinc-200 uppercase">Cancelar</button>
-                <button type="submit" className="bg-[#003366] text-white font-bold py-2.5 px-8 uppercase text-xs tracking-widest hover:bg-[#002244]">
+              <div className="flex justify-end gap-2.5 mt-4 border-t border-zinc-100 pt-3">
+                <button type="button" onClick={() => { setShowForm(false); setEditingWorkplace(null); }} className="px-5 py-2 font-bold text-xs tracking-wider bg-zinc-100 text-zinc-600 hover:bg-zinc-200 rounded-xl uppercase transition-all">Cancelar</button>
+                <button type="submit" className="bg-[#003366] text-white font-bold py-2 px-6 uppercase text-xs tracking-wider hover:bg-[#002244] rounded-xl shadow-xs transition-all">
                   {editingWorkplace ? 'Salvar Alterações' : 'Registar Local'}
                 </button>
               </div>

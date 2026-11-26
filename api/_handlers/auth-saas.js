@@ -164,7 +164,7 @@ export default async function handler(req, res) {
           ambiente: 'staging',
           ativo: true,
           licenca_ativa: true,
-          status_licenca: 'TRIAL',
+          status_licenca: 'ATIVA',
           trial_inicio: trialInicio,
           trial_fim: trialFim,
           data_expiracao_licenca: trialFim
@@ -187,7 +187,7 @@ export default async function handler(req, res) {
         }
         targetCompanyId = Array.isArray(createdComp) ? createdComp[0]?.id : newCompanyId;
 
-        // Criar registo oficial de licenca TRIAL 14 Dias na tabela licencas_empresas
+        // Criar registo oficial de licenca TRIAL 14 Dias na tabela licencas_empresas com status ATIVA
         const trialFimDate = trialFim.split('T')[0];
         const requestedModules = Array.isArray(formData.modulos_especiais) ? formData.modulos_especiais : ['clientes', 'produtos', 'fornecedores', 'colaboradores', 'vendas', 'compras', 'caixa'];
         const licencaPayload = {
@@ -198,8 +198,8 @@ export default async function handler(req, res) {
           valor_licenca: valorTotalContratado,
           modalidade: periodicidadeModalidade,
           ambiente: 'staging',
-          estado: 'Em Teste Gratuito',
-          status_licenca: 'TRIAL',
+          estado: 'Ativa',
+          status_licenca: 'ATIVA',
           ativo: true,
           licenca_ativa: true,
           homologacao_agt: false,
@@ -233,9 +233,9 @@ export default async function handler(req, res) {
           },
           body: JSON.stringify([{
             empresa_id: targetCompanyId,
-            plano: 'trial',
+            plano: planNameFormatted,
             acao: 'criacao',
-            descricao: 'Empresa registada. Licença SUSPENSA — aguarda ativação pelo SuperAdmin. Staging acessível, Produção bloqueada.',
+            descricao: 'Empresa registada com 14 dias de Teste Gratuito e Licença Ativa.',
             usuario: cleanEmail
           }])
         });
@@ -289,8 +289,8 @@ export default async function handler(req, res) {
         userId,
         empresaId: targetCompanyId,
         ambiente: 'staging',
-        licenca: { estado: 'em_teste', staging: 'ativo', producao: 'bloqueado' },
-        message: 'Empresa registada com sucesso. Acesso ao Staging ativado. Producao bloqueada ate ativacao de licenca.'
+        licenca: { estado: 'Ativa', staging: 'ativo', producao: 'ativo', status_licenca: 'ATIVA' },
+        message: 'Empresa registada com sucesso com 14 dias de Teste Gratuito e Licença Ativa.'
       });
 
     } catch (err) {

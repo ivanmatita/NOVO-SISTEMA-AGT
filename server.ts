@@ -1557,7 +1557,7 @@ app.use((req, res, next) => {
           tipo_empresa: formData.tipo_empresa || null,
           nome_administrador: adminName,
           plano: planNameFormatted,
-          status_licenca: 'TRIAL',
+          status_licenca: 'ATIVA',
           licenca_ativa: true,
           trial_inicio: trialStartIso,
           trial_fim: trialEndIso,
@@ -1574,13 +1574,13 @@ app.use((req, res, next) => {
         return res.status(400).json({ error: `Erro na Tabela Empresas: ${companyError.message}` });
       }
 
-      // 2b. Criar Registo de Licença na tabela licencas_empresas (TRIAL 14 Dias)
+      // 2b. Criar Registo de Licença na tabela licencas_empresas (TRIAL 14 Dias - Licença Ativa)
       try {
         await supabaseAdmin
           .from('licencas_empresas')
           .insert([{
             empresa_id: company.id,
-            status_licenca: 'TRIAL',
+            status_licenca: 'ATIVA',
             tipo_licenca: 'TRIAL',
             tipo_plano: planNameFormatted,
             plano: planNameFormatted,
@@ -1588,7 +1588,7 @@ app.use((req, res, next) => {
             trial_fim: trialEndIso,
             dias_trial: 14,
             licenca_ativa: true,
-            estado: 'Em Teste Gratuito',
+            estado: 'Ativa',
             valor_licenca: 0,
             modulos: JSON.stringify(requestedModules),
             solicitante_email: email,
@@ -9309,7 +9309,7 @@ app.use((req, res, next) => {
         municipio,
         pais,
         plano,
-        duracao_dias = 30,
+        duracao_dias = 14,
         modulos,
         admin_email,
         email,
@@ -9325,7 +9325,7 @@ app.use((req, res, next) => {
       const finalAdminName = (nome_administrador || finalCompanyName || 'Administrador').trim();
       const finalUsername = (username || finalEmail.split('@')[0] || 'admin').trim();
       const finalPlano = plano || 'Profissional';
-      const dias = Number(duracao_dias) || 30;
+      const dias = Number(duracao_dias) || 14;
       const modulosList = Array.isArray(modulos) ? modulos : ['faturacao', 'stock', 'clientes', 'pos'];
 
       if (!finalCompanyName) {
@@ -9415,6 +9415,8 @@ app.use((req, res, next) => {
         plano: finalPlano,
         status_licenca: 'ATIVA',
         licenca_ativa: true,
+        trial_inicio: startDate,
+        trial_fim: endDate,
         data_ativacao_licenca: startDate,
         data_expiracao_licenca: endDate,
         ativo: true
@@ -9474,19 +9476,22 @@ app.use((req, res, next) => {
         console.warn("[CRM] Aviso system_users:", sysErr.message);
       }
 
-      // 5. Gerar licença em 'licencas_empresas' com status ATIVA
+      // 5. Gerar licença em 'licencas_empresas' com status ATIVA (Trial de 14 dias ou Plano Contratado)
+      const isTrial = dias === 14 || req.body.is_trial || req.body.tipo_licenca === 'TRIAL';
       const licensePayload = {
         empresa_id: empresaId,
         status_licenca: 'ATIVA',
         status: 'ATIVA',
-        tipo_licenca: finalPlano,
+        tipo_licenca: isTrial ? 'TRIAL' : finalPlano,
         tipo_plano: finalPlano,
         plano: finalPlano,
         duracao_dias: dias,
-        dias_trial: 0,
+        dias_trial: isTrial ? dias : (Number(req.body.dias_trial) || 0),
+        trial_inicio: isTrial ? startDate : null,
+        trial_fim: isTrial ? endDate : null,
         licenca_ativa: true,
         estado: 'Ativa',
-        valor_licenca: valor_licenca || (finalPlano === 'Enterprise' ? 150000 : finalPlano === 'Profissional' ? 65000 : finalPlano === 'Standard' ? 55000 : 25000),
+        valor_licenca: valor_licenca !== undefined ? valor_licenca : (isTrial ? 0 : (finalPlano === 'Enterprise' ? 150000 : finalPlano === 'Profissional' ? 65000 : finalPlano === 'Standard' ? 55000 : 25000)),
         modulos: JSON.stringify(modulosList),
         solicitante_email: finalEmail,
         data_inicio: startDate,

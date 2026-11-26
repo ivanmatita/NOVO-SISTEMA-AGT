@@ -3265,12 +3265,12 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
                 const isSuspendedOrDeactivated = ['SUSPENSA', 'BLOQUEADA', 'DESATIVADA', 'INATIVA', 'CANCELADA', 'EXPIRADA', 'VENCIDA'].includes(rawStatus) || 
                                                 companyData?.licenca_ativa === false || 
                                                 companyData?.ativo === false;
-                const isExplicitlyActive = ['ACTIVA', 'ACTIVE', 'ATIVA', 'ATIVO'].includes(rawStatus) && (companyData?.licenca_ativa !== false) && (companyData?.ativo !== false);
-                const expiryDate = companyData?.data_expiracao_licenca ? new Date(companyData.data_expiracao_licenca) : null;
+                const isExplicitlyActive = ['ACTIVA', 'ACTIVE', 'ATIVA', 'ATIVO', 'TRIAL', 'EM TESTE', 'TESTE'].includes(rawStatus) && (companyData?.licenca_ativa !== false) && (companyData?.ativo !== false);
+                const expiryDate = (companyData?.data_expiracao_licenca || companyData?.trial_fim) ? new Date(companyData.data_expiracao_licenca || companyData.trial_fim) : null;
                 const isExpiredByDate = expiryDate && expiryDate.getTime() < Date.now();
-                const isLicActive = isExplicitlyActive && !isSuspendedOrDeactivated && !isExpiredByDate;
+                const isLicActive = (isExplicitlyActive || !isSuspendedOrDeactivated) && !isExpiredByDate;
 
-                const desc = companyData?.licenca?.descricao || (isLicActive ? 'LICENÇA ACTIVA' : 'LICENÇA EXPIRADA');
+                const desc = isLicActive ? 'LICENÇA ACTIVA' : (companyData?.licenca?.descricao || 'LICENÇA EXPIRADA');
 
                 return (
                   <>
@@ -34959,9 +34959,13 @@ export default function App() {
         } else if (isDeactivated || (expiry && diffDays <= 0)) {
           setIsLicenseBlocked(true);
           setLicenseAlert('A licença desta empresa encontra-se suspensa ou expirada. O sistema está em Modo Somente Leitura.');
-        } else if (expiry && diffDays <= 20) {
-          setLicenseAlert(`A sua licença expira em ${diffDays} dias (${formatDate(expiryStr)}). Regularize o pagamento para evitar o bloqueio automático.`);
-          if (diffDays <= 5 && !localStorage.getItem('license_popup_shown_today')) {
+        } else if (expiry && diffDays <= 3 && diffDays > 0) {
+          const isTrial = ['trial', 'teste', 'em teste'].includes(statusNorm) || !licenseData?.id;
+          setLicenseAlert(isTrial 
+            ? `A sua licença de teste de 14 dias expira em ${diffDays} dias (${formatDate(expiryStr)}). Regularize o plano para continuar sem interrupções.`
+            : `A sua licença expira em ${diffDays} dias (${formatDate(expiryStr)}). Regularize o pagamento para evitar o bloqueio automático.`
+          );
+          if (diffDays <= 2 && !localStorage.getItem('license_popup_shown_today')) {
              setShowLicensePopup(true);
              localStorage.setItem('license_popup_shown_today', new Date().toDateString());
           }

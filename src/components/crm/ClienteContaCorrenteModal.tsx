@@ -10,7 +10,10 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
   Receipt,
-  Search
+  Search,
+  ArrowLeft,
+  Building2,
+  ExternalLink
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import * as XLSX from 'xlsx';
@@ -30,6 +33,7 @@ export interface ClienteContaCorrenteModalProps {
     provincia?: string;
     pais?: string;
     codigo?: string;
+    saldo_inicial?: number;
   };
   empresaId?: string | number;
   companyData?: {
@@ -40,7 +44,8 @@ export interface ClienteContaCorrenteModalProps {
     logo?: string;
     [key: string]: any;
   };
-  isOpen: boolean;
+  isOpen?: boolean;
+  mode?: 'page' | 'modal';
   onClose: () => void;
 }
 
@@ -65,11 +70,12 @@ export const ClienteContaCorrenteModal: React.FC<ClienteContaCorrenteModalProps>
   cliente,
   empresaId: empresaIdProp,
   companyData,
-  isOpen,
+  isOpen = true,
+  mode = 'page',
   onClose
 }) => {
   const [loading, setLoading] = useState<boolean>(true);
-  const [dataInicio, setDataInicio] = useState<string>('2022-09-01');
+  const [dataInicio, setDataInicio] = useState<string>('2022-01-01');
   const [dataFim, setDataFim] = useState<string>(() => new Date().toISOString().split('T')[0]);
   const [filtroDescricao, setFiltroDescricao] = useState<string>('');
   const [rawMovimentos, setRawMovimentos] = useState<any[]>([]);
@@ -98,249 +104,214 @@ export const ClienteContaCorrenteModal: React.FC<ClienteContaCorrenteModalProps>
     const now = new Date();
     const yymmdd = now.toISOString().substring(2, 10).replace(/-/g, '');
     const cleanName = clienteNome.replace(/[^a-zA-Z]/g, '').substring(0, 10).toUpperCase();
-    return `CC-${clienteCodigo} ${cleanName} ${yymmdd}`;
+    return `CC-${clienteCodigo} ${cleanName || 'CLIENTE'} ${yymmdd}`;
   }, [clienteCodigo, clienteNome]);
 
-  // Carregar dados reais do Supabase
-  useEffect(() => {
-    if (!isOpen) return;
+  // Carregar dados reais do Supabase (documentos_emitidos)
+  const fetchMovimentos = async () => {
+    if (!cliente) return;
+    setLoading(true);
+    try {
+      const empresaId = empresaIdProp || companyData?.id || localStorage.getItem('empresa_id');
 
-    let isMounted = true;
-    const fetchMovimentos = async () => {
-      setLoading(true);
-      try {
-        const empresaId = empresaIdProp || companyData?.id || localStorage.getItem('empresa_id');
-        let query = supabase
-          .from('documentos_emitidos')
-          .select('id, numero, tipo_documento, cliente_nome, cliente_id, data_emissao, created_at, total, total_liquido, estado, linhas, itens, items')
-          .order('data_emissao', { ascending: true })
-          .limit(300);
+      // Colunas reais que existem na tabela documentos_emitidos
+      let query = supabase
+        .from('documentos_emitidos')
+        .select(`
+          id, 
+          numero_documento, 
+          documento_formatado, 
+          numero_fiscal, 
+          tipo_documento, 
+          cliente_nome, 
+          cliente_id, 
+          cliente_nif, 
+          client_nif, 
+          data_emissao, 
+          created_at, 
+          total, 
+          valor_total, 
+          imposto, 
+          estado, 
+          status, 
+          numero_documento_origem, 
+          documento_origem_numero, 
+          detalhes, 
+          empresa_id
+        `)
+        .order('data_emissao', { ascending: true })
+        .limit(1000);
 
-        if (empresaId) {
-          query = query.eq('empresa_id', empresaId);
-        }
-
-        const { data: docs, error } = await query;
-
-        if (error) {
-          console.warn('[ContaCorrente] Erro ao buscar documentos_emitidos:', error.message);
-        }
-
-        // Filtrar documentos que correspondam ao cliente
-        const filteredDocs = (docs || []).filter((d: any) => {
-          if (cliente?.id && String(d.cliente_id) === String(cliente.id)) return true;
-          if (d.cliente_nome && clienteNome) {
-            const docName = String(d.cliente_nome).toLowerCase().trim();
-            const targetName = clienteNome.toLowerCase().trim();
-            return docName.includes(targetName) || targetName.includes(docName);
-          }
-          return false;
-        });
-
-        if (isMounted) {
-          setRawMovimentos(filteredDocs);
-        }
-      } catch (err: any) {
-        console.error('[ContaCorrente] Falha inesperada:', err);
-      } finally {
-        if (isMounted) setLoading(false);
+      if (empresaId) {
+        query = query.eq('empresa_id', empresaId);
       }
-    };
 
+      let { data: docs, error } = await query;
+
+      if (error) {
+        console.warn('[ContaCorrente] Erro na query inicial, tentando fallback sem empresa_id:', error.message);
+        const fbRes = await supabase
+          .from('documentos_emitidos')
+          .select('id, numero_documento, documento_formatado, numero_fiscal, tipo_documento, cliente_nome, cliente_id, cliente_nif, client_nif, data_emissao, created_at, total, valor_total, imposto, estado, status, numero_documento_origem, documento_origem_numero, detalhes')
+          .order('data_emissao', { ascending: true })
+          .limit(1000);
+        docs = fbRes.data || [];
+      }
+
+      // Normalizador para comparação de texto
+      const normalize = (str: any) => 
+        String(str || '')
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, ' ')
+          .trim();
+
+      const targetName = normalize(clienteNome);
+      const targetNif = String(clienteNif || '').trim();
+      const targetId = String(cliente?.id || '');
+
+      // Filtragem robusta que encontra os documentos reais do cliente na base de dados
+      const matchedDocs = (docs || []).filter((d: any) => {
+        // 1. Por cliente_id direto
+        if (targetId && d.cliente_id && String(d.cliente_id) === targetId) {
+          return true;
+        }
+
+        // 2. Por NIF
+        const docNif = String(d.cliente_nif || d.client_nif || d.detalhes?.client_nif || d.detalhes?.nif || '').trim();
+        if (targetNif && targetNif !== '999999999' && docNif && docNif !== '999999999' && docNif === targetNif) {
+          return true;
+        }
+
+        // 3. Por Nome (correspondência exata ou sobreposição significativa)
+        const docName = normalize(d.cliente_nome || d.detalhes?.client_name);
+        if (docName && targetName) {
+          if (docName === targetName) return true;
+          // Se um contém o outro com mais de 4 caracteres
+          if (targetName.length >= 4 && docName.includes(targetName)) return true;
+          if (docName.length >= 4 && targetName.includes(docName)) return true;
+        }
+
+        return false;
+      });
+
+      setRawMovimentos(matchedDocs);
+    } catch (err: any) {
+      console.error('[ContaCorrente] Falha inesperada ao carregar dados:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
     fetchMovimentos();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [isOpen, cliente?.id, clienteNome, companyData?.id]);
+  }, [cliente?.id, clienteNome, clienteNif, companyData?.id, empresaIdProp]);
 
   // Processar e calcular o saldo acumulado em cascata cronológica
   const movimentosCalculados: MovimentoContaCorrente[] = useMemo(() => {
-    let list: any[] = [];
-
-    if (rawMovimentos.length > 0) {
-      list = rawMovimentos.map((d: any) => {
-        const isFatura = ['FT', 'FR', 'FS', 'ND', 'VD', 'FATURA'].includes(String(d.tipo_documento).toUpperCase());
-        const isCredito = ['NC', 'RC', 'RE', 'RECIBO', 'NOTA_CREDITO'].includes(String(d.tipo_documento).toUpperCase());
-        const valor = Number(d.total || d.total_liquido || 0);
-
-        const dataStr = d.data_emissao || d.created_at || new Date().toISOString();
-        const dateObj = new Date(dataStr);
-        const dia = String(dateObj.getDate()).padStart(2, '0');
-        const mes = String(dateObj.getMonth() + 1).padStart(2, '0');
-        const ano = dateObj.getFullYear();
-        const dataFmt = `${dia}-${mes}-${ano}`;
-
-        return {
-          id: d.id,
-          rawDate: dateObj.getTime(),
-          dataValor: dataFmt,
-          dataDocumento: dataFmt,
-          fileInterno: 'Obra Generica',
-          fileCliente: '—',
-          urn: '',
-          endService: '',
-          docNumero: `${d.tipo_documento || 'FT'} ${d.numero || 'S12026/1'}`,
-          originatingOn: isCredito ? `FT S12026/${d.numero ? Number(d.numero) + 5 : '10'}` : '—',
-          descricao: isCredito ? 'Recibo Emitido' : 'Fatura Emitida',
-          docSuporte: '—',
-          debito: isFatura ? valor : 0,
-          credito: isCredito ? valor : 0
-        };
-      });
-    } else {
-      // Mock realista baseado estritamente na imagem para demonstração com cálculos perfeitos
-      list = [
-        {
-          id: '1',
-          rawDate: new Date('2022-10-07').getTime(),
-          dataValor: '07-10-2022',
-          dataDocumento: '07-10-2022',
-          fileInterno: 'Obra Generica',
-          fileCliente: '—',
-          urn: '',
-          endService: '',
-          docNumero: 'FT S12022/8',
-          originatingOn: '—',
-          descricao: 'Fatura Emitida',
-          docSuporte: '—',
-          debito: 101077853.76,
-          credito: 0
-        },
-        {
-          id: '2',
-          rawDate: new Date('2022-10-07T10:00:00').getTime(),
-          dataValor: '07-10-2022',
-          dataDocumento: '07-10-2022',
-          fileInterno: 'Obra Generica',
-          fileCliente: '—',
-          urn: '',
-          endService: '',
-          docNumero: 'RC S12022/3',
-          originatingOn: 'FT S12022/8',
-          descricao: 'Recibo Emitido',
-          docSuporte: '—',
-          debito: 0,
-          credito: 5040000.00
-        },
-        {
-          id: '3',
-          rawDate: new Date('2022-11-21T09:00:00').getTime(),
-          dataValor: '21-11-2022',
-          dataDocumento: '21-11-2022',
-          fileInterno: 'Obra Generica',
-          fileCliente: '—',
-          urn: '',
-          endService: '',
-          docNumero: 'RC S12022/4',
-          originatingOn: 'FT S12022/9',
-          descricao: 'Recibo Emitido',
-          docSuporte: '—',
-          debito: 0,
-          credito: 6301008.00
-        },
-        {
-          id: '4',
-          rawDate: new Date('2022-11-21T10:00:00').getTime(),
-          dataValor: '21-11-2022',
-          dataDocumento: '21-11-2022',
-          fileInterno: 'Obra Generica',
-          fileCliente: '—',
-          urn: '',
-          endService: '',
-          docNumero: 'RC S12022/5',
-          originatingOn: 'FT S12022/10',
-          descricao: 'Recibo Emitido',
-          docSuporte: '—',
-          debito: 0,
-          credito: 6021708.00
-        },
-        {
-          id: '5',
-          rawDate: new Date('2022-11-21T11:00:00').getTime(),
-          dataValor: '21-11-2022',
-          dataDocumento: '21-11-2022',
-          fileInterno: 'Obra Generica',
-          fileCliente: '—',
-          urn: '',
-          endService: '',
-          docNumero: 'RC S12022/6',
-          originatingOn: 'FT S12022/11',
-          descricao: 'Recibo Emitido',
-          docSuporte: '—',
-          debito: 0,
-          credito: 6206046.00
-        },
-        {
-          id: '6',
-          rawDate: new Date('2022-11-21T12:00:00').getTime(),
-          dataValor: '21-11-2022',
-          dataDocumento: '21-11-2022',
-          fileInterno: 'Obra Generica',
-          fileCliente: '—',
-          urn: '',
-          endService: '',
-          docNumero: 'RC S12022/7',
-          originatingOn: 'FT S12022/12',
-          descricao: 'Recibo Emitido',
-          docSuporte: '—',
-          debito: 0,
-          credito: 6139014.00
-        }
-      ];
+    if (!rawMovimentos || rawMovimentos.length === 0) {
+      return [];
     }
 
-    // Ordenar cronologicamente para calcular o saldo acumulado
-    list.sort((a, b) => a.rawDate - b.rawDate);
+    // Ordenar cronologicamente
+    const ordenados = [...rawMovimentos].sort((a, b) => {
+      const timeA = new Date(a.data_emissao || a.created_at || 0).getTime();
+      const timeB = new Date(b.data_emissao || b.created_at || 0).getTime();
+      return timeA - timeB;
+    });
 
-    let acumulador = 0;
-    const calculados = list.map(item => {
-      acumulador = acumulador + item.debito - item.credito;
+    let runningSaldo = Number(cliente?.saldo_inicial || 0);
+
+    return ordenados.map((d: any) => {
+      const tp = String(d.tipo_documento || '').toUpperCase();
+      
+      // Débitos: faturas e notas de débito que aumentam o saldo devedor do cliente
+      const isDebito = ['FT', 'FR', 'FS', 'ND', 'VD', 'FAT', 'FATURA', 'VENDA'].some(prefix => tp.includes(prefix));
+      
+      // Créditos: pagamentos, recibos e notas de crédito que abatem o saldo devedor
+      const isCredito = ['RC', 'RE', 'NC', 'RECIBO', 'NOTA_CREDITO'].some(prefix => tp.includes(prefix));
+
+      const valor = Number(d.total ?? d.valor_total ?? 0);
+
+      const debitoValor = isDebito ? valor : 0;
+      const creditoValor = isCredito ? valor : (!isDebito ? valor : 0);
+
+      runningSaldo = runningSaldo + debitoValor - creditoValor;
+
+      const dataStr = d.data_emissao || d.created_at || new Date().toISOString();
+      const dateObj = new Date(dataStr);
+      const dia = String(dateObj.getDate()).padStart(2, '0');
+      const mes = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const ano = dateObj.getFullYear();
+      const dataFmt = `${dia}-${mes}-${ano}`;
+
+      const docNum = d.numero_documento || d.documento_formatado || d.numero_fiscal || `${tp} #${d.id}`;
+      const docOrigem = d.numero_documento_origem || d.documento_origem_numero || d.detalhes?.documento_origem_id || '—';
+
       return {
-        ...item,
-        saldo: acumulador
+        id: String(d.id),
+        dataValor: dataFmt,
+        dataDocumento: dataFmt,
+        fileInterno: d.detalhes?.file_interno || 'Obra Generica',
+        fileCliente: d.detalhes?.file_cliente || '—',
+        urn: '',
+        endService: '',
+        docNumero: docNum,
+        originatingOn: docOrigem,
+        descricao: isCredito ? 'Recibo Emitido' : 'Fatura Emitida',
+        docSuporte: d.detalhes?.doc_suporte || '—',
+        debito: debitoValor,
+        credito: creditoValor,
+        saldo: runningSaldo
       };
     });
+  }, [rawMovimentos, cliente?.saldo_inicial]);
 
-    // Inverter para mostrar os mais recentes no topo conforme a imagem
-    return calculados.reverse();
-  }, [rawMovimentos]);
-
-  // Filtros de período e descrição
+  // Filtrar movimentos por intervalo de datas e pesquisa textual
   const movimentosFiltrados = useMemo(() => {
     return movimentosCalculados.filter(m => {
-      // Date range filter: convert dd-mm-yyyy → yyyy-mm-dd for comparison
+      // Filtrar por intervalo de datas
       if (dataInicio || dataFim) {
-        const parts = m.dataValor.split('-');
+        const parts = m.dataDocumento.split('-');
         if (parts.length === 3) {
-          const isoDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
-          if (dataInicio && isoDate < dataInicio) return false;
-          if (dataFim && isoDate > dataFim) return false;
+          const docIso = `${parts[2]}-${parts[1]}-${parts[0]}`;
+          if (dataInicio && docIso < dataInicio) return false;
+          if (dataFim && docIso > dataFim) return false;
         }
       }
-      if (filtroDescricao && !m.descricao.toLowerCase().includes(filtroDescricao.toLowerCase()) && !m.docNumero.toLowerCase().includes(filtroDescricao.toLowerCase())) {
-        return false;
+
+      // Filtrar por texto
+      if (filtroDescricao) {
+        const term = filtroDescricao.toLowerCase();
+        const matchesDoc = m.docNumero.toLowerCase().includes(term);
+        const matchesDesc = m.descricao.toLowerCase().includes(term);
+        const matchesOrig = m.originatingOn.toLowerCase().includes(term);
+        if (!matchesDoc && !matchesDesc && !matchesOrig) return false;
       }
+
       return true;
     });
-  }, [movimentosCalculados, filtroDescricao, dataInicio, dataFim]);
+  }, [movimentosCalculados, dataInicio, dataFim, filtroDescricao]);
 
-  // Totais Acumulados do Período
-  const totalCredito = useMemo(() => {
-    return movimentosFiltrados.reduce((acc, curr) => acc + (curr.credito || 0), 0);
-  }, [movimentosFiltrados]);
+  // Totais dos movimentos filtrados
+  const { totalCredito, totalDebito, saldoFinal } = useMemo(() => {
+    let totCred = 0;
+    let totDeb = 0;
+    movimentosFiltrados.forEach(m => {
+      totCred += m.credito;
+      totDeb += m.debito;
+    });
+    const lastMov = movimentosFiltrados[movimentosFiltrados.length - 1];
+    const saldo = lastMov ? lastMov.saldo : (Number(cliente?.saldo_inicial || 0) + totDeb - totCred);
+    return {
+      totalCredito: totCred,
+      totalDebito: totDeb,
+      saldoFinal: saldo
+    };
+  }, [movimentosFiltrados, cliente?.saldo_inicial]);
 
-  const totalDebito = useMemo(() => {
-    return movimentosFiltrados.reduce((acc, curr) => acc + (curr.debito || 0), 0);
-  }, [movimentosFiltrados]);
-
-  // Saldo geral atual (saldo da linha mais recente)
-  const saldoAcumuladoGeral = useMemo(() => {
-    if (movimentosFiltrados.length === 0) return 0;
-    return movimentosFiltrados[0].saldo;
-  }, [movimentosFiltrados]);
-
-  const formatarMoeda = (val: number) => {
+  const formatCurrency = (val: number) => {
     return Number(val || 0).toLocaleString('pt-PT', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2
@@ -377,282 +348,308 @@ export const ClienteContaCorrenteModal: React.FC<ClienteContaCorrenteModalProps>
 
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 z-[120] bg-black/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
-      <div className="bg-white rounded-none border border-slate-300 shadow-2xl max-w-6xl w-full max-h-[96vh] flex flex-col overflow-hidden text-slate-800 font-sans my-auto animate-in fade-in zoom-in-95 duration-150">
-        
-        {/* Barra Superior de Controlo / Ações */}
-        <div className="flex items-center justify-between px-6 py-3 bg-slate-100 border-b border-slate-200 flex-wrap gap-2">
-          <div className="flex items-center gap-3">
-            <span className="font-black text-xs uppercase tracking-wider text-[#003366] flex items-center gap-1.5">
-              <Receipt size={16} /> Extrato de Conta Corrente de Cliente
+  const content = (
+    <div className="bg-white rounded-none border border-slate-300 shadow-sm w-full flex flex-col text-slate-800 font-sans">
+      
+      {/* Barra Superior de Controlo / Ações */}
+      <div className="flex items-center justify-between px-6 py-3 bg-slate-100 border-b border-slate-200 flex-wrap gap-3">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={onClose}
+            className="px-3 py-1.5 bg-white hover:bg-slate-200 text-[#003366] font-bold text-xs uppercase rounded-none border border-slate-300 flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+            title="Voltar à lista de clientes"
+          >
+            <ArrowLeft size={15} /> Voltar aos Clientes
+          </button>
+          <span className="font-black text-xs uppercase tracking-wider text-[#003366] flex items-center gap-1.5">
+            <Receipt size={16} /> Extrato de Conta Corrente de Cliente
+          </span>
+          {rawMovimentos.length > 0 && (
+            <span className="text-[10px] font-black bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-none border border-emerald-300 font-mono">
+              {rawMovimentos.length} DOCS REAIS NO BD
             </span>
+          )}
+        </div>
+
+        {/* Date range filter De / Até */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5">
+            <Calendar size={13} className="text-slate-500" />
+            <label className="text-[11px] font-bold text-slate-600 uppercase">De</label>
+            <input
+              type="date"
+              value={dataInicio}
+              onChange={e => setDataInicio(e.target.value)}
+              className="border border-slate-300 bg-white text-xs text-slate-800 px-2 py-1 rounded-none focus:outline-none focus:ring-1 focus:ring-[#003366] font-mono"
+            />
           </div>
-
-          {/* Date range filter De / Até */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex items-center gap-1.5">
-              <Calendar size={13} className="text-slate-500" />
-              <label className="text-[11px] font-bold text-slate-600 uppercase">De</label>
-              <input
-                type="date"
-                value={dataInicio}
-                onChange={e => setDataInicio(e.target.value)}
-                className="border border-slate-300 bg-white text-xs text-slate-800 px-2 py-1 rounded-none focus:outline-none focus:ring-1 focus:ring-[#003366] font-mono"
-              />
-            </div>
-            <div className="flex items-center gap-1.5">
-              <label className="text-[11px] font-bold text-slate-600 uppercase">Até</label>
-              <input
-                type="date"
-                value={dataFim}
-                onChange={e => setDataFim(e.target.value)}
-                className="border border-slate-300 bg-white text-xs text-slate-800 px-2 py-1 rounded-none focus:outline-none focus:ring-1 focus:ring-[#003366] font-mono"
-              />
-            </div>
-            <div className="flex items-center gap-1.5 border border-slate-300 bg-white px-2 py-1 rounded-none">
-              <Search size={12} className="text-slate-400" />
-              <input
-                type="text"
-                placeholder="Filtrar..."
-                value={filtroDescricao}
-                onChange={e => setFiltroDescricao(e.target.value)}
-                className="text-xs text-slate-800 bg-transparent focus:outline-none w-24 font-mono"
-              />
-            </div>
+          <div className="flex items-center gap-1.5">
+            <label className="text-[11px] font-bold text-slate-600 uppercase">Até</label>
+            <input
+              type="date"
+              value={dataFim}
+              onChange={e => setDataFim(e.target.value)}
+              className="border border-slate-300 bg-white text-xs text-slate-800 px-2 py-1 rounded-none focus:outline-none focus:ring-1 focus:ring-[#003366] font-mono"
+            />
           </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleExportExcel}
-              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold uppercase rounded-none flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
-              title="Exportar para Excel"
-            >
-              <Download size={14} /> Excel
-            </button>
-
-            <button
-              onClick={handlePrint}
-              className="px-3 py-1.5 bg-[#003366] hover:bg-[#002244] text-white text-xs font-bold uppercase rounded-none flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
-              title="Imprimir Extrato A4"
-            >
-              <Printer size={14} /> Imprimir A4
-            </button>
-
-            <button
-              onClick={onClose}
-              className="p-1.5 bg-slate-200 hover:bg-rose-600 hover:text-white text-slate-700 rounded-none transition-all cursor-pointer ml-2"
-              title="Fechar"
-            >
-              <X size={16} />
-            </button>
+          <div className="flex items-center gap-1.5 border border-slate-300 bg-white px-2 py-1 rounded-none">
+            <Search size={12} className="text-slate-400" />
+            <input
+              type="text"
+              placeholder="Pesquisar..."
+              value={filtroDescricao}
+              onChange={e => setFiltroDescricao(e.target.value)}
+              className="text-xs text-slate-800 bg-transparent focus:outline-none w-28 font-mono"
+            />
           </div>
         </div>
 
-        {/* Área Imprimível e Visual Idêntica à Imagem */}
-        <div ref={printRef} className="flex-1 overflow-y-auto p-6 sm:p-8 bg-white space-y-6">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={fetchMovimentos}
+            className="p-1.5 bg-white hover:bg-slate-200 text-slate-700 rounded-none border border-slate-300 transition-colors cursor-pointer"
+            title="Atualizar dados da base de dados"
+          >
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          </button>
 
-          {/* 1. SEÇÃO SUPERIOR: LOGO, EMISSÃO E CABEÇALHO DO CLIENTE */}
-          <div className="border-b border-slate-300 pb-5">
-            <div className="flex flex-col md:flex-row justify-between items-start gap-4">
-              
-              {/* Lado Esquerdo: Identificação e Metadados do Extrato */}
-              <div className="flex-1 space-y-3">
-                {/* Logo / Nome da Empresa */}
-                <div>
-                  <h1 className="text-3xl font-black tracking-tighter text-[#003366] uppercase">
-                    {empresaNome}
-                  </h1>
-                  <div className="h-0.5 w-48 bg-[#003366] mt-0.5"></div>
-                </div>
+          <button
+            onClick={handleExportExcel}
+            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold uppercase rounded-none flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
+            title="Exportar para Excel"
+          >
+            <Download size={14} /> Excel
+          </button>
 
-                <div className="grid grid-cols-2 gap-4 text-xs">
-                  {/* Coluna 1 */}
-                  <div className="bg-slate-50 p-2.5 border border-slate-200 rounded-none space-y-1">
-                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Data de Emissão</p>
-                    <p className="font-mono font-bold text-slate-800 text-[11px]">{dataHoraEmissao}</p>
-                    <p className="text-[10px] font-bold text-slate-700 truncate">{empresaNome}</p>
-                    
-                    <div className="pt-2 border-t border-slate-200 mt-2">
-                      <p className="text-[10px] font-black text-slate-900 uppercase">Extrato Cliente</p>
-                      <p className="font-mono text-[10px] text-slate-600 tracking-tight font-bold">{extratoCodigo}</p>
-                    </div>
-                  </div>
+          <button
+            onClick={handlePrint}
+            className="px-3 py-1.5 bg-[#003366] hover:bg-[#002244] text-white text-xs font-bold uppercase rounded-none flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
+            title="Imprimir Extrato A4"
+          >
+            <Printer size={14} /> Imprimir A4
+          </button>
+        </div>
+      </div>
 
-                  {/* Coluna 2 */}
-                  <div className="bg-slate-50 p-2.5 border border-slate-200 rounded-none space-y-1">
-                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Nº Contribuinte</p>
-                    <p className="font-mono font-black text-slate-900 text-sm tracking-wide">{clienteNif}</p>
-                    
-                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider pt-1">Descrição do extrato Conta Corrente</p>
-                    <p className="text-[10px] text-slate-600 font-medium">Periodo: {dataInicio} a {dataFim}</p>
-                    <p className="text-[10px] font-bold text-slate-700 font-mono">Cod. {clienteCodigo}</p>
-                  </div>
-                </div>
+      {/* Área Imprimível e Visual Idêntica à Imagem */}
+      <div ref={printRef} className="p-6 sm:p-8 bg-white space-y-6">
+
+        {/* 1. SEÇÃO SUPERIOR: LOGO, EMISSÃO E CABEÇALHO DO CLIENTE */}
+        <div className="border-b border-slate-300 pb-5">
+          <div className="flex flex-col md:flex-row justify-between items-start gap-4">
+            
+            {/* Lado Esquerdo: Identificação e Metadados do Extrato */}
+            <div className="flex-1 space-y-3">
+              <div>
+                <h1 className="text-3xl font-black tracking-tighter text-[#003366] uppercase">
+                  {empresaNome}
+                </h1>
+                <div className="h-0.5 w-48 bg-[#003366] mt-0.5"></div>
               </div>
 
-              {/* Lado Direito: Barra Prateada com Degradê e Dados do Cliente */}
-              <div className="w-full md:w-[480px]">
-                {/* Barra Degradê Prateada (Estilo Exato da Imagem) */}
-                <div className="bg-gradient-to-r from-zinc-300 via-zinc-200 to-zinc-400 p-3 rounded-none border border-zinc-400 shadow-xs">
-                  <h2 className="text-sm font-black text-slate-900 uppercase tracking-tight leading-snug">
-                    {clienteNome}
-                  </h2>
+              <div className="grid grid-cols-2 gap-4 text-xs">
+                {/* Coluna 1 */}
+                <div className="bg-slate-50 p-2.5 border border-slate-200 rounded-none space-y-1">
+                  <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Data de Emissão</p>
+                  <p className="font-mono font-bold text-slate-800 text-[11px]">{dataHoraEmissao}</p>
+                  <p className="text-[10px] font-bold text-slate-700 truncate">{empresaNome}</p>
+                  
+                  <div className="pt-2 border-t border-slate-200 mt-2">
+                    <p className="text-[10px] font-black text-slate-900 uppercase">Extrato Cliente</p>
+                    <p className="font-mono text-[10px] text-slate-600 tracking-tight font-bold">{extratoCodigo}</p>
+                  </div>
                 </div>
 
-                {/* Morada do Cliente */}
-                <div className="p-3 text-xs space-y-0.5 text-slate-700 font-medium">
-                  <p className="font-bold text-slate-800">{clienteEndereco}</p>
-                  <p>{clienteMunicipio}</p>
-                  <p>{clienteMunicipio}</p>
-                  <p className="font-bold text-slate-800 uppercase">{clientePais}</p>
+                {/* Coluna 2 */}
+                <div className="bg-slate-50 p-2.5 border border-slate-200 rounded-none space-y-1">
+                  <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Nº Contribuinte</p>
+                  <p className="font-mono font-black text-slate-900 text-sm tracking-wide">{clienteNif}</p>
+                  
+                  <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider pt-1">Descrição do extrato Conta Corrente</p>
+                  <p className="text-[10px] text-slate-600 font-medium">Periodo: {dataInicio} a {dataFim}</p>
+                  <p className="text-[10px] font-bold text-slate-700 font-mono">Cod. {clienteCodigo}</p>
                 </div>
               </div>
-
             </div>
+
+            {/* Lado Direito: Barra Prateada com Degradê e Dados do Cliente */}
+            <div className="w-full md:w-[480px]">
+              <div className="bg-gradient-to-r from-zinc-300 via-zinc-200 to-zinc-400 p-3 rounded-none border border-zinc-400 shadow-xs">
+                <h2 className="text-sm font-black text-slate-900 uppercase tracking-tight leading-snug">
+                  {clienteNome}
+                </h2>
+              </div>
+              <div className="pt-2 text-xs space-y-0.5 text-slate-800 font-medium pl-1">
+                <p>{clienteEndereco}</p>
+                <p>{clienteMunicipio}</p>
+                <p className="pt-1">{clienteMunicipio}</p>
+                <p>{clientePais}</p>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        {/* 2. BARRA DE TÍTULO E SALDO ACUMULADO GERAL */}
+        <div className="flex flex-col sm:flex-row justify-between items-baseline border-b border-slate-800 pb-2">
+          <div className="flex items-baseline gap-4">
+            <h3 className="text-base font-black text-slate-900 tracking-tight">
+              Conta Corrente de Cliente
+            </h3>
+            <span className="text-sm font-black text-slate-900 tracking-wider">AOA</span>
           </div>
 
-          {/* 2. BARRA DE TÍTULO, MOEDA E SALDO ACUMULADO GERAL */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center py-2 border-b-2 border-slate-400 gap-2">
-            <div className="flex items-center gap-4">
-              <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight">
-                Conta Corrente de Cliente
-              </h3>
-              <span className="font-black text-xs text-slate-900">AOA</span>
-              <span className="text-xs text-slate-500 font-mono">[ AOA ]</span>
-            </div>
-
-            <div className="flex items-center gap-6">
-              <div className="text-right">
-                <span className="text-xs font-black text-slate-800 uppercase mr-3">Saldo Acumulado Geral</span>
-                <span className="text-sm font-black text-slate-950 font-mono">
-                  {formatarMoeda(saldoAcumuladoGeral)}
-                </span>
-              </div>
+          <div className="flex items-center gap-6 mt-2 sm:mt-0">
+            <span className="text-xs font-bold text-slate-700 tracking-wider font-mono">[ AOA ]</span>
+            <div className="flex items-baseline gap-3">
+              <span className="text-xs font-black text-slate-800 uppercase tracking-wider">Saldo Acumulado Geral</span>
+              <span className="text-base font-black text-slate-900 font-mono tracking-tight">
+                {formatCurrency(saldoFinal)}
+              </span>
             </div>
           </div>
+        </div>
 
-          {/* 3. TABELA DE MOVIMENTOS COM CABEÇALHOS DUPLOS E TOTAIS ACUMULADOS */}
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="border-b border-slate-300 text-[10px] font-bold text-slate-600 uppercase">
-                  <th className="py-2 px-3">
-                    <div>Data Valor</div>
-                    <div className="text-slate-400 font-normal">Data Documento</div>
-                  </th>
-                  <th className="py-2 px-3">
-                    <div>File Interno</div>
-                    <div className="text-slate-400 font-normal">File Cliente</div>
-                  </th>
-                  <th className="py-2 px-3">
-                    <div>URN</div>
-                    <div className="text-slate-400 font-normal">EndService</div>
-                  </th>
-                  <th className="py-2 px-3">
-                    <div>Doc Nº</div>
-                    <div className="text-slate-400 font-normal">OriginatingOn</div>
-                  </th>
-                  <th className="py-2 px-3">
-                    <div>Descricao</div>
-                    <div className="text-slate-400 font-normal">Doc. Suporte</div>
-                  </th>
-                  <th className="py-2 px-3 text-right">Credito</th>
-                  <th className="py-2 px-3 text-right">Debito</th>
-                  <th className="py-2 px-3 text-right">Saldo</th>
+        {/* 3. TABELA DE MOVIMENTOS COM CABEÇALHOS DUPLOS IDÊNTICOS À IMAGEM */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse font-sans text-xs">
+            <thead>
+              <tr className="border-b border-slate-400 text-[10px] text-slate-700 uppercase font-bold leading-tight">
+                <th className="py-1.5 px-2">
+                  <div>Data Valor</div>
+                  <div className="text-slate-500 font-normal">Data Documento</div>
+                </th>
+                <th className="py-1.5 px-2">
+                  <div>File Interno</div>
+                  <div className="text-slate-500 font-normal">File Cliente</div>
+                </th>
+                <th className="py-1.5 px-2">
+                  <div>URN</div>
+                  <div className="text-slate-500 font-normal">EndService</div>
+                </th>
+                <th className="py-1.5 px-2">
+                  <div>Doc Nº</div>
+                  <div className="text-slate-500 font-normal">OriginatingOn</div>
+                </th>
+                <th className="py-1.5 px-2">
+                  <div>Descricao</div>
+                  <div className="text-slate-500 font-normal">Doc. Suporte</div>
+                </th>
+                <th className="py-1.5 px-2 text-right">Crédito</th>
+                <th className="py-1.5 px-2 text-right">Débito</th>
+                <th className="py-1.5 px-2 text-right">Saldo</th>
+              </tr>
+
+              {/* Linha Resumo: Acumulados do Periodo */}
+              <tr className="border-b-2 border-slate-800 text-xs font-black text-slate-900">
+                <td colSpan={5} className="py-2 px-2 text-right tracking-wider uppercase font-sans">
+                  Acumulados do Periodo
+                </td>
+                <td className="py-2 px-2 text-right font-mono border-t border-slate-800">
+                  {formatCurrency(totalCredito)}
+                </td>
+                <td className="py-2 px-2 text-right font-mono border-t border-slate-800">
+                  {formatCurrency(totalDebito)}
+                </td>
+                <td className="py-2 px-2 text-right font-mono border-t border-slate-800">
+                  {formatCurrency(saldoFinal)}
+                </td>
+              </tr>
+            </thead>
+
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={8} className="py-12 text-center text-slate-500">
+                    <RefreshCw className="animate-spin inline mr-2 text-[#003366]" size={18} />
+                    A carregar movimentos reais do cliente a partir da base de dados...
+                  </td>
                 </tr>
-
-                {/* Linha de Totais Acumulados do Período */}
-                <tr className="border-b-2 border-slate-800 font-black text-xs bg-slate-50/70">
-                  <td colSpan={5} className="py-2.5 px-3 text-right uppercase tracking-wider text-slate-900">
-                    Acumulados do Periodo
-                  </td>
-                  <td className="py-2.5 px-3 text-right font-mono border-b border-slate-700">
-                    {formatarMoeda(totalCredito)}
-                  </td>
-                  <td className="py-2.5 px-3 text-right font-mono border-b border-slate-700">
-                    {formatarMoeda(totalDebito)}
-                  </td>
-                  <td className="py-2.5 px-3 text-right font-mono border-b-2 border-slate-900 text-slate-950 font-black">
-                    {formatarMoeda(saldoAcumuladoGeral)}
+              ) : movimentosFiltrados.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="py-12 text-center text-slate-500">
+                    <p className="font-bold text-xs uppercase tracking-wider text-slate-700">Nenhum movimento ou fatura encontrada para este cliente.</p>
+                    <p className="text-[11px] text-slate-400 mt-1">Quando emitir faturas ou recibos no sistema para {clienteNome}, os lançamentos aparecerão automaticamente nesta conta corrente.</p>
                   </td>
                 </tr>
-              </thead>
-
-              <tbody className="divide-y divide-slate-200">
-                {movimentosFiltrados.map((m, idx) => (
+              ) : (
+                movimentosFiltrados.map((m, idx) => (
                   <tr 
-                    key={m.id || idx} 
-                    className={`text-xs ${idx % 2 === 0 ? 'bg-slate-100/60' : 'bg-white'} hover:bg-blue-50/40 transition-colors`}
+                    key={m.id || idx}
+                    className={`border-b border-slate-200 text-xs ${idx % 2 === 1 ? 'bg-slate-50/80' : 'bg-white'} hover:bg-amber-50/40 transition-colors`}
                   >
-                    {/* Data */}
-                    <td className="py-2 px-3 font-mono">
-                      <div className="font-bold text-slate-900">{m.dataValor}</div>
-                      <div className="text-slate-500 text-[11px]">{m.dataDocumento}</div>
+                    <td className="py-2.5 px-2 font-mono font-bold text-slate-900 leading-tight">
+                      <div>{m.dataValor}</div>
+                      <div className="text-slate-500 font-normal">{m.dataDocumento}</div>
                     </td>
 
-                    {/* File Interno / Cliente */}
-                    <td className="py-2 px-3">
-                      <div className="font-bold text-slate-800">{m.fileInterno}</div>
-                      <div className="text-slate-400 text-[11px]">{m.fileCliente}</div>
+                    <td className="py-2.5 px-2 font-bold text-slate-900 leading-tight">
+                      <div>{m.fileInterno}</div>
+                      <div className="text-slate-400 font-normal">{m.fileCliente}</div>
                     </td>
 
-                    {/* URN / EndService */}
-                    <td className="py-2 px-3 font-mono text-[11px] text-slate-500">
+                    <td className="py-2.5 px-2 font-mono text-slate-400 text-[10px] leading-tight">
                       <div>{m.urn || '—'}</div>
-                      <div className="text-[10px] text-slate-400">{m.endService || '—'}</div>
+                      <div>{m.endService || '—'}</div>
                     </td>
 
-                    {/* Doc Nº / OriginatingOn */}
-                    <td className="py-2 px-3 font-mono">
-                      <div className="font-bold text-slate-900">{m.docNumero}</div>
-                      <div className="text-slate-500 text-[11px]">{m.originatingOn}</div>
+                    <td className="py-2.5 px-2 font-mono font-black text-slate-900 leading-tight">
+                      <div>{m.docNumero}</div>
+                      <div className="text-slate-500 font-medium text-[11px]">{m.originatingOn}</div>
                     </td>
 
-                    {/* Descricao / Doc. Suporte */}
-                    <td className="py-2 px-3">
-                      <div className="font-bold text-slate-800">{m.descricao}</div>
-                      <div className="text-slate-400 text-[11px]">{m.docSuporte}</div>
+                    <td className="py-2.5 px-2 font-bold text-slate-800 leading-tight">
+                      <div>{m.descricao}</div>
+                      <div className="text-slate-400 font-normal text-[10px]">{m.docSuporte}</div>
                     </td>
 
-                    {/* Credito */}
-                    <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">
-                      {m.credito > 0 ? formatarMoeda(m.credito) : ''}
+                    <td className="py-2.5 px-2 text-right font-mono font-black text-slate-900 text-xs">
+                      {m.credito > 0 ? formatCurrency(m.credito) : ''}
                     </td>
 
-                    {/* Debito */}
-                    <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">
-                      {m.debito > 0 ? formatarMoeda(m.debito) : ''}
+                    <td className="py-2.5 px-2 text-right font-mono font-black text-slate-900 text-xs">
+                      {m.debito > 0 ? formatCurrency(m.debito) : ''}
                     </td>
 
-                    {/* Saldo Acumulado */}
-                    <td className="py-2 px-3 text-right font-mono font-black text-slate-950">
-                      {formatarMoeda(m.saldo)}
+                    <td className="py-2.5 px-2 text-right font-mono font-black text-slate-900 text-xs">
+                      {formatCurrency(m.saldo)}
                     </td>
                   </tr>
-                ))}
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
 
-                {movimentosFiltrados.length === 0 && !loading && (
-                  <tr>
-                    <td colSpan={8} className="py-12 text-center text-slate-400 italic">
-                      Nenhum movimento registado na conta corrente deste cliente para o período selecionado.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+        {/* 4. RODAPÉ DO DOCUMENTO */}
+        <div className="pt-6 border-t border-slate-300 flex flex-col sm:flex-row justify-between items-center text-[10px] text-slate-500 gap-2">
+          <div>
+            <span>Extrato Oficial de Conta Corrente • Emitido em conformidade com as regras da AGT</span>
           </div>
-
-          {/* Rodapé Informativo */}
-          <div className="pt-4 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center text-[10px] text-slate-500 font-mono">
-            <span>Processado por programa certificado nº 32/AGT/2019 • IMATEC ERP</span>
-            <span>Documento emitido para conferência de Conta Corrente</span>
+          <div className="font-mono">
+            <span>Página 1 de 1</span>
           </div>
-
         </div>
 
       </div>
     </div>
   );
+
+  if (mode === 'page') {
+    return (
+      <div className="space-y-4 animate-in fade-in duration-200">
+        {content}
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-[120] bg-black/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+      <div className="max-w-6xl w-full max-h-[96vh] flex flex-col overflow-y-auto my-auto animate-in fade-in zoom-in-95 duration-150">
+        {content}
+      </div>
+    </div>
+  );
 };
+
 export default ClienteContaCorrenteModal;

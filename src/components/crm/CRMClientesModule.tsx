@@ -18,8 +18,8 @@ interface CRMClientesModuleProps {
 }
 
 export const CRMClientesModule: React.FC<CRMClientesModuleProps> = ({ user, companyData, onBack }) => {
-  // 10 sections navigation
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'lista' | 'novo' | 'perfil' | 'contactos' | 'interacoes' | 'atendimento' | 'segmentacao' | 'historico' | 'relatorios'>('dashboard');
+  // Navegação limpa e simplificada
+  const [activeTab, setActiveTab] = useState<'lista' | 'dashboard' | 'novo' | 'perfil' | 'contactos' | 'interacoes' | 'atendimento' | 'segmentacao' | 'historico' | 'relatorios' | 'conta_corrente'>('lista');
   const [clientes, setClientes] = useState<any[]>([]);
   const [reclamacoes, setReclamacoes] = useState<any[]>([]);
   const [interacoes, setInteracoes] = useState<any[]>([]);
@@ -32,7 +32,6 @@ export const CRMClientesModule: React.FC<CRMClientesModuleProps> = ({ user, comp
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [perfilTab, setPerfilTab] = useState<'geral' | 'contactos' | 'negocios' | 'vendas' | 'projetos' | 'atendimento' | 'documentos' | 'historico'>('geral');
   const [contaCorrenteCliente, setContaCorrenteCliente] = useState<any | null>(null);
-  const [isContaCorrenteOpen, setIsContaCorrenteOpen] = useState(false);
 
   // NIF lookup state
   const [nifLoading, setNifLoading] = useState(false);
@@ -284,76 +283,55 @@ export const CRMClientesModule: React.FC<CRMClientesModuleProps> = ({ user, comp
 
   return (
     <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-6 rounded-xl border border-slate-200 shadow-sm gap-4">
-        <div className="flex items-center gap-4">
+      {/* Header Limpo e Intuitivo */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-5 rounded-none border border-slate-200 shadow-xs gap-4">
+        <div className="flex items-center gap-3">
           <button 
-            onClick={activeTab === 'dashboard' ? onBack : () => setActiveTab('dashboard')}
-            className="p-2.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 transition-all"
+            onClick={activeTab === 'lista' ? onBack : () => setActiveTab('lista')}
+            className="p-2 rounded-none border border-slate-200 text-slate-600 hover:bg-slate-100 transition-all cursor-pointer"
             title="Voltar"
           >
-            <ArrowLeft size={20} />
+            <ArrowLeft size={18} />
           </button>
           <div>
-            <div className="flex items-center gap-2 text-[#003366] font-black text-xs uppercase tracking-widest mb-1">
-              <Users size={16} /> IMATEC ERP • CRM Gestão Clientes
+            <div className="flex items-center gap-2 text-[#003366] font-black text-[11px] uppercase tracking-widest mb-0.5">
+              <Users size={14} /> CRM • Gestão de Clientes
             </div>
-            <h1 className="text-2xl font-black text-slate-900 tracking-tight">
-              {activeTab === 'dashboard' && 'Dashboard de Clientes'}
-              {activeTab === 'lista' && 'Todos os Clientes'}
+            <h1 className="text-xl font-black text-slate-900 tracking-tight">
+              {activeTab === 'lista' && 'Diretório de Clientes'}
+              {activeTab === 'dashboard' && 'Painel Geral'}
               {activeTab === 'novo' && (selectedCliente ? 'Editar Cliente' : 'Registar Novo Cliente')}
-              {activeTab === 'perfil' && `Perfil Individual: ${selectedCliente?.nome}`}
-              {activeTab === 'contactos' && 'Diretório de Contactos'}
-              {activeTab === 'interacoes' && 'Registo de Interações Comerciais'}
-              {activeTab === 'atendimento' && 'Atendimento & Reclamações'}
-              {activeTab === 'segmentacao' && 'Segmentação de Clientes'}
-              {activeTab === 'historico' && 'Histórico de Atividades'}
-              {activeTab === 'relatorios' && 'Relatórios e Indicadores de Clientes'}
+              {activeTab === 'perfil' && `Perfil: ${selectedCliente?.nome}`}
+              {activeTab === 'atendimento' && 'Atendimento & Suporte'}
+              {activeTab === 'conta_corrente' && `Conta Corrente: ${contaCorrenteCliente?.nome || 'Cliente'}`}
+              {!['lista', 'dashboard', 'novo', 'perfil', 'atendimento', 'conta_corrente'].includes(activeTab) && 'Gestão de Clientes'}
             </h1>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button 
-            onClick={() => setActiveTab('dashboard')}
-            className={`px-3 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'dashboard' ? 'bg-[#003366] text-white shadow-xs' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`}
-          >
-            Dashboard
-          </button>
-          <button 
             onClick={() => setActiveTab('lista')}
-            className={`px-3 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'lista' ? 'bg-[#003366] text-white shadow-xs' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`}
+            className={`px-3 py-1.5 rounded-none text-xs font-bold transition-all ${activeTab === 'lista' ? 'bg-[#003366] text-white shadow-xs' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`}
           >
             Clientes
           </button>
           <button 
-            onClick={() => setActiveTab('interacoes')}
-            className={`px-3 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'interacoes' ? 'bg-[#003366] text-white shadow-xs' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`}
+            onClick={() => setActiveTab('dashboard')}
+            className={`px-3 py-1.5 rounded-none text-xs font-bold transition-all ${activeTab === 'dashboard' ? 'bg-[#003366] text-white shadow-xs' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`}
           >
-            Interações
+            Dashboard
           </button>
           <button 
             onClick={() => setActiveTab('atendimento')}
-            className={`px-3 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'atendimento' ? 'bg-[#003366] text-white shadow-xs' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`}
+            className={`px-3 py-1.5 rounded-none text-xs font-bold transition-all ${activeTab === 'atendimento' ? 'bg-[#003366] text-white shadow-xs' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`}
           >
             Atendimento
           </button>
           <button 
-            onClick={() => setActiveTab('segmentacao')}
-            className={`px-3 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'segmentacao' ? 'bg-[#003366] text-white shadow-xs' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`}
-          >
-            Segmentação
-          </button>
-          <button 
-            onClick={() => setActiveTab('relatorios')}
-            className={`px-3 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'relatorios' ? 'bg-[#003366] text-white shadow-xs' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`}
-          >
-            Relatórios
-          </button>
-          <button 
             onClick={handleOpenNewClient}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black uppercase tracking-wider px-4 py-2 rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black uppercase tracking-wider px-3.5 py-1.5 rounded-none transition-all shadow-xs flex items-center gap-1.5 cursor-pointer ml-1"
           >
-            <UserPlus size={16} /> Novo Cliente
+            <UserPlus size={15} /> Novo Cliente
           </button>
         </div>
       </div>
@@ -506,26 +484,42 @@ export const CRMClientesModule: React.FC<CRMClientesModuleProps> = ({ user, comp
                           {c.ativo !== false ? 'Ativo' : 'Inativo'}
                         </span>
                       </td>
-                      <td className="p-4 text-center flex items-center justify-center gap-1.5 flex-wrap">
+                      <td className="p-3 text-center flex items-center justify-center gap-1.5 flex-wrap">
                         <button 
-                          onClick={() => { setContaCorrenteCliente(c); setIsContaCorrenteOpen(true); }}
-                          className="p-1.5 px-2.5 bg-emerald-50 text-emerald-800 hover:bg-emerald-600 hover:text-white rounded-none border border-emerald-300 transition-all font-bold text-xs inline-flex items-center gap-1 cursor-pointer shadow-xs"
-                          title="Extrato de Conta Corrente do Cliente"
+                          onClick={() => { setContaCorrenteCliente(c); setActiveTab('conta_corrente'); }}
+                          className="w-7 h-7 flex items-center justify-center bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white rounded-none border border-emerald-300 transition-colors cursor-pointer"
+                          title="Extrato de Conta Corrente (Abrir Página)"
                         >
-                          <Receipt size={14} /> Conta Corrente
+                          <Receipt size={14} />
                         </button>
-                        <button onClick={() => { setSelectedCliente(c); setActiveTab('perfil'); }} className="p-1.5 px-2.5 bg-blue-50 text-[#003366] hover:bg-[#003366] hover:text-white rounded-none border border-blue-200 transition-all font-bold text-xs inline-flex items-center gap-1" title="Ver Perfil">
-                          <Eye size={14} /> Perfil
+                        <button 
+                          onClick={() => { setSelectedCliente(c); setActiveTab('perfil'); }} 
+                          className="w-7 h-7 flex items-center justify-center bg-blue-50 text-[#003366] hover:bg-[#003366] hover:text-white rounded-none border border-blue-200 transition-colors cursor-pointer" 
+                          title="Ver Perfil"
+                        >
+                          <Eye size={14} />
                         </button>
-                        <button onClick={() => handleOpenEditClient(c)} className="p-1.5 px-2 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-none border border-slate-300 transition-all cursor-pointer" title="Editar">
+                        <button 
+                          onClick={() => handleOpenEditClient(c)} 
+                          className="w-7 h-7 flex items-center justify-center bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-none border border-slate-300 transition-colors cursor-pointer" 
+                          title="Editar"
+                        >
                           <Edit size={14} />
                         </button>
                         {c.ativo !== false ? (
-                          <button onClick={() => handleArchiveClient(c)} className="p-1.5 px-2 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-none border border-rose-200 transition-all" title="Arquivar">
+                          <button 
+                            onClick={() => handleArchiveClient(c)} 
+                            className="w-7 h-7 flex items-center justify-center bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-none border border-rose-200 transition-colors cursor-pointer" 
+                            title="Arquivar"
+                          >
                             <Trash2 size={14} />
                           </button>
                         ) : (
-                          <button onClick={() => handleRestoreClient(c)} className="p-1.5 px-2 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-none border border-emerald-200 transition-all" title="Restaurar">
+                          <button 
+                            onClick={() => handleRestoreClient(c)} 
+                            className="w-7 h-7 flex items-center justify-center bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-none border border-emerald-200 transition-colors cursor-pointer" 
+                            title="Restaurar"
+                          >
                             <RefreshCw size={14} />
                           </button>
                         )}
@@ -1069,14 +1063,16 @@ export const CRMClientesModule: React.FC<CRMClientesModuleProps> = ({ user, comp
         </div>
       )}
 
-      {/* MODAL DE CONTA CORRENTE DO CLIENTE */}
-      {isContaCorrenteOpen && contaCorrenteCliente && (
+      {/* PÁGINA DEDICADA DE CONTA CORRENTE DO CLIENTE (Não abre em frente como modal flutuante) */}
+      {activeTab === 'conta_corrente' && contaCorrenteCliente && (
         <ClienteContaCorrenteModal
           cliente={contaCorrenteCliente}
+          empresaId={empresaId}
           companyData={companyData}
-          isOpen={isContaCorrenteOpen}
+          isOpen={true}
+          mode="page"
           onClose={() => {
-            setIsContaCorrenteOpen(false);
+            setActiveTab('lista');
             setContaCorrenteCliente(null);
           }}
         />

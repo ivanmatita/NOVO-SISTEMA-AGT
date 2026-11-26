@@ -9247,20 +9247,26 @@ app.use((req, res, next) => {
       if (!supabaseAdmin) return res.status(500).json({ error: "Supabase Admin não disponível" });
 
       const empresaId = (req.query.empresa_id as string | undefined)?.trim();
-
       let query = supabaseAdmin
         .from('perfis')
         .select('*')
         .order('created_at', { ascending: false });
 
       if (empresaId) {
-        query = query.eq('empresa_id', empresaId);
+        query = query.or(`empresa_id.eq.${empresaId},company_id.eq.${empresaId}`);
       }
 
       const { data: profiles, error } = await query;
 
       if (error) {
          console.warn("Error fetching profiles:", error.message);
+         if (empresaId) {
+           const { data: sysUsers } = await supabaseAdmin
+             .from('system_users')
+             .select('*')
+             .eq('empresa_id', empresaId);
+           return res.json(sysUsers || []);
+         }
          return res.json([]);
       }
       
@@ -9293,8 +9299,8 @@ app.use((req, res, next) => {
       }
 
       const hydratedProfiles = list.map(p => {
-         const emp = companiesList?.find(c => String(c.id) === String(p.empresa_id));
-         const resolvedUsername = (p.username || (p.email ? p.email.split('@')[0] : 'admin')).trim();
+         const emp = companiesList?.find(c => String(c.id) === String(p.empresa_id || p.company_id));
+         const resolvedUsername = (p.username || p.user_name || (p.email ? p.email.split('@')[0] : 'admin')).trim();
          return {
             ...p,
             username: resolvedUsername,

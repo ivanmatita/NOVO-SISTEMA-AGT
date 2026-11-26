@@ -1,6 +1,6 @@
 ﻿/**
  * MapaAmortizacaoModule.tsx
- * Mapa de AmortizaÃ§Ãµes e ReintegraÃ§Ãµes - Layout Oficial AGT / IMATEC Software
+ * Mapa de Amortizações e Reintegrações - Layout Oficial AGT / IMATEC Software
  */
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -156,7 +156,7 @@ export const MapaAmortizacaoModule: React.FC<MapaAmortizacaoModuleProps> = ({
 
   const handleSave = async () => {
     if (!form.descricao.trim()) {
-      setMsg({ type: 'err', text: 'Informe a descriÃ§Ã£o do ativo.' });
+      setMsg({ type: 'err', text: 'Informe a descrição do ativo.' });
       return;
     }
     const vu = Number(form.valor_unitario);
@@ -215,7 +215,7 @@ export const MapaAmortizacaoModule: React.FC<MapaAmortizacaoModuleProps> = ({
     }
   };
 
-  // CÃ¡lculos Reais de AmortizaÃ§Ã£o para o Ano Selecionado
+  // Cálculos Reais de Amortização para o Ano Selecionado
   const currentYearNum = Number(selectedYear);
 
   const calculatedRows = useMemo(() => {
@@ -231,16 +231,16 @@ export const MapaAmortizacaoModule: React.FC<MapaAmortizacaoModuleProps> = ({
       const anosAnteriores = Math.max(0, currentYearNum - anoAq);
       const acAnterior = Math.min(baseAmortizavel, amortAnual * anosAnteriores);
 
-      // AmortizaÃ§Ã£o do exercÃ­cio
+      // Amortização do exercÃ­cio
       let doExercicio = 0;
       if (currentYearNum >= anoAq && acAnterior < baseAmortizavel) {
         doExercicio = Math.min(baseAmortizavel - acAnterior, amortAnual);
       }
 
-      // AmortizaÃ§Ã£o Acumulada Final
+      // Amortização Acumulada Final
       const acFinal = acAnterior + doExercicio;
 
-      // Valor LÃ­quido ContabilÃ­stico Actual
+      // Valor LÃ­quido Contabilistico Actual
       const valorLiquido = Math.max(valRes, valAq - acFinal);
 
       return {
@@ -279,7 +279,7 @@ export const MapaAmortizacaoModule: React.FC<MapaAmortizacaoModuleProps> = ({
 
   const exportExcel = () => {
     const header = [
-      'Conta', 'Serial Number', 'DescriÃ§Ã£o', 'Data AquisiÃ§Ã£o', 'Ano AquisiÃ§Ã£o',
+      'Conta', 'Serial Number', 'Descrição', 'Data AquisiÃ§Ã£o', 'Ano AquisiÃ§Ã£o',
       'Qtd', 'Valor UnitÃ¡rio', 'Valor AquisiÃ§Ã£o', 'Ac. Anterior', 'Taxa %',
       'Vida Ãštil', 'Do ExercÃ­cio', 'Ac. Final', 'Valor LÃ­quido Actual'
     ];
@@ -320,7 +320,7 @@ export const MapaAmortizacaoModule: React.FC<MapaAmortizacaoModuleProps> = ({
           <div className="flex items-center gap-2">
             <Layers size={18} className="text-[#003366]" />
             <span className="text-xs font-black text-[#003366] uppercase tracking-wider">
-              Mapa de AmortizaÃ§Ãµes e ReintegraÃ§Ãµes
+              Mapa de Amortizações e Reintegrações
             </span>
           </div>
         </div>
@@ -451,7 +451,7 @@ export const MapaAmortizacaoModule: React.FC<MapaAmortizacaoModuleProps> = ({
           {/* Section 05 - QUADRO DE AMORTIZAÃ‡Ã•ES E REINTEGRAÃ‡Ã•ES */}
           <div className="border border-blue-900 text-[9px]">
             <div className="bg-blue-950 text-white font-black px-2 py-0.5 text-[9px] uppercase tracking-wider">
-              05 - Quadro de AmortizaÃ§Ãµes e ReintegraÃ§Ãµes
+              05 - Quadro de Amortizações e Reintegrações
             </div>
 
             <div className="overflow-x-auto">
@@ -460,7 +460,7 @@ export const MapaAmortizacaoModule: React.FC<MapaAmortizacaoModuleProps> = ({
                   <tr className="bg-zinc-100 border-b border-zinc-300 text-[8.5px] font-black uppercase text-zinc-800">
                     <th rowSpan={2} className="border-r border-zinc-300 px-1.5 py-1 text-center w-12">Conta</th>
                     <th rowSpan={2} className="border-r border-zinc-300 px-1.5 py-1 text-center w-20">SerialNumber</th>
-                    <th rowSpan={2} className="border-r border-zinc-300 px-2 py-1">DescriÃ§Ã£o</th>
+                    <th rowSpan={2} className="border-r border-zinc-300 px-2 py-1">Descrição</th>
                     <th rowSpan={2} className="border-r border-zinc-300 px-1.5 py-1 text-center w-16">Data AquisiÃ§Ã£o</th>
                     <th rowSpan={2} className="border-r border-zinc-300 px-1.5 py-1 text-center w-14">ANO AQUISIÃ‡ÃƒO</th>
                     <th rowSpan={2} className="border-r border-zinc-300 px-1.5 py-1 text-center w-10">Qtd</th>
@@ -468,7 +468,7 @@ export const MapaAmortizacaoModule: React.FC<MapaAmortizacaoModuleProps> = ({
                     <th rowSpan={2} className="border-r border-zinc-300 px-2 py-1 text-right w-24">Valor AquisiÃ§Ã£o</th>
                     <th colSpan={5} className="border-r border-zinc-300 px-1.5 py-0.5 text-center bg-zinc-200">FUNDO DE AMORTIZAÃ‡ÃƒO</th>
                     <th rowSpan={2} className="px-2 py-1 text-right w-24">VALOR LIQUIDO ACTUAL</th>
-                    <th rowSpan={2} className="px-1.5 py-1 text-center w-12 print:hidden">AÃ§Ãµes</th>
+                    <th rowSpan={2} className="px-1.5 py-1 text-center w-12 print:hidden">Ações</th>
                   </tr>
                   <tr className="bg-zinc-100 border-b border-zinc-300 text-[8px] font-black uppercase text-zinc-700">
                     <th className="border-r border-zinc-300 px-1.5 py-0.5 text-right w-20">AC. ANTERIOR</th>
@@ -483,7 +483,7 @@ export const MapaAmortizacaoModule: React.FC<MapaAmortizacaoModuleProps> = ({
                   {loading ? (
                     <tr>
                       <td colSpan={15} className="p-8 text-center text-zinc-400 text-xs italic">
-                        A carregar mapa de amortizaÃ§Ãµes...
+                        A carregar mapa de amortizações...
                       </td>
                     </tr>
                   ) : calculatedRows.length === 0 ? (
@@ -588,11 +588,11 @@ export const MapaAmortizacaoModule: React.FC<MapaAmortizacaoModuleProps> = ({
                   >
                     <option value="11.1">11.1 - Terrenos e Recursos Naturais</option>
                     <option value="11.2">11.2 - EdifÃ­cios e Outras ConstruÃ§Ãµes</option>
-                    <option value="11.3">11.3 - Equipamento BÃ¡sico</option>
+                    <option value="11.3">11.3 - Equipamento Básico</option>
                     <option value="11.4">11.4 - Equipamento de Transporte</option>
                     <option value="11.5">11.5 - Equipamento Administrativo</option>
                     <option value="11.6">11.6 - Taras e Vasilhame</option>
-                    <option value="11.8">11.8 - Outras ImobilizaÃ§Ãµes CorpÃ³reas</option>
+                    <option value="11.8">11.8 - Outras Imobilizações CorpÃ³reas</option>
                     <option value="12.1">12.1 - Trespasse</option>
                     <option value="12.2">12.2 - Projectos de Desenvolvimento</option>
                     <option value="12.3">12.3 - Propriedade Industrial</option>
@@ -614,7 +614,7 @@ export const MapaAmortizacaoModule: React.FC<MapaAmortizacaoModuleProps> = ({
 
               <div>
                 <label className="block text-[9px] font-black uppercase tracking-wider text-zinc-500 mb-1">
-                  DescriÃ§Ã£o do Activo <span className="text-red-500">*</span>
+                  Descrição do Activo <span className="text-red-500">*</span>
                 </label>
                 <input
                   value={form.descricao}
@@ -668,7 +668,7 @@ export const MapaAmortizacaoModule: React.FC<MapaAmortizacaoModuleProps> = ({
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="block text-[9px] font-black uppercase tracking-wider text-zinc-500 mb-1">
-                    Taxa AmortizaÃ§Ã£o (%)
+                    Taxa Amortização (%)
                   </label>
                   <input
                     type="number"
@@ -722,7 +722,7 @@ export const MapaAmortizacaoModule: React.FC<MapaAmortizacaoModuleProps> = ({
 
               <div>
                 <label className="block text-[9px] font-black uppercase tracking-wider text-zinc-500 mb-1">
-                  ObservaÃ§Ãµes / LocalizaÃ§Ã£o
+                  Observações / Localização
                 </label>
                 <textarea
                   rows={2}

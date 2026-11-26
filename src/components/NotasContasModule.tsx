@@ -1,7 +1,7 @@
 ﻿/**
  * NotasContasModule.tsx
- * Notas Ã  DemonstraÃ§Ã£o de Resultados (Notas 22 a 35) - Layout Oficial IMATEC Software / AGT
- * Conforme imagens de referÃªncia media_1789594592507.png (PÃ¡ginas 1 a 5)
+ * Notas Ã  Demonstração de Resultados (Notas 22 a 35) - Layout Oficial IMATEC Software / AGT
+ * Conforme imagens de referÃªncia media_1789594592507.png (Páginas 1 a 5)
  */
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -95,14 +95,14 @@ export const NotasContasModule: React.FC<NotasContasModuleProps> = ({
       }, 0);
   };
 
-  // CÃ¡lculo das 14 Notas com base em dados reais
+  // Cálculo das 14 Notas com base em dados reais
   const calculateNotas = (data: any[]) => {
     // Nota 22 - Vendas
     const vendasMercadoInterno = Math.max(0, getCredit(data, ['61.1']));
     const vendasOutras = Math.max(0, getCredit(data, ['61.2', '61.3', '61.4', '61.8']));
     const vendasTotal = Math.max(0, getCredit(data, ['61']));
 
-    // Nota 23 - PrestaÃ§Ã£o de ServiÃ§os
+    // Nota 23 - Prestação de Serviços
     const servicosMercadoInterno = Math.max(0, getCredit(data, ['62.1']));
     const servicosMercadoExterno = Math.max(0, getCredit(data, ['62.2']));
     const servicosTotal = Math.max(0, getCredit(data, ['62']));
@@ -110,7 +110,7 @@ export const NotasContasModule: React.FC<NotasContasModuleProps> = ({
     // Nota 24 - Outros proveitos operacionais
     const outrosProveitos = Math.max(0, getCredit(data, ['63', '64']));
 
-    // Nota 25 - VariaÃ§Ã£o nos produtos acabados
+    // Nota 25 - Variação nos produtos acabados
     const varProdutos = getCredit(data, ['66']);
 
     // Nota 26 - Trabalhos para a prÃ³pria empresa
@@ -125,7 +125,7 @@ export const NotasContasModule: React.FC<NotasContasModuleProps> = ({
     const outrasRemuneracoes = Math.max(0, getDebit(data, ['72.4', '72.5', '72.6', '72.8']));
     const custosPessoalTotal = Math.max(0, getDebit(data, ['72']));
 
-    // Nota 29 - AmortizaÃ§Ãµes
+    // Nota 29 - Amortizações
     const amortCorporeas = Math.max(0, getDebit(data, ['73.1']));
     const amortIncorporeas = Math.max(0, getDebit(data, ['73.2']));
     const amortizacoesTotal = Math.max(0, getDebit(data, ['73']));
@@ -148,7 +148,7 @@ export const NotasContasModule: React.FC<NotasContasModuleProps> = ({
     // Nota 32 - Resultados de Filiais
     const filiaisTotal = getCredit(data, ['67']) - getDebit(data, ['77']);
 
-    // Nota 33 - Resultados NÃ£o Operacionais
+    // Nota 33 - Resultados Não Operacionais
     const proveitosNaoOp = Math.max(0, getCredit(data, ['69']));
     const custosNaoOp = Math.max(0, getDebit(data, ['79']));
     const resultadosNaoOpTotal = proveitosNaoOp - custosNaoOp;
@@ -245,7 +245,7 @@ export const NotasContasModule: React.FC<NotasContasModuleProps> = ({
       <div className="bg-white border-b border-zinc-200 px-6 py-2.5 flex items-center justify-between print:hidden shadow-sm">
         <div className="flex items-center gap-3">
           {onBack && (
-            <button onClick={onBack} className="flex items-center gap-1 p-1.5 px-3 hover:bg-zinc-100 text-zinc-700 border border-zinc-300 font-bold text-xs uppercase transition-all" title="Voltar Ã  DemonstraÃ§Ã£o de Resultados">
+            <button onClick={onBack} className="flex items-center gap-1 p-1.5 px-3 hover:bg-zinc-100 text-zinc-700 border border-zinc-300 font-bold text-xs uppercase transition-all" title="Voltar Ã  Demonstração de Resultados">
               <ChevronLeft size={16} />
               <span>Voltar</span>
             </button>
@@ -253,14 +253,14 @@ export const NotasContasModule: React.FC<NotasContasModuleProps> = ({
           <div className="flex items-center gap-2">
             <FileText size={18} className="text-[#003366]" />
             <span className="text-xs font-black text-[#003366] uppercase tracking-wider">
-              Notas Ã  DemonstraÃ§Ã£o de Resultados
+              Notas Ã  Demonstração de Resultados
             </span>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
           <button onClick={() => window.print()} className="flex items-center gap-1.5 bg-[#003366] hover:bg-[#002244] text-white px-4 py-1.5 text-xs font-black uppercase tracking-wider shadow transition-all">
-            <Printer size={14} /> Imprimir RelatÃ³rio
+            <Printer size={14} /> Imprimir Relatório
           </button>
           <div className="flex items-center bg-emerald-50 border border-emerald-300 px-2.5 py-1 rounded-full text-emerald-800 font-black text-xs shadow-sm ml-2">
             <RefreshCw size={12} className="mr-1.5 cursor-pointer hover:rotate-180 transition-transform" onClick={fetchData} />
@@ -324,12 +324,12 @@ export const NotasContasModule: React.FC<NotasContasModuleProps> = ({
             </table>
           </div>
 
-          {/* Nota 23 - PrestaÃ§Ã£o de ServiÃ§os */}
+          {/* Nota 23 - Prestação de Serviços */}
           <div className="space-y-2">
             <h3 className="text-xs font-black text-blue-950 uppercase border-b border-blue-900 pb-1 italic">
-              Nota 23 - PrestaÃ§Ã£o de ServiÃ§os
+              Nota 23 - Prestação de Serviços
             </h3>
-            <div className="text-[10px] font-bold text-zinc-700 italic">NOTAS 23.1 â€” ComposiÃ§Ã£o das prestaÃ§Ãµes de serviÃ§o por mercados</div>
+            <div className="text-[10px] font-bold text-zinc-700 italic">NOTAS 23.1 â€” ComposiÃ§Ã£o das prestações de serviço por mercados</div>
             <table className="w-full border-collapse border border-zinc-400 text-[10px]">
               <thead>
                 <tr className="bg-zinc-100 text-left border-b border-zinc-400 font-bold">
@@ -374,7 +374,7 @@ export const NotasContasModule: React.FC<NotasContasModuleProps> = ({
               </thead>
               <tbody>
                 <tr>
-                  <td className="border-r border-zinc-300 px-2 py-0.5">ServiÃ§os complementares</td>
+                  <td className="border-r border-zinc-300 px-2 py-0.5">Serviços complementares</td>
                   <td className="border-r border-zinc-300 px-2 py-0.5 text-right font-mono">0,00</td>
                   <td className="px-2 py-0.5 text-right font-mono text-zinc-500">0,00</td>
                 </tr>
@@ -392,10 +392,10 @@ export const NotasContasModule: React.FC<NotasContasModuleProps> = ({
             </table>
           </div>
 
-          {/* Nota 25 - VariaÃ§Ã£o nos produtos acabados */}
+          {/* Nota 25 - Variação nos produtos acabados */}
           <div className="space-y-2">
             <h3 className="text-xs font-black text-blue-950 uppercase border-b border-blue-900 pb-1 italic">
-              Nota 25 â€“ VariaÃ§Ã£o nos produtos acabados e em vias de fabrico
+              Nota 25 â€“ Variação nos produtos acabados e em vias de fabrico
             </h3>
             <table className="w-full border-collapse border border-zinc-400 text-[10px]">
               <thead>
@@ -404,7 +404,7 @@ export const NotasContasModule: React.FC<NotasContasModuleProps> = ({
                   <th className="border-r border-zinc-400 px-2 py-1 text-right w-24">ExistÃªncias Iniciais</th>
                   <th className="border-r border-zinc-400 px-2 py-1 text-right w-24">Ofertas e perdas</th>
                   <th className="border-r border-zinc-400 px-2 py-1 text-right w-24">ExistÃªncias finais</th>
-                  <th className="px-2 py-1 text-right w-24 font-mono">VariaÃ§Ã£o no ano</th>
+                  <th className="px-2 py-1 text-right w-24 font-mono">Variação no ano</th>
                 </tr>
               </thead>
               <tbody>
@@ -504,7 +504,7 @@ export const NotasContasModule: React.FC<NotasContasModuleProps> = ({
               </thead>
               <tbody>
                 <tr>
-                  <td className="border-r border-zinc-300 px-2 py-0.5">RemuneraÃ§Ãµes dos corpos sociais e pessoal</td>
+                  <td className="border-r border-zinc-300 px-2 py-0.5">Remunerações dos corpos sociais e pessoal</td>
                   <td className="border-r border-zinc-300 px-2 py-0.5 text-right font-mono font-bold">{fmt(curr.remuneracoes)}</td>
                   <td className="px-2 py-0.5 text-right font-mono text-zinc-500">{fmt(prev.remuneracoes)}</td>
                 </tr>
@@ -522,10 +522,10 @@ export const NotasContasModule: React.FC<NotasContasModuleProps> = ({
             </table>
           </div>
 
-          {/* Nota 29 - AmortizaÃ§Ãµes */}
+          {/* Nota 29 - Amortizações */}
           <div className="space-y-2">
             <h3 className="text-xs font-black text-blue-950 uppercase border-b border-blue-900 pb-1 italic">
-              Nota 29 â€“ AmortizaÃ§Ãµes
+              Nota 29 â€“ Amortizações
             </h3>
             <table className="w-full border-collapse border border-zinc-400 text-[10px]">
               <thead>
@@ -537,12 +537,12 @@ export const NotasContasModule: React.FC<NotasContasModuleProps> = ({
               </thead>
               <tbody>
                 <tr>
-                  <td className="border-r border-zinc-300 px-2 py-0.5">ImobilizaÃ§Ãµes corpÃ³reas (Nota 4)</td>
+                  <td className="border-r border-zinc-300 px-2 py-0.5">Imobilizações corpÃ³reas (Nota 4)</td>
                   <td className="border-r border-zinc-300 px-2 py-0.5 text-right font-mono font-bold">{fmt(curr.amortCorporeas)}</td>
                   <td className="px-2 py-0.5 text-right font-mono text-zinc-500">{fmt(prev.amortCorporeas)}</td>
                 </tr>
                 <tr>
-                  <td className="border-r border-zinc-300 px-2 py-0.5">ImobilizaÃ§Ãµes incorpÃ³reas (Nota 5)</td>
+                  <td className="border-r border-zinc-300 px-2 py-0.5">Imobilizações incorpÃ³reas (Nota 5)</td>
                   <td className="border-r border-zinc-300 px-2 py-0.5 text-right font-mono font-bold">{fmt(curr.amortIncorporeas)}</td>
                   <td className="px-2 py-0.5 text-right font-mono text-zinc-500">{fmt(prev.amortIncorporeas)}</td>
                 </tr>
@@ -570,12 +570,12 @@ export const NotasContasModule: React.FC<NotasContasModuleProps> = ({
               </thead>
               <tbody>
                 <tr>
-                  <td className="border-r border-zinc-300 px-2 py-0.5">Fornecimentos e serviÃ§os de terceiros</td>
+                  <td className="border-r border-zinc-300 px-2 py-0.5">Fornecimentos e serviços de terceiros</td>
                   <td className="border-r border-zinc-300 px-2 py-0.5 text-right font-mono font-bold">{fmt(curr.fse)}</td>
                   <td className="px-2 py-0.5 text-right font-mono text-zinc-500">{fmt(prev.fse)}</td>
                 </tr>
                 <tr>
-                  <td className="border-r border-zinc-300 px-2 py-0.5">ConservaÃ§Ã£o e reparaÃ§Ã£o</td>
+                  <td className="border-r border-zinc-300 px-2 py-0.5">Conservação e reparação</td>
                   <td className="border-r border-zinc-300 px-2 py-0.5 text-right font-mono">{fmt(curr.conservacao)}</td>
                   <td className="px-2 py-0.5 text-right font-mono text-zinc-500">{fmt(prev.conservacao)}</td>
                 </tr>
@@ -684,10 +684,10 @@ export const NotasContasModule: React.FC<NotasContasModuleProps> = ({
         <div className="bg-white border border-zinc-300 shadow-md p-8 print:p-0 print:border-none print:shadow-none space-y-6">
           <PageHeader />
 
-          {/* Nota 33 - Resultados NÃ£o Operacionais */}
+          {/* Nota 33 - Resultados Não Operacionais */}
           <div className="space-y-2">
             <h3 className="text-xs font-black text-blue-950 uppercase border-b border-blue-900 pb-1 italic">
-              Nota 33 â€“ Resultados nÃ£o operacionais
+              Nota 33 â€“ Resultados não operacionais
             </h3>
             <table className="w-full border-collapse border border-zinc-400 text-[10px]">
               <thead>
@@ -699,12 +699,12 @@ export const NotasContasModule: React.FC<NotasContasModuleProps> = ({
               </thead>
               <tbody>
                 <tr>
-                  <td className="border-r border-zinc-300 px-2 py-0.5">Proveitos e ganhos nÃ£o operacionais</td>
+                  <td className="border-r border-zinc-300 px-2 py-0.5">Proveitos e ganhos não operacionais</td>
                   <td className="border-r border-zinc-300 px-2 py-0.5 text-right font-mono">{fmt(curr.proveitosNaoOp)}</td>
                   <td className="px-2 py-0.5 text-right font-mono text-zinc-500">{fmt(prev.proveitosNaoOp)}</td>
                 </tr>
                 <tr>
-                  <td className="border-r border-zinc-300 px-2 py-0.5">Custos e perdas nÃ£o operacionais</td>
+                  <td className="border-r border-zinc-300 px-2 py-0.5">Custos e perdas não operacionais</td>
                   <td className="border-r border-zinc-300 px-2 py-0.5 text-right font-mono">{fmt(curr.custosNaoOp)}</td>
                   <td className="px-2 py-0.5 text-right font-mono text-zinc-500">{fmt(prev.custosNaoOp)}</td>
                 </tr>
@@ -755,7 +755,7 @@ export const NotasContasModule: React.FC<NotasContasModuleProps> = ({
           {/* Nota 35 - Imposto sobre o Rendimento */}
           <div className="space-y-2">
             <h3 className="text-xs font-black text-blue-950 uppercase border-b border-blue-900 pb-1 italic">
-              Nota 35 â€“ Imposto sobre o rendimento (ReconciliaÃ§Ã£o Fiscal)
+              Nota 35 â€“ Imposto sobre o rendimento (Reconciliação Fiscal)
             </h3>
             <table className="w-full border-collapse border border-zinc-400 text-[10px]">
               <thead>
@@ -767,7 +767,7 @@ export const NotasContasModule: React.FC<NotasContasModuleProps> = ({
               </thead>
               <tbody>
                 <tr className="bg-blue-50/40 font-bold">
-                  <td className="border-r border-zinc-300 px-2 py-1">Resultado ContabilÃ­stico</td>
+                  <td className="border-r border-zinc-300 px-2 py-1">Resultado Contabilistico</td>
                   <td className="border-r border-zinc-300 px-2 py-1 text-right font-mono text-blue-950">{fmt(curr.resultadoContabilistico)}</td>
                   <td className="px-2 py-1 text-right font-mono text-zinc-600">{fmt(prev.resultadoContabilistico)}</td>
                 </tr>
@@ -777,17 +777,17 @@ export const NotasContasModule: React.FC<NotasContasModuleProps> = ({
                   <td className="px-2 py-0.5 text-right font-mono text-zinc-500">0,00</td>
                 </tr>
                 <tr>
-                  <td className="border-r border-zinc-300 px-4 py-0.5">A somar: VariaÃ§Ãµes patrimoniais positivas</td>
+                  <td className="border-r border-zinc-300 px-4 py-0.5">A somar: Variações patrimoniais positivas</td>
                   <td className="border-r border-zinc-300 px-2 py-0.5 text-right font-mono">0,00</td>
                   <td className="px-2 py-0.5 text-right font-mono text-zinc-500">0,00</td>
                 </tr>
                 <tr>
-                  <td className="border-r border-zinc-300 px-4 py-0.5">Custos e perdas nÃ£o aceites para efeitos fiscais</td>
+                  <td className="border-r border-zinc-300 px-4 py-0.5">Custos e perdas não aceites para efeitos fiscais</td>
                   <td className="border-r border-zinc-300 px-2 py-0.5 text-right font-mono">0,00</td>
                   <td className="px-2 py-0.5 text-right font-mono text-zinc-500">0,00</td>
                 </tr>
                 <tr>
-                  <td className="border-r border-zinc-300 px-4 py-0.5">A deduzir: VariaÃ§Ãµes patrimoniais negativas / BenefÃ­cios</td>
+                  <td className="border-r border-zinc-300 px-4 py-0.5">A deduzir: Variações patrimoniais negativas / Benefícios</td>
                   <td className="border-r border-zinc-300 px-2 py-0.5 text-right font-mono">0,00</td>
                   <td className="px-2 py-0.5 text-right font-mono text-zinc-500">0,00</td>
                 </tr>

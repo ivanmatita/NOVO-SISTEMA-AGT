@@ -247,10 +247,10 @@ export const StockSalesReport: React.FC<StockSalesReportProps> = ({
 
   return (
     <div className="bg-[#f0f2f5] min-h-screen p-4 font-sans text-zinc-800 select-none print:p-0 print:bg-white">
-      {/* Top Header: RelatÃ³rio de Vendas */}
+      {/* Top Header: Relatório de Vendas */}
       <div className="text-center mb-3">
         <h1 className="text-sm md:text-base font-bold italic tracking-wide text-zinc-800">
-          RelatÃ³rio de Vendas
+          Relatório de Vendas
         </h1>
       </div>
 
@@ -274,7 +274,7 @@ export const StockSalesReport: React.FC<StockSalesReportProps> = ({
               <button onClick={() => { setSelectedDocType('FR'); setShowDocTypeMenu(false); }} className="text-left px-2 py-1 hover:bg-zinc-100">Fatura-Recibo (FR)</button>
               <button onClick={() => { setSelectedDocType('FT'); setShowDocTypeMenu(false); }} className="text-left px-2 py-1 hover:bg-zinc-100">Fatura (FT)</button>
               <button onClick={() => { setSelectedDocType('VD'); setShowDocTypeMenu(false); }} className="text-left px-2 py-1 hover:bg-zinc-100">Venda a Dinheiro (VD)</button>
-              <button onClick={() => { setSelectedDocType('NC'); setShowDocTypeMenu(false); }} className="text-left px-2 py-1 hover:bg-zinc-100">Nota de CrÃ©dito (NC)</button>
+              <button onClick={() => { setSelectedDocType('NC'); setShowDocTypeMenu(false); }} className="text-left px-2 py-1 hover:bg-zinc-100">Nota de Crédito (NC)</button>
             </div>
           )}
         </div>
@@ -343,7 +343,7 @@ export const StockSalesReport: React.FC<StockSalesReportProps> = ({
         <button
           onClick={() => window.print()}
           className="w-10 h-10 rounded-full bg-gradient-to-b from-[#b7e4a8] via-[#52b788] to-[#2d6a4f] shadow-[0_4px_6px_rgba(0,0,0,0.25),inset_0_1px_2px_rgba(255,255,255,0.8)] border border-[#2d6a4f] flex items-center justify-center text-[#1b4332] hover:brightness-110 active:scale-95 transition-all cursor-pointer"
-          title="Imprimir RelatÃ³rio"
+          title="Imprimir Relatório"
         >
           <Printer size={18} className="stroke-[2.5]" />
         </button>
@@ -422,7 +422,7 @@ export const StockSalesReport: React.FC<StockSalesReportProps> = ({
                 <thead>
                   <tr className="border-b border-zinc-800 text-left font-bold text-zinc-800">
                     <th className="py-1 w-20">CÃ³digo</th>
-                    <th className="py-1">DescriÃ§Ã£o</th>
+                    <th className="py-1">Descrição</th>
                     <th className="py-1 text-right w-24">Quantidade</th>
                     <th className="py-1 text-right w-28">PreÃ§o UnitÃ¡rio</th>
                   </tr>
@@ -466,7 +466,7 @@ export const StockSalesReport: React.FC<StockSalesReportProps> = ({
             <thead>
               <tr className="border-b border-zinc-800 text-left font-bold text-zinc-800">
                 <th className="py-1 w-28">CÃ³digo Produto</th>
-                <th className="py-1">DescriÃ§Ã£o</th>
+                <th className="py-1">Descrição</th>
                 <th className="py-1 text-right w-24">Quantidade</th>
                 <th className="py-1 text-center w-16">unid</th>
                 <th className="py-1 text-right w-28">PreÃ§o UnitÃ¡rio</th>
@@ -511,7 +511,7 @@ export const StockSalesReport: React.FC<StockSalesReportProps> = ({
             <thead>
               <tr className="border-b border-zinc-800 text-left font-bold text-zinc-800">
                 <th className="py-1 w-28">CÃ³digo</th>
-                <th className="py-1">DescriÃ§Ã£o</th>
+                <th className="py-1">Descrição</th>
                 <th className="py-1 text-right w-24">Quantidade</th>
                 <th className="py-1 text-center w-16">unid</th>
                 <th className="py-1 text-right w-28">PreÃ§o UnitÃ¡rio</th>
@@ -561,7 +561,7 @@ export const StockSalesReport: React.FC<StockSalesReportProps> = ({
                   <th className="py-1.5 px-2 w-20">RefÂª Interna</th>
                   <th className="py-1.5 px-2">Empresa</th>
                   <th className="py-1.5 px-2 w-28">Documento</th>
-                  <th className="py-1.5 px-2">DescriÃ§Ã£o</th>
+                  <th className="py-1.5 px-2">Descrição</th>
                   <th className="py-1.5 px-2 text-center w-16">Entrada</th>
                   <th className="py-1.5 px-2 text-center w-16">Saida</th>
                   <th className="py-1.5 px-2 text-center w-12">unit</th>

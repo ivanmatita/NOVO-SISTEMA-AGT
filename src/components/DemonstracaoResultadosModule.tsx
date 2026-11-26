@@ -1,6 +1,6 @@
 ﻿/**
  * DemonstracaoResultadosModule.tsx
- * DemonstraÃ§Ã£o de Resultados por Natureza - Layout Oficial IMATEC Software / PGC Angolano
+ * Demonstração de Resultados por Natureza - Layout Oficial IMATEC Software / PGC Angolano
  * Conforme referÃªncia visual media_1789594592508.png
  */
 
@@ -48,7 +48,7 @@ export const DemonstracaoResultadosModule: React.FC<DemonstracaoResultadosModule
       const yearNum = Number(selectedYear);
       const prevYearNum = Number(prevYear);
 
-      // 1. Carregar lanÃ§amentos contabilÃ­sticos do ano corrente e ano anterior
+      // 1. Carregar lanÃ§amentos contabilisticos do ano corrente e ano anterior
       const [currRes, prevRes] = await Promise.all([
         supabase
           .from('lancamentos_contabeis')
@@ -78,7 +78,7 @@ export const DemonstracaoResultadosModule: React.FC<DemonstracaoResultadosModule
     fetchData();
   }, [fetchData]);
 
-  // Helper de cÃ¡lculo de saldo por prefixos de conta PGC
+  // Helper de cálculo de saldo por prefixos de conta PGC
   const getCreditSum = (data: any[], prefixes: string[]) => {
     return data
       .filter(l => prefixes.some(p => (l.conta_pgc || '').startsWith(p)))
@@ -101,11 +101,11 @@ export const DemonstracaoResultadosModule: React.FC<DemonstracaoResultadosModule
       }, 0);
   };
 
-  // CÃ¡lculo das Rubricas da DemonstraÃ§Ã£o de Resultados
+  // Cálculo das Rubricas da Demonstração de Resultados
   const calculateMetrics = (data: any[]) => {
     // 1. Vendas (Nota 22) - Contas 61
     const vendas = Math.max(0, getCreditSum(data, ['61']));
-    // 2. PrestaÃ§Ã£o de ServiÃ§os (Nota 23) - Contas 62
+    // 2. Prestação de Serviços (Nota 23) - Contas 62
     const prestacaoServicos = Math.max(0, getCreditSum(data, ['62']));
     // 3. Outros proveitos operacionais (Nota 24) - Contas 63, 64
     const outrosProveitos = Math.max(0, getCreditSum(data, ['63', '64']));
@@ -113,7 +113,7 @@ export const DemonstracaoResultadosModule: React.FC<DemonstracaoResultadosModule
     // Total Proveitos Operacionais Brutos
     const totalProveitosOperacionais = vendas + prestacaoServicos + outrosProveitos;
 
-    // 4. VariaÃ§Ãµes nos produtos acabados (Nota 25) - Conta 66
+    // 4. Variações nos produtos acabados (Nota 25) - Conta 66
     const variacaoProdutos = getCreditSum(data, ['66']);
     // 5. Trabalhos para a prÃ³pria empresa (Nota 26) - Conta 65
     const trabalhosPropriaEmpresa = Math.max(0, getCreditSum(data, ['65']));
@@ -121,7 +121,7 @@ export const DemonstracaoResultadosModule: React.FC<DemonstracaoResultadosModule
     const custoExistencias = Math.max(0, getDebitSum(data, ['71']));
     // 7. Custos com o pessoal (Nota 28) - Conta 72
     const custosPessoal = Math.max(0, getDebitSum(data, ['72']));
-    // 8. AmortizaÃ§Ãµes (Nota 29) - Conta 73
+    // 8. Amortizações (Nota 29) - Conta 73
     const amortizacoes = Math.max(0, getDebitSum(data, ['73']));
     // 9. Outros custos e perdas operacionais (Nota 30) - Conta 75
     const outrosCustosOperacionais = Math.max(0, getDebitSum(data, ['75']));
@@ -140,7 +140,7 @@ export const DemonstracaoResultadosModule: React.FC<DemonstracaoResultadosModule
     // 11. Resultados de filiais e associadas (Nota 32)
     const resultadosFiliais = getCreditSum(data, ['67']) - getDebitSum(data, ['77']);
 
-    // 12. Resultados nÃ£o operacionais (Nota 33) - Proveitos 69 vs Custos 79
+    // 12. Resultados não operacionais (Nota 33) - Proveitos 69 vs Custos 79
     const proveitosNaoOp = Math.max(0, getCreditSum(data, ['69']));
     const custosNaoOp = Math.max(0, getDebitSum(data, ['79']));
     const resultadosNaoOperacionais = proveitosNaoOp - custosNaoOp;
@@ -199,26 +199,26 @@ export const DemonstracaoResultadosModule: React.FC<DemonstracaoResultadosModule
 
   const exportExcel = () => {
     const rows = [
-      ['DemonstraÃ§Ã£o de Resultados por Natureza', '', '', ''],
+      ['Demonstração de Resultados por Natureza', '', '', ''],
       ['Empresa:', companyName, 'NIF:', companyNif],
       ['PerÃ­odo:', 'Janeiro a Dezembro', 'ExercÃ­cios:', `${selectedYear} vs ${prevYear}`],
       [''],
-      ['DesignaÃ§Ã£o', 'Notas', selectedYear, prevYear],
+      ['Designação', 'Notas', selectedYear, prevYear],
       ['Vendas', '22', currMetrics.vendas.toFixed(2), prevMetrics.vendas.toFixed(2)],
-      ['PrestaÃ§Ã£o de ServiÃ§os', '23', currMetrics.prestacaoServicos.toFixed(2), prevMetrics.prestacaoServicos.toFixed(2)],
+      ['Prestação de Serviços', '23', currMetrics.prestacaoServicos.toFixed(2), prevMetrics.prestacaoServicos.toFixed(2)],
       ['Outros proveitos operacionais', '24', currMetrics.outrosProveitos.toFixed(2), prevMetrics.outrosProveitos.toFixed(2)],
       ['Total Proveitos Operacionais', '', currMetrics.totalProveitosOperacionais.toFixed(2), prevMetrics.totalProveitosOperacionais.toFixed(2)],
-      ['VariaÃ§Ãµes nos produtos acabados e produtos em vias de fabrico', '25', currMetrics.variacaoProdutos.toFixed(2), prevMetrics.variacaoProdutos.toFixed(2)],
+      ['Variações nos produtos acabados e produtos em vias de fabrico', '25', currMetrics.variacaoProdutos.toFixed(2), prevMetrics.variacaoProdutos.toFixed(2)],
       ['Trabalhos para a prÃ³pria empresa', '26', currMetrics.trabalhosPropriaEmpresa.toFixed(2), prevMetrics.trabalhosPropriaEmpresa.toFixed(2)],
       ['Custo das mercadorias vendidas e das matÃ©rias-primas e subsidiÃ¡rias consumidas', '27', currMetrics.custoExistencias.toFixed(2), prevMetrics.custoExistencias.toFixed(2)],
       ['Custos com o pessoal', '28', currMetrics.custosPessoal.toFixed(2), prevMetrics.custosPessoal.toFixed(2)],
-      ['AmortizaÃ§Ãµes', '29', currMetrics.amortizacoes.toFixed(2), prevMetrics.amortizacoes.toFixed(2)],
+      ['Amortizações', '29', currMetrics.amortizacoes.toFixed(2), prevMetrics.amortizacoes.toFixed(2)],
       ['Outros custos e perdas operacionais', '30', currMetrics.outrosCustosOperacionais.toFixed(2), prevMetrics.outrosCustosOperacionais.toFixed(2)],
       ['Total Custos Operacionais', '', currMetrics.totalCustosOperacionais.toFixed(2), prevMetrics.totalCustosOperacionais.toFixed(2)],
       ['Resultados operacionais:', '', currMetrics.resultadosOperacionais.toFixed(2), prevMetrics.resultadosOperacionais.toFixed(2)],
       ['Resultados Financeiros', '31', currMetrics.resultadosFinanceiros.toFixed(2), prevMetrics.resultadosFinanceiros.toFixed(2)],
       ['Resultados de filiais e associadas', '32', currMetrics.resultadosFiliais.toFixed(2), prevMetrics.resultadosFiliais.toFixed(2)],
-      ['Resultados nÃ£o operacionais', '33', currMetrics.resultadosNaoOperacionais.toFixed(2), prevMetrics.resultadosNaoOperacionais.toFixed(2)],
+      ['Resultados não operacionais', '33', currMetrics.resultadosNaoOperacionais.toFixed(2), prevMetrics.resultadosNaoOperacionais.toFixed(2)],
       ['Resultados antes de impostos:', '', currMetrics.resultadosAntesImpostos.toFixed(2), prevMetrics.resultadosAntesImpostos.toFixed(2)],
       ['Imposto sobre o rendimento', '35', currMetrics.impostoRendimento.toFixed(2), prevMetrics.impostoRendimento.toFixed(2)],
       ['Resultados lÃ­quidos das actividades correntes:', '', currMetrics.resultadosLiquidosCorrentes.toFixed(2), prevMetrics.resultadosLiquidosCorrentes.toFixed(2)],
@@ -249,7 +249,7 @@ export const DemonstracaoResultadosModule: React.FC<DemonstracaoResultadosModule
           <div className="flex items-center gap-2">
             <Layers size={18} className="text-[#003366]" />
             <span className="text-xs font-black text-[#003366] uppercase tracking-wider">
-              DemonstraÃ§Ã£o de Resultados por Natureza
+              Demonstração de Resultados por Natureza
             </span>
           </div>
         </div>
@@ -264,7 +264,7 @@ export const DemonstracaoResultadosModule: React.FC<DemonstracaoResultadosModule
           <button
             onClick={handleOpenNotas}
             className="flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1 rounded-full text-xs font-black shadow transition-all group"
-            title="Ver Notas e Contas da DemonstraÃ§Ã£o de Resultados"
+            title="Ver Notas e Contas da Demonstração de Resultados"
           >
             <Eye size={14} className="group-hover:scale-110 transition-transform" />
             <span>Ver Notas e Contas</span>
@@ -285,8 +285,8 @@ export const DemonstracaoResultadosModule: React.FC<DemonstracaoResultadosModule
             <Printer size={16} />
           </button>
 
-          {/* BotÃ£o ConfiguraÃ§Ãµes */}
-          <button className="w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow" title="ConfiguraÃ§Ãµes">
+          {/* BotÃ£o Configurações */}
+          <button className="w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow" title="Configurações">
             <Settings size={16} />
           </button>
 
@@ -308,7 +308,7 @@ export const DemonstracaoResultadosModule: React.FC<DemonstracaoResultadosModule
           
           {/* Header Title Section */}
           <div className="border-b border-zinc-200 pb-2 mb-3">
-            <div className="text-xs font-bold text-zinc-500 uppercase tracking-widest">DemonstraÃ§Ã£o de Resultados (por natureza)</div>
+            <div className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Demonstração de Resultados (por natureza)</div>
             <div className="flex justify-between items-end mt-1">
               <div>
                 <h1 className="text-sm font-black text-zinc-900 uppercase">Empresa: {companyName}</h1>
@@ -321,7 +321,7 @@ export const DemonstracaoResultadosModule: React.FC<DemonstracaoResultadosModule
           </div>
 
           <div className="text-[11px] font-bold text-zinc-700 mb-2">
-            DemonstraÃ§Ã£o de resultados de Janeiro a Dezembro
+            Demonstração de resultados de Janeiro a Dezembro
           </div>
 
           {/* Official Financial Table */}
@@ -329,7 +329,7 @@ export const DemonstracaoResultadosModule: React.FC<DemonstracaoResultadosModule
             <table className="w-full border-collapse border border-zinc-400 text-xs">
               <thead>
                 <tr className="bg-zinc-100 border-b border-zinc-400 text-[10px] font-black uppercase text-zinc-800">
-                  <th rowSpan={2} className="border-r border-zinc-400 px-3 py-2 text-left">DesignaÃ§Ã£o</th>
+                  <th rowSpan={2} className="border-r border-zinc-400 px-3 py-2 text-left">Designação</th>
                   <th rowSpan={2} className="border-r border-zinc-400 px-2 py-2 text-center w-16">Notas</th>
                   <th colSpan={2} className="px-3 py-1 text-center bg-zinc-200 border-b border-zinc-400">EXERCICIOS</th>
                 </tr>
@@ -348,7 +348,7 @@ export const DemonstracaoResultadosModule: React.FC<DemonstracaoResultadosModule
                   <td className="px-3 py-1.5 text-right font-mono text-zinc-500">{fmt(prevMetrics.vendas)}</td>
                 </tr>
                 <tr className="hover:bg-blue-50/40">
-                  <td className="border-r border-zinc-300 px-3 py-1.5 font-medium text-zinc-800">PrestaÃ§Ã£o de ServiÃ§os</td>
+                  <td className="border-r border-zinc-300 px-3 py-1.5 font-medium text-zinc-800">Prestação de Serviços</td>
                   <td className="border-r border-zinc-300 px-2 py-1.5 text-center font-bold text-blue-900">23</td>
                   <td className="border-r border-zinc-300 px-3 py-1.5 text-right font-mono font-bold text-zinc-900">{fmt(currMetrics.prestacaoServicos)}</td>
                   <td className="px-3 py-1.5 text-right font-mono text-zinc-500">{fmt(prevMetrics.prestacaoServicos)}</td>
@@ -367,7 +367,7 @@ export const DemonstracaoResultadosModule: React.FC<DemonstracaoResultadosModule
 
                 {/* 2. Custos Operacionais */}
                 <tr className="hover:bg-blue-50/40">
-                  <td className="border-r border-zinc-300 px-3 py-1.5 font-medium text-zinc-800">VariaÃ§Ãµes nos produtos acabados e produtos em vias de fabrico</td>
+                  <td className="border-r border-zinc-300 px-3 py-1.5 font-medium text-zinc-800">Variações nos produtos acabados e produtos em vias de fabrico</td>
                   <td className="border-r border-zinc-300 px-2 py-1.5 text-center font-bold text-blue-900">25</td>
                   <td className="border-r border-zinc-300 px-3 py-1.5 text-right font-mono text-zinc-800">{fmt(currMetrics.variacaoProdutos)}</td>
                   <td className="px-3 py-1.5 text-right font-mono text-zinc-500">{fmt(prevMetrics.variacaoProdutos)}</td>
@@ -391,7 +391,7 @@ export const DemonstracaoResultadosModule: React.FC<DemonstracaoResultadosModule
                   <td className="px-3 py-1.5 text-right font-mono text-zinc-500">{fmt(prevMetrics.custosPessoal)}</td>
                 </tr>
                 <tr className="hover:bg-blue-50/40">
-                  <td className="border-r border-zinc-300 px-3 py-1.5 font-medium text-zinc-800">AmortizaÃ§Ãµes</td>
+                  <td className="border-r border-zinc-300 px-3 py-1.5 font-medium text-zinc-800">Amortizações</td>
                   <td className="border-r border-zinc-300 px-2 py-1.5 text-center font-bold text-blue-900">29</td>
                   <td className="border-r border-zinc-300 px-3 py-1.5 text-right font-mono text-zinc-800">{fmt(currMetrics.amortizacoes)}</td>
                   <td className="px-3 py-1.5 text-right font-mono text-zinc-500">{fmt(prevMetrics.amortizacoes)}</td>
@@ -421,7 +421,7 @@ export const DemonstracaoResultadosModule: React.FC<DemonstracaoResultadosModule
                   </td>
                 </tr>
 
-                {/* 4. Financeiros, Filiais e NÃ£o Operacionais */}
+                {/* 4. Financeiros, Filiais e Não Operacionais */}
                 <tr className="hover:bg-blue-50/40">
                   <td className="border-r border-zinc-300 px-3 py-1.5 font-medium text-zinc-800">Resultados Financeiros</td>
                   <td className="border-r border-zinc-300 px-2 py-1.5 text-center font-bold text-blue-900">31</td>
@@ -435,7 +435,7 @@ export const DemonstracaoResultadosModule: React.FC<DemonstracaoResultadosModule
                   <td className="px-3 py-1.5 text-right font-mono text-zinc-500">{fmt(prevMetrics.resultadosFiliais)}</td>
                 </tr>
                 <tr className="hover:bg-blue-50/40">
-                  <td className="border-r border-zinc-300 px-3 py-1.5 font-medium text-zinc-800">Resultados nÃ£o operacionais</td>
+                  <td className="border-r border-zinc-300 px-3 py-1.5 font-medium text-zinc-800">Resultados não operacionais</td>
                   <td className="border-r border-zinc-300 px-2 py-1.5 text-center font-bold text-blue-900">33</td>
                   <td className="border-r border-zinc-300 px-3 py-1.5 text-right font-mono">{fmt(currMetrics.resultadosNaoOperacionais)}</td>
                   <td className="px-3 py-1.5 text-right font-mono text-zinc-500">{fmt(prevMetrics.resultadosNaoOperacionais)}</td>

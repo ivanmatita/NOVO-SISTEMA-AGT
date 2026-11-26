@@ -320,13 +320,13 @@ const fetchJson = async (url: string, options?: RequestInit) => {
   } catch (err: any) {
     clearTimeout(id);
     if (err.name === 'AbortError') {
-      throw new Error(`O servidor demorou demasiado tempo a responder (${url}). Verifique a sua ligaÃ§Ã£o.`);
+      throw new Error(`O servidor demorou demasiado tempo a responder (${url}). Verifique a sua ligação.`);
     }
     throw err;
   }
 };
 
-const CATEGORIES = ['Mercadoria', 'ServiÃ§o', 'MatÃ©ria-prima', 'ConsumÃ­vel', 'Equipamento', 'Outro'];
+const CATEGORIES = ['Mercadoria', 'Serviço', 'Matéria-prima', 'ConsumÃ­vel', 'Equipamento', 'Outro'];
 const ALL_TAXES = [
   "IVA Isento Artigo 14Âº NÂº2 a) do CIVA",
   "IVA Isento Artigo 14Âº NÂº2 b) do CIVA",
@@ -336,7 +336,7 @@ const ALL_TAXES = [
   "IVA Isento Artigo 16Âº NÂº1 d) do CIVA",
   "IVA Isento Artigo 16Âº NÂº1 e) do CIVA",
   "IVA - Regime Simplificado",
-  "IVA - Regime de ExclusÃ£o",
+  "IVA - Regime de Exclusão",
   "IVA - 7%",
   "IVA 1% Reg Esp Cabinda",
   "IS Verba 22.1.1",
@@ -359,9 +359,9 @@ const ALL_TAXES = [
   "IVA Isento Artigo 15Âº 1 i) do CIVA",
   "IVA Normal 14%",
   "Despacho Instrutivo NÂº6",
-  "TransmissÃ£o NÃ£o Sujeita - SME",
-  "TransmissÃ£o NÃ£o Sujeita - SANIDADE",
-  "TransmissÃ£o NÃ£o Sujeita - CAPITANIA",
+  "Transmissão Não Sujeita - SME",
+  "Transmissão Não Sujeita - SANIDADE",
+  "Transmissão Não Sujeita - CAPITANIA",
   "IVA 2% - Reg Esp Cabinda",
   "IVA - 23%",
   "IVA - 5%",
@@ -380,9 +380,9 @@ const ALL_TAXES = [
   "IVA Isento Artigo 12Âº m)",
   "IVA Isento Artigo 12Âº n) do CIVA",
   "IVA Isento Artigo 12Âº o) do CIVA",
-  "TransmissÃ£o de bens e serviÃ§o nÃ£o sujeita",
-  "IVA - Regime transitÃ³rio",
-  "IVA - Regime de nÃ£o SujeiÃ§Ã£o"
+  "Transmissão de bens e serviço não sujeita",
+  "IVA - Regime transitório",
+  "IVA - Regime de não SujeiÃ§Ã£o"
 ];
 
 const formatCurrency = (value: number | string | null | undefined) => {
@@ -650,7 +650,7 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack, employ
       date: inv.date,
       doc_no: inv.numero_documento,
       company: inv.client_name,
-      description: `FacturaÃ§Ã£o - ${inv.document_type} ${inv.is_certified ? '(Certificada)' : '(Rascunho)'}`,
+      description: `Faturação - ${inv.document_type} ${inv.is_certified ? '(Certificada)' : '(Rascunho)'}`,
       debit: 0,
       credit: inv.total || inv.counter_value || 0,
       source: 'sale'
@@ -677,8 +677,8 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack, employ
               <BarChart3 size={24} />
             </div>
             <div>
-              <h1 className="text-2xl font-black text-[#003366] tracking-tighter uppercase">GestÃ£o do Local de Trabalho</h1>
-              <p className="text-zinc-400 text-[10px] font-bold uppercase tracking-[0.2em]">Controlo de MovimentaÃ§Ã£o e FacturaÃ§Ã£o</p>
+              <h1 className="text-2xl font-black text-[#003366] tracking-tighter uppercase">Gestão do Local de Trabalho</h1>
+              <p className="text-zinc-400 text-[10px] font-bold uppercase tracking-[0.2em]">Controlo de Movimentação e Faturação</p>
             </div>
           </div>
           <div className="space-y-1">
@@ -725,11 +725,11 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack, employ
           <p className="text-[9px] text-zinc-400 font-bold mt-1 uppercase tracking-tighter">S/ Impacto Financeiro</p>
         </div>
         <div className="p-8">
-          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">DÃ©bito (Custos)</p>
+          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Débito (Custos)</p>
           <p className="text-xl font-black text-red-600">{formatCurrency(actualDebit)}</p>
         </div>
         <div className="p-8">
-          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">CrÃ©dito</p>
+          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Crédito</p>
           <p className="text-xl font-black text-emerald-600">{formatCurrency(actualCredit)}</p>
         </div>
         <div className="p-8 bg-[#003366] text-white">
@@ -747,7 +747,7 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack, employ
             activeTab === 'finance' ? 'text-[#003366]' : 'text-zinc-400 hover:text-zinc-600'
           }`}
         >
-          MovimentaÃ§Ã£o Financeira
+          Movimentação Financeira
           {activeTab === 'finance' && <motion.div layoutId="activeTabWork" className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#003366]" />}
         </button>
         <button 
@@ -765,7 +765,7 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack, employ
             activeTab === 'stock' ? 'text-[#003366]' : 'text-zinc-400 hover:text-zinc-600'
           }`}
         >
-          Entregas / MatÃ©rias Primas
+          Entregas / Matérias Primas
           {activeTab === 'stock' && <motion.div layoutId="activeTabWork" className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#003366]" />}
         </button>
         <button 
@@ -774,7 +774,7 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack, employ
             activeTab === 'employees' ? 'text-[#003366]' : 'text-zinc-400 hover:text-zinc-600'
           }`}
         >
-          GestÃ£o de Colaboradores
+          Gestão de Colaboradores
           {activeTab === 'employees' && <motion.div layoutId="activeTabWork" className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#003366]" />}
         </button>
       </div>
@@ -784,7 +784,7 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack, employ
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-black text-[#003366] uppercase tracking-widest flex items-center gap-2">
               <div className="w-1 h-4 bg-[#003366]"></div>
-              HistÃ³rico de MovimentaÃ§Ã£o Financeira (Vendas e Despesas)
+              Histórico de Movimentação Financeira (Vendas e Despesas)
             </h3>
             <div className="flex gap-2 no-print">
               <button 
@@ -792,7 +792,7 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack, employ
                 className="flex items-center gap-2 px-4 py-2 border border-zinc-200 hover:bg-zinc-50 transition-colors text-zinc-600 text-[10px] font-bold uppercase tracking-widest"
               >
                 <Printer size={16} />
-                Imprimir RelatÃ³rio
+                Imprimir Relatório
               </button>
               <button onClick={onBack} className="px-4 py-2 bg-zinc-100 text-zinc-600 text-xs font-bold uppercase tracking-widest hover:bg-zinc-200 transition-colors">
                 Voltar
@@ -807,9 +807,9 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack, employ
                   <th className="px-6 py-4">Data</th>
                   <th className="px-6 py-4">Documento</th>
                   <th className="px-6 py-4">Entidade</th>
-                  <th className="px-6 py-4">DescriÃ§Ã£o</th>
-                  <th className="px-6 py-4 text-right">DÃ©bito</th>
-                  <th className="px-6 py-4 text-right">CrÃ©dito</th>
+                  <th className="px-6 py-4">Descrição</th>
+                  <th className="px-6 py-4 text-right">Débito</th>
+                  <th className="px-6 py-4 text-right">Crédito</th>
                   <th className="px-6 py-4 text-right bg-zinc-200/50">Saldo</th>
                 </tr>
               </thead>
@@ -828,7 +828,7 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack, employ
                 {processedMovements.length === 0 && (
                   <tr>
                     <td colSpan={7} className="px-6 py-20 text-center text-zinc-400 font-medium italic">
-                      Nenhum registo de movimentaÃ§Ã£o encontrado para este local.
+                      Nenhum registo de movimentação encontrado para este local.
                     </td>
                   </tr>
                 )}
@@ -850,7 +850,7 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack, employ
         <div className="space-y-4">
            <h3 className="text-sm font-black text-[#003366] uppercase tracking-widest flex items-center gap-2">
               <div className="w-1 h-4 bg-[#003366]"></div>
-              Movimentos de Stock no Local (Entregas e SaÃ­das)
+              Movimentos de Stock no Local (Entregas e Saídas)
             </h3>
             <div className="border border-zinc-200">
                <table className="w-full text-left border-collapse">
@@ -874,7 +874,7 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack, employ
                             m.type === 'exit' ? 'bg-red-50 text-red-600' :
                             'bg-zinc-100 text-zinc-600'
                           }`}>
-                            {m.type === 'entry' ? 'Entrada' : m.type === 'exit' ? 'SaÃ­da' : m.type}
+                            {m.type === 'entry' ? 'Entrada' : m.type === 'exit' ? 'Saída' : m.type}
                           </span>
                         </td>
                         <td className="px-6 py-4 text-right font-black">{m.quantity}</td>
@@ -927,7 +927,7 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack, employ
                     <tr className="bg-zinc-100 border-b border-zinc-200 text-[10px] font-black text-zinc-500 uppercase tracking-widest">
                        <th className="px-6 py-4 w-16">ID</th>
                        <th className="px-6 py-4">Nome Completo</th>
-                       <th className="px-6 py-4">Cargo / FunÃ§Ã£o</th>
+                       <th className="px-6 py-4">Cargo / Função</th>
                        <th className="px-6 py-4">Contacto</th>
                        <th className="px-6 py-4 text-center no-print">Estado</th>
                        <th className="px-6 py-4 text-right no-print">OpÃ§Ãµes</th>
@@ -1014,7 +1014,7 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack, employ
                       onClick={() => setMovingEmployee(null)}
                       className="w-full mt-8 py-3 text-xs font-black text-zinc-400 uppercase tracking-widest border border-zinc-200 hover:bg-zinc-50 transition-all"
                     >
-                      Cancelar OperaÃ§Ã£o
+                      Cancelar Operação
                     </button>
                   </motion.div>
                 </div>
@@ -1075,7 +1075,7 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack, employ
         </div>
         <div className="space-y-8">
           <div className="border-b border-zinc-300 pb-2"></div>
-          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">AdministraÃ§Ã£o / Contabilidade</p>
+          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Administração / Contabilidade</p>
         </div>
       </div>
       
@@ -1108,7 +1108,7 @@ const WorkSiteRegistration = ({ workSite, onBack }: { workSite: WorkSite, onBack
           <div className="bg-zinc-100 px-4 py-2 font-mono text-sm font-bold text-[#003366]">
             REF: {workSite.code}
           </div>
-          <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">Data de EmissÃ£o: {new Date().toLocaleDateString('pt-PT')}</p>
+          <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">Data de Emissão: {new Date().toLocaleDateString('pt-PT')}</p>
         </div>
       </div>
 
@@ -1117,7 +1117,7 @@ const WorkSiteRegistration = ({ workSite, onBack }: { workSite: WorkSite, onBack
         {/* Left Column - Main Info */}
         <div className="md:col-span-2 space-y-8">
           <section className="space-y-4">
-            <h3 className="text-sm font-black text-[#003366] uppercase tracking-widest border-l-4 border-[#003366] pl-3">InformaÃ§Ãµes Gerais</h3>
+            <h3 className="text-sm font-black text-[#003366] uppercase tracking-widest border-l-4 border-[#003366] pl-3">Informações Gerais</h3>
             <div className="grid grid-cols-2 gap-6 bg-zinc-50/50 p-6 border border-zinc-100">
               <div className="space-y-1">
                 <p className="text-[10px] font-bold text-zinc-400 uppercase">TÃ­tulo do Projecto</p>
@@ -1128,7 +1128,7 @@ const WorkSiteRegistration = ({ workSite, onBack }: { workSite: WorkSite, onBack
                 <p className="font-bold text-zinc-800">{workSite.client_name}</p>
               </div>
               <div className="space-y-1">
-                <p className="text-[10px] font-bold text-zinc-400 uppercase">LocalizaÃ§Ã£o / EndereÃ§o</p>
+                <p className="text-[10px] font-bold text-zinc-400 uppercase">Localização / EndereÃ§o</p>
                 <p className="font-medium text-zinc-600">{workSite.location}</p>
               </div>
               <div className="space-y-1">
@@ -1155,7 +1155,7 @@ const WorkSiteRegistration = ({ workSite, onBack }: { workSite: WorkSite, onBack
                   <Calendar size={20} />
                 </div>
                 <div>
-                  <p className="text-[10px] font-bold text-zinc-400 uppercase">PrevisÃ£o de ConclusÃ£o</p>
+                  <p className="text-[10px] font-bold text-zinc-400 uppercase">Previsão de Conclusão</p>
                   <p className="font-bold text-zinc-800">{new Date(workSite.end_date).toLocaleDateString('pt-PT')}</p>
                 </div>
               </div>
@@ -1163,9 +1163,9 @@ const WorkSiteRegistration = ({ workSite, onBack }: { workSite: WorkSite, onBack
           </section>
 
           <section className="space-y-4">
-            <h3 className="text-sm font-black text-[#003366] uppercase tracking-widest border-l-4 border-[#003366] pl-3">DescriÃ§Ã£o dos Trabalhos</h3>
+            <h3 className="text-sm font-black text-[#003366] uppercase tracking-widest border-l-4 border-[#003366] pl-3">Descrição dos Trabalhos</h3>
             <div className="bg-zinc-50/50 p-6 border border-zinc-100 min-h-[120px]">
-              <p className="text-zinc-600 text-sm leading-relaxed whitespace-pre-wrap">{workSite.description || 'Nenhuma descriÃ§Ã£o detalhada fornecida.'}</p>
+              <p className="text-zinc-600 text-sm leading-relaxed whitespace-pre-wrap">{workSite.description || 'Nenhuma descrição detalhada fornecida.'}</p>
             </div>
           </section>
         </div>
@@ -1183,7 +1183,7 @@ const WorkSiteRegistration = ({ workSite, onBack }: { workSite: WorkSite, onBack
                 </div>
               </div>
               <div className="bg-white border border-zinc-200 p-6">
-                <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">MÃ©dia DiÃ¡ria</p>
+                <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Média DiÃ¡ria</p>
                 <div className="flex items-baseline gap-2">
                   <span className="text-2xl font-black text-zinc-800">{workSite.staff_per_day}</span>
                   <span className="text-xs font-bold uppercase text-zinc-400">Pessoas/Dia</span>
@@ -1193,9 +1193,9 @@ const WorkSiteRegistration = ({ workSite, onBack }: { workSite: WorkSite, onBack
           </section>
 
           <section className="space-y-4">
-            <h3 className="text-sm font-black text-[#003366] uppercase tracking-widest border-l-4 border-[#003366] pl-3">ObservaÃ§Ãµes Adicionais</h3>
+            <h3 className="text-sm font-black text-[#003366] uppercase tracking-widest border-l-4 border-[#003366] pl-3">Observações Adicionais</h3>
             <div className="bg-amber-50/50 p-6 border border-amber-100 min-h-[150px]">
-              <p className="text-amber-900/70 text-xs leading-relaxed italic">{workSite.observations || 'Sem observaÃ§Ãµes registadas.'}</p>
+              <p className="text-amber-900/70 text-xs leading-relaxed italic">{workSite.observations || 'Sem observações registadas.'}</p>
             </div>
           </section>
         </div>
@@ -1231,12 +1231,12 @@ const WorkSiteRegistration = ({ workSite, onBack }: { workSite: WorkSite, onBack
         </div>
         <div className="space-y-8">
           <div className="border-b border-zinc-300 pb-2"></div>
-          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">AprovaÃ§Ã£o DirecÃ§Ã£o</p>
+          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Aprovação Direção</p>
         </div>
       </div>
 
       <div className="text-center pt-10">
-        <p className="text-[8px] text-zinc-300 font-bold uppercase tracking-[0.4em]">Este documento Ã© um registo oficial do sistema de gestÃ£o AGT</p>
+        <p className="text-[8px] text-zinc-300 font-bold uppercase tracking-[0.4em]">Este documento é um registo oficial do sistema de gestão AGT</p>
       </div>
     </div>
   );
@@ -1273,16 +1273,16 @@ const WorkSiteMovementForm = ({ onBack, onSuccess, movements = [] }: { onBack: (
           <input type="text" value={company} onChange={e => setCompany(e.target.value)} placeholder="Nome da empresa" className="w-full border border-zinc-300 rounded-none px-3 py-2 text-sm" />
         </div>
         <div className="space-y-1">
-          <label className="text-[10px] font-bold text-zinc-400 uppercase">DescriÃ§Ã£o</label>
-          <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="DescriÃ§Ã£o do movimento" className="w-full border border-zinc-300 rounded-none px-3 py-2 text-sm min-h-[60px]" />
+          <label className="text-[10px] font-bold text-zinc-400 uppercase">Descrição</label>
+          <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Descrição do movimento" className="w-full border border-zinc-300 rounded-none px-3 py-2 text-sm min-h-[60px]" />
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-1">
-            <label className="text-[10px] font-bold text-zinc-400 uppercase">DÃ©bito (SaÃ­da)</label>
+            <label className="text-[10px] font-bold text-zinc-400 uppercase">Débito (Saída)</label>
             <input type="number" value={debit} onChange={e => setDebit(Number(e.target.value))} className="w-full border border-zinc-300 rounded-none px-3 py-2 text-sm" />
           </div>
           <div className="space-y-1">
-            <label className="text-[10px] font-bold text-zinc-400 uppercase">CrÃ©dito (Entrada)</label>
+            <label className="text-[10px] font-bold text-zinc-400 uppercase">Crédito (Entrada)</label>
             <input type="number" value={credit} onChange={e => setCredit(Number(e.target.value))} className="w-full border border-zinc-300 rounded-none px-3 py-2 text-sm" />
           </div>
         </div>
@@ -1374,10 +1374,10 @@ const WorkSiteForm = ({ clients, onBack, onSuccess, initialData }: { clients: Cl
         </select>
       </div>
       <div className="space-y-1">
-        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Titulo da Obra/ServiÃ§o *</label>
+        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Titulo da Obra/Serviço *</label>
         <input 
           type="text" value={title} onChange={e => setTitle(e.target.value)} required
-          placeholder="Digite o tÃ­tulo da obra ou serviÃ§o"
+          placeholder="Digite o tÃ­tulo da obra ou serviço"
           className="w-full bg-zinc-50/50 border border-zinc-200 rounded-xl px-3 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-xs transition-all font-semibold"
         />
       </div>
@@ -1396,7 +1396,7 @@ const WorkSiteForm = ({ clients, onBack, onSuccess, initialData }: { clients: Cl
         />
       </div>
       <div className="space-y-1">
-        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">CÃ³digo de Obra/ServiÃ§o</label>
+        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">CÃ³digo de Obra/Serviço</label>
         <input 
           type="text" value={code} onChange={e => setCode(e.target.value)} required
           placeholder="CÃ³digo identificador da obra"
@@ -1407,7 +1407,7 @@ const WorkSiteForm = ({ clients, onBack, onSuccess, initialData }: { clients: Cl
         <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Total de Efectivos por Dia</label>
         <input 
           type="number" value={staffPerDay} onChange={e => setStaffPerDay(Number(e.target.value))} required
-          placeholder="NÃºmero de trabalhadores diÃ¡rios"
+          placeholder="Número de trabalhadores diÃ¡rios"
           className="w-full bg-zinc-50/50 border border-zinc-200 rounded-xl px-3 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-xs transition-all"
         />
       </div>
@@ -1420,7 +1420,7 @@ const WorkSiteForm = ({ clients, onBack, onSuccess, initialData }: { clients: Cl
         />
       </div>
       <div className="space-y-1">
-        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">LocalizaÃ§Ã£o da Obra/ServiÃ§o</label>
+        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Localização da Obra/Serviço</label>
         <input 
           type="text" value={location} onChange={e => setLocation(e.target.value)} required
           placeholder="EndereÃ§o ou coordenadas da obra"
@@ -1436,16 +1436,16 @@ const WorkSiteForm = ({ clients, onBack, onSuccess, initialData }: { clients: Cl
         />
       </div>
       <div className="space-y-1 md:col-span-2">
-        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">DescriÃ§Ã£o dos Trabalhos</label>
+        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Descrição dos Trabalhos</label>
         <textarea 
           rows={2}
           value={description} onChange={e => setDescription(e.target.value)} required
-          placeholder="Breve descriÃ§Ã£o dos trabalhos a realizar"
+          placeholder="Breve descrição dos trabalhos a realizar"
           className="w-full bg-zinc-50/50 border border-zinc-200 rounded-xl px-3 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-xs transition-all resize-none"
         />
       </div>
       <div className="md:col-span-2 space-y-1">
-        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">ObservaÃ§Ãµes</label>
+        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Observações</label>
         <textarea 
           rows={2}
           value={observations} onChange={e => setObservations(e.target.value)}
@@ -1613,7 +1613,7 @@ const InvoiceDetail = ({
         <table className="w-full text-left">
           <thead>
             <tr className="border-b-2 border-zinc-100 text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-              <th className="py-4">DescriÃ§Ã£o</th>
+              <th className="py-4">Descrição</th>
               <th className="py-4 text-center">Qtd</th>
               <th className="py-4 text-center">Desc.</th>
               <th className="py-4 text-right">PreÃ§o Un.</th>
@@ -1655,8 +1655,8 @@ const InvoiceDetail = ({
             <div>
               <p className="font-bold uppercase tracking-widest text-zinc-400 mb-1">Rastreabilidade Fiscal:</p>
               <p className="font-mono text-[8px] break-all bg-zinc-50 p-1 border border-zinc-100">{invoice.hash_documento || invoice.hash || '---'}</p>
-              {invoice.codigo_validacao && <p className="mt-1 font-black text-[#003366]">CÃ³d. ValidaÃ§Ã£o: {invoice.codigo_validacao}</p>}
-              <p className="mt-1">CertificaÃ§Ã£o: {invoice.is_certified ? 'CERTIFICADO' : 'PENDENTE'}</p>
+              {invoice.codigo_validacao && <p className="mt-1 font-black text-[#003366]">CÃ³d. Validação: {invoice.codigo_validacao}</p>}
+              <p className="mt-1">Certificação: {invoice.is_certified ? 'CERTIFICADO' : 'PENDENTE'}</p>
             </div>
             
             {(invoice.numero_documento_origem || invoice.rectified_document) && (
@@ -1714,7 +1714,7 @@ const InvoiceDetail = ({
               ))}
               {(invoice.vat_withholding_amount || 0) > 0 && (
                 <div className="flex justify-between text-xs text-orange-600 font-bold">
-                  <span>CativaÃ§Ã£o de IVA</span>
+                  <span>Cativação de IVA</span>
                   <span>- {formatCurrency(invoice.vat_withholding_amount)}</span>
                 </div>
               )}
@@ -1742,7 +1742,7 @@ const InvoiceDetail = ({
           </div>
         </div>
 
-        {/* SecÃ§Ã£o de CertificaÃ§Ã£o AGT no Documento Aberto */}
+        {/* SecÃ§Ã£o de Certificação AGT no Documento Aberto */}
         <div className="pt-6 border-t border-zinc-100 mt-8 relative z-10">
           <div className="bg-zinc-50 p-6 border border-zinc-200">
             <p className="text-[10px] font-black text-zinc-800 tracking-widest uppercase mb-4 text-center border-b border-zinc-200 pb-2">
@@ -1751,7 +1751,7 @@ const InvoiceDetail = ({
             
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 text-xs font-mono text-zinc-650 my-4">
               <div className="space-y-1 bg-white p-3 border border-zinc-100">
-                <span className="text-[9px] font-black text-zinc-400 uppercase tracking-wider block">NÃºmero Documento</span>
+                <span className="text-[9px] font-black text-zinc-400 uppercase tracking-wider block">Número Documento</span>
                 <span className="font-bold text-[#003366] block">{invoice.invoice_number || invoice.numero_documento}</span>
               </div>
               <div className="space-y-1 bg-white p-3 border border-zinc-100">
@@ -1775,7 +1775,7 @@ const InvoiceDetail = ({
                 <strong>âœ“ Processamento:</strong> Processado por programa validado nÂº 101/AGT/2026 - Gesforma.
               </p>
               <p>
-                <strong>âœ“ Encadeamento:</strong> Imutabilidade fiscal garantida por algoritmo de encadeamento criptogrÃ¡fico SHA-256 da sÃ©rie fiscal <span className="font-mono text-zinc-700 font-bold">{invoice.serie || 'S1'}</span>.
+                <strong>âœ“ Encadeamento:</strong> Imutabilidade fiscal garantida por algoritmo de encadeamento criptogrÃ¡fico SHA-256 da série fiscal <span className="font-mono text-zinc-700 font-bold">{invoice.serie || 'S1'}</span>.
               </p>
               {(invoice.hash || invoice.hash_documento || invoice.hash_fiscal) && (
                 <div className="mt-2 p-2 bg-white border border-zinc-100 font-mono text-[8.5px] break-all select-all">
@@ -1784,7 +1784,7 @@ const InvoiceDetail = ({
               )}
               {invoice.is_certified && invoice.certified_at && (
                 <p className="text-[8px] text-zinc-400 font-mono">
-                  Data de CertificaÃ§Ã£o: {new Date(invoice.certified_at).toLocaleString('pt-AO')}
+                  Data de Certificação: {new Date(invoice.certified_at).toLocaleString('pt-AO')}
                 </p>
               )}
             </div>
@@ -1878,7 +1878,7 @@ const ClientAccount = ({ client, documents, onBack }: {
   const saldoAtual = initialBalance + totalDebito - totalCredito;
 
   const handleExportXLSX = () => {
-    const headers = ['Data', 'Documento', 'URN', 'Doc NÂº', 'DescriÃ§Ã£o', 'CrÃ©dito', 'DÃ©bito', 'Saldo'];
+    const headers = ['Data', 'Documento', 'URN', 'Doc NÂº', 'Descrição', 'Crédito', 'Débito', 'Saldo'];
     let runningSaldo = initialBalance;
     const rows = filteredMovements.map(m => {
       runningSaldo += (m.debito - m.credito);
@@ -1922,7 +1922,7 @@ const ClientAccount = ({ client, documents, onBack }: {
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4 text-[10px]">
               <div>
-                <p className="font-bold text-zinc-400 uppercase">Data de EmissÃ£o</p>
+                <p className="font-bold text-zinc-400 uppercase">Data de Emissão</p>
                 <p className="text-zinc-800">{new Date().toLocaleString()}</p>
               </div>
               <div>
@@ -1976,9 +1976,9 @@ const ClientAccount = ({ client, documents, onBack }: {
                 <th className="px-4 py-3">File Interno<br/>File Cliente</th>
                 <th className="px-4 py-3">URN<br/>EndService</th>
                 <th className="px-4 py-3">Doc NÂº<br/>OriginatingOn</th>
-                <th className="px-4 py-3">DescriÃ§Ã£o<br/>Doc. Suporte</th>
-                <th className="px-4 py-3 text-right">CrÃ©dito</th>
-                <th className="px-4 py-3 text-right">DÃ©bito</th>
+                <th className="px-4 py-3">Descrição<br/>Doc. Suporte</th>
+                <th className="px-4 py-3 text-right">Crédito</th>
+                <th className="px-4 py-3 text-right">Débito</th>
                 <th className="px-4 py-3 text-right">Saldo</th>
               </tr>
             </thead>
@@ -2059,7 +2059,7 @@ const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: {
   const [telefone, setTelefone] = useState('');
   const [webpage, setWebpage] = useState('');
   const [tipo_cliente, setTipoCliente] = useState('normal');
-  const [estado_nif, setEstadoNif] = useState('nÃ£o encontrado');
+  const [estado_nif, setEstadoNif] = useState('não encontrado');
   const [saldo_inicial, setSaldoInicial] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -2072,11 +2072,11 @@ const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || name.trim() === '') {
-      alert('Por favor, preencha o campo Nome do Cliente. Ã‰ um campo obrigatÃ³rio.');
+      alert('Por favor, preencha o campo Nome do Cliente. Ã‰ um campo obrigatório.');
       return;
     }
     if (!nif || nif.trim() === '') {
-      alert('Por favor, preencha o campo NIF/Contribuinte. Ã‰ um campo obrigatÃ³rio.');
+      alert('Por favor, preencha o campo NIF/Contribuinte. Ã‰ um campo obrigatório.');
       return;
     }
     if (nif && nif.trim() !== '') {
@@ -2085,7 +2085,7 @@ const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: {
         String(c.id) !== String(selectedClient?.id)
       );
       if (isDuplicateNif) {
-        alert('AtenÃ§Ã£o: JÃ¡ existe um cliente registado com este NIF. NÃ£o sÃ£o permitidos NIFs duplicados.');
+        alert('AtenÃ§Ã£o: JÃ¡ existe um cliente registado com este NIF. Não são permitidos NIFs duplicados.');
         return;
       }
     }
@@ -2095,18 +2095,18 @@ const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: {
         String(c.id) !== String(selectedClient?.id)
       );
       if (isDuplicateName) {
-        alert('AtenÃ§Ã£o: JÃ¡ existe um cliente registado com este mesmo Nome. NÃ£o sÃ£o permitidos registos duplicados.');
+        alert('AtenÃ§Ã£o: JÃ¡ existe um cliente registado com este mesmo Nome. Não são permitidos registos duplicados.');
         return;
       }
     }
     
     if (nif && !validateAngolaNIF(nif)) {
-      alert('O NIF inserido Ã© invÃ¡lido segundo as regras da AGT Angola. Deve conter 10 dÃ­gitos e comeÃ§ar com 1, 2, 3, 4 ou 5.');
+      alert('O NIF inserido é invÃ¡lido segundo as regras da AGT Angola. Deve conter 10 dÃ­gitos e começar com 1, 2, 3, 4 ou 5.');
       return;
     }
 
     if (!user?.empresa_id) {
-       alert('SessÃ£o expirada. Por favor, faÃ§a login novamente.');
+       alert('Sessão expirada. Por favor, faça login novamente.');
        return;
     }
 
@@ -2147,15 +2147,15 @@ const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: {
     }
   };
 
-  // â›” EliminaÃ§Ã£o fÃ­sica de clientes BLOQUEADA por conformidade fiscal.
+  // â›” Eliminação fÃ­sica de clientes BLOQUEADA por conformidade fiscal.
   // Para desativar um cliente, usar updateCliente com { activo: false }.
   const handleDelete = (_id: number | string) => {
-    alert('A eliminaÃ§Ã£o de clientes estÃ¡ desativada por conformidade fiscal e integridade de dados.\n\nPara desativar este cliente, edite o registo e altere o estado para "Inactivo".');
+    alert('A eliminação de clientes estÃ¡ desativada por conformidade fiscal e integridade de dados.\n\nPara desativar este cliente, edite o registo e altere o estado para "Inactivo".');
   };
 
   const resetForm = () => {
     setSelectedClient(null);
-    setName(''); setEmail(''); setNif(''); setMorada(''); setLocalidade(''); setCodigoPostal(''); setProvincia(''); setMunicipio(''); setPais(''); setTelefone(''); setWebpage(''); setTipoCliente('normal'); setEstadoNif('nÃ£o encontrado'); setSaldoInicial(0);
+    setName(''); setEmail(''); setNif(''); setMorada(''); setLocalidade(''); setCodigoPostal(''); setProvincia(''); setMunicipio(''); setPais(''); setTelefone(''); setWebpage(''); setTipoCliente('normal'); setEstadoNif('não encontrado'); setSaldoInicial(0);
   };
 
   const handleEdit = (client: Client) => {
@@ -2172,7 +2172,7 @@ const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: {
     setTelefone(client.telefone || '');
     setWebpage(client.webpage || '');
     setTipoCliente(client.tipo_cliente || 'normal');
-    setEstadoNif(client.estado_nif || 'nÃ£o encontrado');
+    setEstadoNif(client.estado_nif || 'não encontrado');
     setSaldoInicial(client.saldo_inicial || 0);
     setShowForm(true);
     setShowOptionsModal(null);
@@ -2203,7 +2203,7 @@ const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: {
             <Users size={24} />
           </div>
           <div>
-            <h2 className="text-2xl font-bold text-[#003366] tracking-tight">GestÃ£o de Clientes</h2>
+            <h2 className="text-2xl font-bold text-[#003366] tracking-tight">Gestão de Clientes</h2>
             <p className="text-zinc-400 text-xs font-medium uppercase tracking-widest">Registo e consulta de contas correntes</p>
           </div>
         </div>
@@ -2511,7 +2511,7 @@ const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: {
               <th className="px-6 py-4">Nome</th>
               <th className="px-6 py-4">Localidade</th>
               <th className="px-6 py-4">Telefone</th>
-              <th className="px-6 py-4 text-right">AÃ§Ãµes</th>
+              <th className="px-6 py-4 text-right">Ações</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-100">
@@ -2638,7 +2638,7 @@ const WorkplaceModule = ({
         String(w.id) !== String(editingWorkplace?.id)
       );
       if (isDuplicateSite) {
-        alert('AtenÃ§Ã£o: JÃ¡ existe um local de trabalho registado com o mesmo Nome ou CÃ³digo. NÃ£o sÃ£o permitidos registos duplicados.');
+        alert('AtenÃ§Ã£o: JÃ¡ existe um local de trabalho registado com o mesmo Nome ou CÃ³digo. Não são permitidos registos duplicados.');
         return;
       }
     }
@@ -2698,7 +2698,7 @@ const WorkplaceModule = ({
             <MapPin size={24} className="text-[#003366]" />
             Locais de Trabalho
           </h2>
-          <p className="text-zinc-500 text-sm">GestÃ£o de obras e locais de prestaÃ§Ã£o de serviÃ§os da empresa.</p>
+          <p className="text-zinc-500 text-sm">Gestão de obras e locais de prestação de serviços da empresa.</p>
         </div>
         <button 
           onClick={() => { setEditingWorkplace(null); setShowForm(true); }}
@@ -2713,10 +2713,10 @@ const WorkplaceModule = ({
           <thead>
             <tr className="bg-[#003366] text-white text-[11px] uppercase tracking-wider font-bold">
               <th className="px-6 py-4">CÃ³digo</th>
-              <th className="px-6 py-4">Nome / DesignaÃ§Ã£o</th>
-              <th className="px-6 py-4">LocalizaÃ§Ã£o</th>
+              <th className="px-6 py-4">Nome / Designação</th>
+              <th className="px-6 py-4">Localização</th>
               <th className="px-6 py-4">Cliente Associado</th>
-              <th className="px-6 py-4 text-right">AÃ§Ãµes</th>
+              <th className="px-6 py-4 text-right">Ações</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-100">
@@ -2733,7 +2733,7 @@ const WorkplaceModule = ({
                     onClick={() => setSelectedWorkplace(w)}
                     className="bg-zinc-50 text-[#003366] px-3 py-1 text-[10px] font-black uppercase tracking-widest border border-zinc-200 hover:bg-zinc-100 transition-all mr-2"
                   >
-                    Ver RelatÃ³rio
+                    Ver Relatório
                   </button>
                   <button 
                     onClick={() => handleEditClick(w)}
@@ -2794,11 +2794,11 @@ const WorkplaceModule = ({
                   <input type="text" value={code} onChange={e => setCode(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50/50 hover:bg-white rounded-none px-3 py-2 text-xs focus:outline-none focus:border-[#003366] focus:bg-white transition-all" placeholder="Ex: OBRA-001" />
                 </div>
                 <div className="space-y-1 sm:col-span-2">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">TÃ­tulo da Obra / ServiÃ§o (Nome) *</label>
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">TÃ­tulo da Obra / Serviço (Nome) *</label>
                   <input type="text" required value={name} onChange={e => setName(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50/50 hover:bg-white rounded-none px-3 py-2 text-xs focus:outline-none focus:border-[#003366] focus:bg-white transition-all font-semibold" placeholder="Ex: EdifÃ­cio Kilamba" />
                 </div>
                 <div className="space-y-1 sm:col-span-2">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">LocalizaÃ§Ã£o</label>
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Localização</label>
                   <input type="text" value={location} onChange={e => setLocation(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50/50 hover:bg-white rounded-none px-3 py-2 text-xs focus:outline-none focus:border-[#003366] focus:bg-white transition-all" placeholder="Ex: Luanda, Talatona" />
                 </div>
                 <div className="space-y-1">
@@ -2822,18 +2822,18 @@ const WorkplaceModule = ({
                   <input type="text" value={contact} onChange={e => setContact(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50/50 hover:bg-white rounded-none px-3 py-2 text-xs focus:outline-none focus:border-[#003366] focus:bg-white transition-all" placeholder="Telefone ou nome do encarregado" />
                 </div>
                 <div className="col-span-1 sm:col-span-2 space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">DescriÃ§Ã£o</label>
-                  <input type="text" value={description} onChange={e => setDescription(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50/50 hover:bg-white rounded-none px-3 py-2 text-xs focus:outline-none focus:border-[#003366] focus:bg-white transition-all" placeholder="Breve descriÃ§Ã£o dos trabalhos" />
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Descrição</label>
+                  <input type="text" value={description} onChange={e => setDescription(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50/50 hover:bg-white rounded-none px-3 py-2 text-xs focus:outline-none focus:border-[#003366] focus:bg-white transition-all" placeholder="Breve descrição dos trabalhos" />
                 </div>
                 <div className="col-span-1 sm:col-span-2 space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">ObservaÃ§Ãµes</label>
-                  <textarea rows={2} value={observations} onChange={e => setObservations(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50/50 hover:bg-white rounded-none px-3 py-2 text-xs focus:outline-none focus:border-[#003366] focus:bg-white transition-all resize-none" placeholder="ObservaÃ§Ãµes adicionais..." />
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Observações</label>
+                  <textarea rows={2} value={observations} onChange={e => setObservations(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50/50 hover:bg-white rounded-none px-3 py-2 text-xs focus:outline-none focus:border-[#003366] focus:bg-white transition-all resize-none" placeholder="Observações adicionais..." />
                 </div>
               </div>
               <div className="flex justify-end gap-2.5 mt-4 border-t border-zinc-100 pt-3">
                 <button type="button" onClick={() => { setShowForm(false); setEditingWorkplace(null); }} className="px-5 py-2 font-bold text-xs tracking-wider bg-zinc-100 text-zinc-600 hover:bg-zinc-200 rounded-none uppercase transition-all">Cancelar</button>
                 <button type="submit" className="bg-[#003366] text-white font-bold py-2 px-6 uppercase text-xs tracking-wider hover:bg-[#002244] rounded-none shadow-xs transition-all">
-                  {editingWorkplace ? 'Salvar AlteraÃ§Ãµes' : 'Registar Local'}
+                  {editingWorkplace ? 'Salvar Alterações' : 'Registar Local'}
                 </button>
               </div>
             </form>
@@ -2852,25 +2852,25 @@ const PERMISSION_EQUIVALENTS: Record<string, string[]> = {
   secretary: ['secretary', 'secretaria', 'secretaria beta', 'secretaria_beta'],
   pos: ['pos', 'ponto_venda', 'ponto de venda'],
   contracts: ['contracts', 'contratos'],
-  electronic_invoices: ['electronic_invoices', 'faturacao_electronica', 'faturaÃ§Ã£o electrÃ³nica', 'faturaÃ§Ã£o eletrÃ³nica', 'faturacao electronica'],
-  security: ['security', 'seguranca', 'seguranÃ§a', 'seguranÃ§a gestÃ£o privada', 'seguranÃ§a gestÃ£o', 'seguranca gestao privada'],
-  specialized: ['specialized', 'gestao_especializada', 'gestÃ£o especializada'],
+  electronic_invoices: ['electronic_invoices', 'faturacao_electronica', 'faturação electrÃ³nica', 'faturação eletrÃ³nica', 'faturacao electronica'],
+  security: ['security', 'seguranca', 'segurança', 'segurança gestão privada', 'segurança gestão', 'seguranca gestao privada'],
+  specialized: ['specialized', 'gestao_especializada', 'gestão especializada'],
   archive: ['archive', 'arquivo'],
-  cartas: ['cartas', 'gestao_de_cartas', 'gestÃ£o de cartas', 'cartas_emitidas', 'cartas emitidas', 'gestao cartas'],
+  cartas: ['cartas', 'gestao_de_cartas', 'gestão de cartas', 'cartas_emitidas', 'cartas emitidas', 'gestao cartas'],
   invoices: ['invoices', 'vendas'],
   drafts: ['drafts', 'rascunhos', 'rascunhos (drafts)', 'rascunhos drafts'],
   suppliers: ['suppliers', 'compras'],
   products: ['products', 'produtos', 'stocks', 'inventÃ¡rio', 'stocks & inventÃ¡rio', 'inventario'],
-  financial: ['financial', 'financas', 'finanÃ§as'],
+  financial: ['financial', 'financas', 'finanças'],
   accounting: ['accounting', 'contabilidade'],
   hr: ['hr', 'rh', 'recursos_humanos', 'recursos humanos'],
-  reports: ['reports', 'relatorios', 'relatÃ³rios'],
-  licencas: ['licencas', 'licenÃ§as', 'gestao_licencas', 'gestÃ£o de licenÃ§as', 'gestao licencas'],
+  reports: ['reports', 'relatorios', 'relatórios'],
+  licencas: ['licencas', 'licenças', 'gestao_licencas', 'gestão de licenças', 'gestao licencas'],
   empresa: ['empresa', 'documento_da_empresa', 'documento da empresa', 'dados_empresa', 'dados da empresa'],
   agrobusiness: ['agrobusiness', 'agronegocio', 'agronegÃ³cio'],
-  church: ['church', 'igreja', 'gestao_de_igreja', 'gestÃ£o de igreja'],
+  church: ['church', 'igreja', 'gestao_de_igreja', 'gestão de igreja'],
   stand_automovel: ['stand_automovel', 'stand', 'stand automÃ³vel', 'stand automovel', 'veiculos'],
-  farmacia: ['farmacia', 'farmÃ¡cia', 'gestao_farmacia', 'gestÃ£o de farmÃ¡cia', 'medicamentos'],
+  farmacia: ['farmacia', 'farmácia', 'gestao_farmacia', 'gestão de farmácia', 'medicamentos'],
   settings: ['settings', 'definicoes', 'definiÃ§Ãµes']
 };
 
@@ -2964,7 +2964,7 @@ const isImatecAuthorizedAdmin = (user: any, companyData?: any): boolean => {
   return hasAdminRole;
 };
 const hasModulePermission = (user: any, moduleId: string): boolean => {
-  // Mini Site pÃºblico e Dashboard sempre acessÃ­veis
+  // Mini Site público e Dashboard sempre acessÃ­veis
   if (moduleId === 'dashboard' || moduleId === 'mini_site' || moduleId === 'stand_automovel' || moduleId === 'farmacia') return true;
 
   // Super Administrador do Sistema (Master Global)
@@ -2975,7 +2975,7 @@ const hasModulePermission = (user: any, moduleId: string): boolean => {
     user?.is_super_admin === true;
   if (isSuperAdminGlobal) return true;
 
-  // crm_empresas: em staging, qualquer admin pode aceder; em produÃ§Ã£o, apenas super-admin (tratado na sidebar)
+  // crm_empresas: em staging, qualquer admin pode aceder; em produção, apenas super-admin (tratado na sidebar)
   if (moduleId === 'crm_empresas') {
     if (isStagingEnvironment()) {
       const isAdminUser = user?.is_admin === true || user?.role === 'admin' ||
@@ -2991,10 +2991,10 @@ const hasModulePermission = (user: any, moduleId: string): boolean => {
   let parsedList: string[] | null = null;
   if (Array.isArray(rawPermissions)) {
     const filtered = rawPermissions.map((p: any) => String(p).trim().toLowerCase()).filter(s => s.length > 0);
-    // REGRA DE OURO: Se o array tem permissÃµes selecionadas, elas sÃ£o o filtro estrito.
-    // Se o array estÃ¡ explicitamente vazio e o utilizador Ã© admin de empresa (sem restriÃ§Ãµes especÃ­ficas definidas),
+    // REGRA DE OURO: Se o array tem permissÃµes selecionadas, elas são o filtro estrito.
+    // Se o array estÃ¡ explicitamente vazio e o utilizador é admin de empresa (sem restriÃ§Ãµes especÃ­ficas definidas),
     // concede acesso total como fallback (null = sem restriÃ§Ãµes).
-    // Mas para utilizadores normais (role !== admin), array vazio = 0 mÃ³dulos permitidos.
+    // Mas para utilizadores normais (role !== admin), array vazio = 0 módulos permitidos.
     const isAdminFallback = user?.is_admin === true || user?.role === 'admin' ||
                             user?.role === 'admin_empresa' || user?.role === 'proprietario' ||
                             (user?.level !== undefined && Number(user.level) >= 10);
@@ -3018,8 +3018,8 @@ const hasModulePermission = (user: any, moduleId: string): boolean => {
     }
   }
 
-  // REGRA SUPREMA: Se o utilizador possui Ã¡reas de permissÃ£o configuradas no banco,
-  // elas sÃ£o a autoridade absoluta, MESMO QUE o utilizador tenha cargo de administrador.
+  // REGRA SUPREMA: Se o utilizador possui áreas de permissão configuradas no banco,
+  // elas são a autoridade absoluta, MESMO QUE o utilizador tenha cargo de administrador.
   if (parsedList !== null) {
     if (parsedList.length === 0) return false;
     const possibleKeys = (PERMISSION_EQUIVALENTS[moduleId] || [moduleId]).map((k: string) => k.trim().toLowerCase());
@@ -3035,39 +3035,39 @@ const hasModulePermission = (user: any, moduleId: string): boolean => {
                         (user?.level !== undefined && Number(user.level) >= 10);
   if (isCompanyAdmin) return true;
 
-  // Sem permissÃµes atribuÃ­das e nÃ£o Ã© admin -> negar acesso
+  // Sem permissÃµes atribuÃ­das e não é admin -> negar acesso
   return false;
 };
 
 const SIDEBAR_MENU_ITEMS = [
   { id: 'dashboard', label: 'Painel de Bordo', icon: LayoutDashboard },
   { id: 'crm_empresas', label: 'CRM EMPRESAS', icon: ShieldAlert, badge: 'SUPER ADM' },
-  { id: 'crm_negocio', label: 'GestÃ£o CRM NegÃ³cio', icon: Briefcase, badge: 'ðŸš€ NOVO' },
+  { id: 'crm_negocio', label: 'Gestão CRM Negócio', icon: Briefcase, badge: 'ðŸš€ NOVO' },
   { id: 'clients', label: 'Clientes', icon: Users },
   { id: 'workplaces', label: 'Locais de Trabalho', icon: Briefcase },
   { id: 'secretary', label: 'Secretaria Beta', icon: Paperclip },
   { id: 'pos', label: 'Ponto de Venda', icon: Monitor, hasChevron: true },
   { id: 'contracts', label: 'Contratos', icon: FileText },
-  { id: 'electronic_invoices', label: 'FaturaÃ§Ã£o ElectrÃ³nica', icon: FileCheck },
-  { id: 'security', label: 'SeguranÃ§a GestÃ£o privada', icon: ShieldCheck },
-  { id: 'specialized', label: 'GestÃ£o Especializada', icon: Briefcase, hasChevron: true },
+  { id: 'electronic_invoices', label: 'Faturação ElectrÃ³nica', icon: FileCheck },
+  { id: 'security', label: 'Segurança Gestão privada', icon: ShieldCheck },
+  { id: 'specialized', label: 'Gestão Especializada', icon: Briefcase, hasChevron: true },
   { id: 'archive', label: 'Arquivo', icon: Archive },
-  { id: 'cartas', label: 'GestÃ£o de Cartas', icon: Mail },
+  { id: 'cartas', label: 'Gestão de Cartas', icon: Mail },
   { id: 'invoices', label: 'Vendas', icon: FileText, hasChevron: true },
   { id: 'drafts', label: 'Rascunhos (Drafts)', icon: FileSignature },
   { id: 'suppliers', label: 'Compras', icon: ShoppingBag, hasChevron: true },
   { id: 'products', label: 'Stocks & InventÃ¡rio', icon: Package, hasChevron: true },
-    { id: 'gestao_financeira', label: 'GestÃ£o Financeira', icon: Coins, badge: 'ðŸ“Š NOVO' },
-  { id: 'financial', label: 'FinanÃ§as', icon: CreditCard, hasChevron: true },
+    { id: 'gestao_financeira', label: 'Gestão Financeira', icon: Coins, badge: 'ðŸ“Š NOVO' },
+  { id: 'financial', label: 'Finanças', icon: CreditCard, hasChevron: true },
   { id: 'accounting', label: 'Contabilidade', icon: Calculator, hasChevron: true },
   { id: 'hr', label: 'Recursos Humanos', icon: Users, hasChevron: true },
-  { id: 'reports', label: 'RelatÃ³rios', icon: FileSpreadsheet, hasChevron: true },
-  { id: 'licencas', label: 'LicenÃ§as', icon: Key },
+  { id: 'reports', label: 'Relatórios', icon: FileSpreadsheet, hasChevron: true },
+  { id: 'licencas', label: 'Licenças', icon: Key },
   { id: 'empresa', label: 'Documento da Empresa', icon: Building2 },
   { id: 'agrobusiness', label: 'AgronegÃ³cio', icon: TrendingUp },
-  { id: 'church', label: 'GestÃ£o de Igreja', icon: Building2 }, 
+  { id: 'church', label: 'Gestão de Igreja', icon: Building2 }, 
   { id: 'stand_automovel', label: 'Stand AutomÃ³vel', icon: Car, badge: 'ðŸš— NOVO' },
-  { id: 'farmacia', label: 'FarmÃ¡cia', icon: Pill, badge: 'ðŸ’Š NOVO' },
+  { id: 'farmacia', label: 'Farmácia', icon: Pill, badge: 'ðŸ’Š NOVO' },
   { id: 'mini_site', label: 'Mini Site Oficial', icon: Globe, badge: 'ðŸŸ§ NOVO' },
   { id: 'settings', label: 'DefiniÃ§Ãµes', icon: Settings },
 ];
@@ -3291,7 +3291,7 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
                     </span>
                     {companyData?.plano && (
                       <span className="text-[9px] text-zinc-400 font-bold uppercase">
-                        â€¢ {companyData.plano}
+                        • {companyData.plano}
                       </span>
                     )}
                   </>
@@ -3399,7 +3399,7 @@ const Dashboard = ({
   const salesData = Object.keys(salesByPeriod).map(date => ({ date, value: salesByPeriod[date] }));
 
   const profitVsExpenses = [
-    { name: 'FaturaÃ§Ã£o', value: totalInvoiced },
+    { name: 'Faturação', value: totalInvoiced },
     { name: 'Despesas', value: totalExpenses },
   ];
 
@@ -3416,12 +3416,12 @@ const Dashboard = ({
     <div className="space-y-8">
       <header>
         <h2 className="text-2xl font-bold text-[#003366] tracking-tight">Painel Executivo</h2>
-        <p className="text-zinc-500 text-sm">VisÃ£o geral do desempenho financeiro e operacional.</p>
+        <p className="text-zinc-500 text-sm">Visão geral do desempenho financeiro e operacional.</p>
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {[
-          { label: 'FaturaÃ§Ã£o Total', value: totalInvoiced, type: 'currency' },
+          { label: 'Faturação Total', value: totalInvoiced, type: 'currency' },
           { label: 'Saldo em Caixa', value: cashBalance, type: 'currency', color: true },
           { label: 'Faturas Pendentes', value: pendingCount, type: 'number', color: pendingCount > 0 },
           { label: 'Clientes Ativos', value: clientCount, type: 'number' },
@@ -3439,7 +3439,7 @@ const Dashboard = ({
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <div className="bg-white border border-zinc-200 p-6 rounded-none shadow-sm">
-          <h3 className="font-bold text-[#003366] mb-6">FaturaÃ§Ã£o por PerÃ­odo</h3>
+          <h3 className="font-bold text-[#003366] mb-6">Faturação por PerÃ­odo</h3>
           <div className="h-[400px] w-full min-h-[400px]">
             <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={400}>
               <LineChart data={salesData}>
@@ -3454,7 +3454,7 @@ const Dashboard = ({
         </div>
 
         <div className="bg-white border border-zinc-200 p-6 rounded-none shadow-sm">
-          <h3 className="font-bold text-[#003366] mb-6">FaturaÃ§Ã£o vs Despesas</h3>
+          <h3 className="font-bold text-[#003366] mb-6">Faturação vs Despesas</h3>
           <div className="h-[400px] w-full min-h-[400px]">
             <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={400}>
               <BarChart data={profitVsExpenses}>
@@ -3501,7 +3501,7 @@ const Dashboard = ({
                   </div>
                   <div>
                     <p className="text-zinc-800 font-bold text-sm">{inv.client_name}</p>
-                    <p className="text-zinc-400 text-[10px] font-medium">{inv.invoice_number} â€¢ {new Date(inv.date).toLocaleDateString('pt-PT')}</p>
+                    <p className="text-zinc-400 text-[10px] font-medium">{inv.invoice_number} • {new Date(inv.date).toLocaleDateString('pt-PT')}</p>
                   </div>
                 </div>
                 <div className="text-right">
@@ -3521,34 +3521,34 @@ const Dashboard = ({
 const INSS_PROFESSIONS = [
   "Administrador de Empresas", "Advogado", "Agente de Viagens", "Agricultor", "Ajudante de Cozinha", "Almoxarife", 
   "Analista de Sistemas", "Arquitecto", "Arquivista", "Assistente Administrativo", "Assistente Social", "Auditor", 
-  "Auxiliar de Enfermagem", "Auxiliar de EscritÃ³rio", "Auxiliar de Limpeza", "Auxiliar de ManutenÃ§Ã£o", "BancÃ¡rio", 
+  "Auxiliar de Enfermagem", "Auxiliar de Escritório", "Auxiliar de Limpeza", "Auxiliar de Manutenção", "BancÃ¡rio", 
   "Barbeiro", "BibliotecÃ¡rio", "BiÃ³logo", "Bombeiro", "Caixa", "Canalizador", "Carpinteiro", "Chef de Cozinha", 
   "Cobrador", "Comercial", "Contabilista", "Copeiro", "Costureira", "Cozinheiro", "Desenhador", "Digitador", 
-  "Director Comercial", "Director de Recursos Humanos", "Director Financeiro", "Director Geral", "Director TÃ©cnico", 
-  "Economista", "Electricista de Auto", "Electricista de InstalaÃ§Ãµes", "Empregada DomÃ©stica", "Enfermeiro Geral", 
+  "Director Comercial", "Director de Recursos Humanos", "Director Financeiro", "Director Geral", "Director Técnico", 
+  "Economista", "Electricista de Auto", "Electricista de Instalações", "Empregada Doméstica", "Enfermeiro Geral", 
   "Enfermeiro Especialista", "Engenheiro Civil", "Engenheiro de Minas", "Engenheiro de PetrÃ³leos", 
-  "Engenheiro de TelecomunicaÃ§Ãµes", "Engenheiro ElectrotÃ©cnico", "Engenheiro InformÃ¡tico", "Engenheiro MecÃ¢nico", 
-  "Engenheiro QuÃ­mico", "EscriturÃ¡rio", "EstatÃ­stico", "FarmacÃªutico", "Fiel de ArmazÃ©m", "Fisioterapeuta", 
+  "Engenheiro de Telecomunicações", "Engenheiro Electrotécnico", "Engenheiro InformÃ¡tico", "Engenheiro MecÃ¢nico", 
+  "Engenheiro QuÃ­mico", "EscriturÃ¡rio", "EstatÃ­stico", "FarmacÃªutico", "Fiel de Armazém", "Fisioterapeuta", 
   "FotÃ³grafo", "GeÃ³logo", "Gerente de Loja", "Gestor de Projectos", "Guarda-Nocturno", "InformÃ¡tico", "Inspector", 
   "Instrumentista", "Jardineiro", "Jornalista", "Juiz", "Laborante", "MecÃ¢nico de Auto", "MecÃ¢nico de Pesados", 
-  "MÃ©dico Especialista", "MÃ©dico Geral", "Mensageiro", "Mestre de Obras", "Montador", "Motorista de Ligeiros", 
+  "Médico Especialista", "Médico Geral", "Mensageiro", "Mestre de Obras", "Montador", "Motorista de Ligeiros", 
   "Motorista de Pesados", "Nutricionista", "Oficial Administrativo", "Operador de Caixa", "Operador de Computadores", 
   "Operador de MÃ¡quinas", "Padeiro", "Pastelheiro", "Pedreiro", "Pintor", "Porteiro", "Professor do Ensino PrimÃ¡rio", 
   "Professor do Ensino SecundÃ¡rio", "Professor UniversitÃ¡rio", "PsicÃ³logo", "Recepcionista", "Redactor", "Reparador", 
-  "SecretÃ¡ria Executiva", "SecretÃ¡ria de DirecÃ§Ã£o", "Serralheiro", "Servente", "SociÃ³logo", "Soldador", 
-  "TÃ©cnico de Contabilidade", "TÃ©cnico de DiagnÃ³stico", "TÃ©cnico de InformÃ¡tica", "TÃ©cnico de LaboratÃ³rio", 
-  "TÃ©cnico de Marketing", "TÃ©cnico de Recursos Humanos", "TÃ©cnico de Seguros", "TÃ©cnico de Som", "TÃ©cnico de Vendas", 
+  "SecretÃ¡ria Executiva", "SecretÃ¡ria de Direção", "Serralheiro", "Servente", "SociÃ³logo", "Soldador", 
+  "Técnico de Contabilidade", "Técnico de DiagnÃ³stico", "Técnico de InformÃ¡tica", "Técnico de Laboratório", 
+  "Técnico de Marketing", "Técnico de Recursos Humanos", "Técnico de Seguros", "Técnico de Som", "Técnico de Vendas", 
   "Tesoureiro", "TopÃ³grafo", "Traductor", "Vendedor", "VeterinÃ¡rio", "Vigilante", "Zelador"
 ];
 
 const PROVINCIAS_ANGOLA = [
-  'Bengo', 'Benguela', 'BiÃ©', 'Cabinda', 'Cuando Cubango', 'Cuanza Norte', 
+  'Bengo', 'Benguela', 'Bié', 'Cabinda', 'Cuando Cubango', 'Cuanza Norte', 
   'Cuanza Sul', 'Cunene', 'Huambo', 'HuÃ­la', 'Luanda', 'Lunda Norte', 
   'Lunda Sul', 'Malanje', 'Moxico', 'Namibe', 'UÃ­ge', 'Zaire'
 ];
 
 const MUNICIPADOS_ANGOLA: Record<string, string[]> = {
-  'Luanda': ['Luanda', 'Belas', 'Talatona', 'Viana', 'Cacuaco', 'Cazenga', 'QuiÃ§ama', 'Icolo e Bengo'],
+  'Luanda': ['Luanda', 'Belas', 'Talatona', 'Viana', 'Cacuaco', 'Cazenga', 'Quiçama', 'Icolo e Bengo'],
   'Benguela': ['Benguela', 'Lobito', 'Catumbela', 'BaÃ­a Farta', 'Bocoio', 'Balombo', 'Caimbambo', 'ChongorÃ³i', 'Ganda', 'Cubal'],
   'Huambo': ['Huambo', 'CaÃ¡la', 'Eculica', 'Bailundo', 'Catchiungo', 'Londuimbale', 'Longonjo', 'Mungo', 'Tchicala-Tcholoanga', 'Tchindjenje', 'Ucuma'],
   'HuÃ­la': ['Lubango', 'Chibia', 'Caconda', 'Caluquembe', 'Chiange', 'Chicomba', 'Chipindo', 'Gambos', 'Humpata', 'Jamba', 'Kuvango', 'Matala', 'Quilengues', 'Quipungo'],
@@ -3573,7 +3573,7 @@ const ReadmitModal = ({ show, onClose, target, data, onChange, onSubmit }: {
       >
         <div className="bg-emerald-600 text-white p-6 flex justify-between items-center">
           <h3 className="font-black uppercase tracking-widest flex items-center gap-2">
-            <UserCheck size={20} /> FormuÃ¡rio de ReadmissÃ£o
+            <UserCheck size={20} /> FormuÃ¡rio de Readmissão
           </h3>
           <button onClick={onClose} className="hover:bg-white/10 p-2">
             <X size={20} className="text-white" />
@@ -3582,7 +3582,7 @@ const ReadmitModal = ({ show, onClose, target, data, onChange, onSubmit }: {
         <form onSubmit={onSubmit} className="p-8 space-y-6">
           <div className="grid grid-cols-2 gap-6">
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Data de ReadmissÃ£o</label>
+              <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Data de Readmissão</label>
               <input 
                 type="date" 
                 required
@@ -3603,7 +3603,7 @@ const ReadmitModal = ({ show, onClose, target, data, onChange, onSubmit }: {
             </div>
           </div>
           <div className="space-y-2">
-            <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Motivo da ReadmissÃ£o</label>
+            <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Motivo da Readmissão</label>
             <input 
               type="text" 
               required
@@ -3613,10 +3613,10 @@ const ReadmitModal = ({ show, onClose, target, data, onChange, onSubmit }: {
             />
           </div>
           <div className="space-y-2">
-            <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">ObservaÃ§Ãµes</label>
+            <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Observações</label>
             <textarea 
               className="w-full border border-zinc-200 p-3 text-sm focus:outline-none focus:border-emerald-600 h-24 resize-none font-sans"
-              placeholder="Notas adicionais sobre a readmissÃ£o..."
+              placeholder="Notas adicionais sobre a readmissão..."
               value={data.observations}
               onChange={e => onChange({...data, observations: e.target.value})}
             />
@@ -3674,7 +3674,7 @@ const OrdemTransferencia = ({ employee, hasReceipts, processedReceipts, companyN
   if (!hasReceipts && !employee) {
     return (
       <div className="p-12 text-center text-zinc-400 font-bold uppercase tracking-widest bg-zinc-50 border border-zinc-200">
-        Nenhum salÃ¡rio processado ainda. Processe os salÃ¡rios na pÃ¡gina anterior para gerar a lista de ordens de transferÃªncia bancÃ¡ria!
+        Nenhum salário processado ainda. Processe os salários na página anterior para gerar a lista de ordens de transferÃªncia bancÃ¡ria!
       </div>
     );
   }
@@ -3691,7 +3691,7 @@ const OrdemTransferencia = ({ employee, hasReceipts, processedReceipts, companyN
               {hasReceipts ? 'Ordem Colectiva de TransferÃªncias' : 'Ordem de TransferÃªncia'}
             </h2>
             <p className="text-xs text-white/60 uppercase tracking-widest font-bold">
-              {hasReceipts ? `Processamento de Vencimentos â€¢ ${selectedMonth}` : 'Pagamento de Vencimentos'}
+              {hasReceipts ? `Processamento de Vencimentos • ${selectedMonth}` : 'Pagamento de Vencimentos'}
             </p>
           </div>
         </div>
@@ -3751,7 +3751,7 @@ const OrdemTransferencia = ({ employee, hasReceipts, processedReceipts, companyN
                     <th className="px-3 py-3 border-r border-zinc-200 text-left">Banco DestinatÃ¡rio</th>
                     <th className="px-3 py-3 border-r border-zinc-200 text-left font-mono">IBAN / Conta</th>
                     <th className="px-3 py-3 text-right border-r border-zinc-200">Montante LÃ­quido</th>
-                    <th className="px-3 py-3 text-center no-print">AÃ§Ãµes</th>
+                    <th className="px-3 py-3 text-center no-print">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-200">
@@ -3895,7 +3895,7 @@ const HRModule = ({
   const [readmitTarget, setReadmitTarget] = useState<Employee | null>(null);
   const [readmitData, setReadmitData] = useState({
     date: new Date().toISOString().split('T')[0],
-    reason: 'Fim do perÃ­odo de suspensÃ£o / RecontrataÃ§Ã£o',
+    reason: 'Fim do perÃ­odo de suspensão / Recontratação',
     orderedBy: '',
     observations: ''
   });
@@ -4150,7 +4150,7 @@ const HRModule = ({
   const [birthDate, setBirthDate] = useState('');
   const [gender, setGender] = useState('Masculino');
   const [maritalStatus, setMaritalStatus] = useState('Solteiro(a)');
-  const [academicLevel, setAcademicLevel] = useState('Ensino MÃ©dio');
+  const [academicLevel, setAcademicLevel] = useState('Ensino Médio');
   const [department, setDepartment] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
@@ -4306,11 +4306,11 @@ const HRModule = ({
       (emp.profession_name || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
       (emp.department || '').toLowerCase().includes((searchTerm || '').toLowerCase());
     
-    // Na lista geral de funcionÃ¡rios, mostramos todos, mas com indicaÃ§Ã£o visual para os demitidos
+    // Na lista geral de funcionÃ¡rios, mostramos todos, mas com indicação visual para os demitidos
     return searchMatch;
   }) : [];
 
-  // FuncionÃ¡rios ativos para processamentos (SalÃ¡rio, Assiduidade)
+  // FuncionÃ¡rios ativos para processamentos (Salário, Assiduidade)
   const activeEmployees = Array.isArray(localEmployees) ? localEmployees.filter(emp => emp.status !== 'dismissed') : [];
 
   useEffect(() => {
@@ -4394,7 +4394,7 @@ const HRModule = ({
   const fetchHRData = async () => {
     const targetEmpresaId = companyData?.id || user?.empresa_id;
     if (!targetEmpresaId) {
-      console.warn('[HRModule] fetchHRData: empresa_id nÃ£o identificado no contexto');
+      console.warn('[HRModule] fetchHRData: empresa_id não identificado no contexto');
       return;
     }
 
@@ -4544,7 +4544,7 @@ const HRModule = ({
   };
 
   const handleDeleteProfession = async (id: any) => {
-    if (!confirm('Tem a certeza que deseja eliminar esta profissÃ£o?')) return;
+    if (!confirm('Tem a certeza que deseja eliminar esta profissão?')) return;
     try {
       if (user?.empresa_id) {
         await professionService.deleteProfession(user.empresa_id, String(id));
@@ -4592,7 +4592,7 @@ const HRModule = ({
     setBirthDate(emp.birth_date || '');
     setGender(emp.gender || 'Masculino');
     setMaritalStatus(emp.marital_status || 'Solteiro(a)');
-    setAcademicLevel(emp.academic_level || 'Ensino MÃ©dio');
+    setAcademicLevel(emp.academic_level || 'Ensino Médio');
     setDepartment(emp.department || '');
     setContractType(emp.contract_type || 'efetivo');
     setDependents(String(emp.dependents || 0));
@@ -4734,7 +4734,7 @@ const HRModule = ({
           throw new Error(supaErr?.message || 'Erro ao salvar colaborador no banco de dados Supabase');
         }
       } else {
-        throw new Error('Sua sessÃ£o expirou ou empresa nÃ£o associada. NÃ£o foi possÃ­vel salvar o colaborador.');
+        throw new Error('Sua sessão expirou ou empresa não associada. Não foi possível salvar o colaborador.');
       }
 
       // 2. Save locally as fallback/dual sync (only if ID is numeric or when creating, to avoid local server backend parse crash on UUID)
@@ -4747,7 +4747,7 @@ const HRModule = ({
             body: JSON.stringify(payload)
           });
           if (!response.ok) {
-            console.warn('[Sync] Banco local de sincronizaÃ§Ã£o nÃ£o respondeu com OK, continuando.');
+            console.warn('[Sync] Banco local de sincronização não respondeu com OK, continuando.');
           }
         } catch (localErr) {
           console.warn('[Sync] Falha ao sincronizar banco local:', localErr);
@@ -4758,7 +4758,7 @@ const HRModule = ({
       setNif(''); setBi(''); setAddress(''); setIban(''); setBankName(''); 
       setImageUrl(''); setBirthDate(''); setGender('Masculino'); 
       setHiredAt(new Date().toISOString().split('T')[0]);
-      setMaritalStatus('Solteiro(a)'); setAcademicLevel('Ensino MÃ©dio'); 
+      setMaritalStatus('Solteiro(a)'); setAcademicLevel('Ensino Médio'); 
       setDepartment(''); setPhone(''); setEmail('');
       setBankAccount(''); setInssNumber('');
       setContractType('efetivo'); setDependents('0');
@@ -4812,7 +4812,7 @@ const HRModule = ({
         body: JSON.stringify(payload)
       });
       if (res.ok) {
-        alert(`SalÃ¡rio de ${emp.name} processado com sucesso!`);
+        alert(`Salário de ${emp.name} processado com sucesso!`);
       }
     } catch (err) {
       console.error('Error processing payroll:', err);
@@ -4820,32 +4820,32 @@ const HRModule = ({
   };
 
   const tabs = [
-    { id: 'dashboard', label: 'DASHBOARD', icon: <LayoutDashboard size={14} />, description: 'VisÃ£o geral dos recursos humanos' },
-    { id: 'attendance_map', label: 'ASSIDUIDADE', icon: <Clock size={14} />, description: 'Controle de presenÃ§as e faltas' },
-    { id: 'professions', label: 'PROFISSÃ•ES', icon: <Briefcase size={14} />, description: 'GestÃ£o de cargos e salÃ¡rios base' },
+    { id: 'dashboard', label: 'DASHBOARD', icon: <LayoutDashboard size={14} />, description: 'Visão geral dos recursos humanos' },
+    { id: 'attendance_map', label: 'ASSIDUIDADE', icon: <Clock size={14} />, description: 'Controle de presenças e faltas' },
+    { id: 'professions', label: 'PROFISSÃ•ES', icon: <Briefcase size={14} />, description: 'Gestão de cargos e salários base' },
     { id: 'list', label: 'COLABORADORES', icon: <Users size={14} />, description: 'Listagem e cadastro de pessoal' },
     { id: 'active_employees', label: 'TRABALHADORES ATIVOS', icon: <Users size={14} />, description: 'Lista de trabalhadores ativos' },
     { id: 'effective_list', label: 'LISTA EFETIVA', icon: <Users size={14} />, description: 'Lista detalhada de trabalhadores' },
-    { id: 'salary_procedures', label: 'PROCEDIMENTOS DE SALÃRIO', icon: <FileText size={14} />, description: 'GestÃ£o de procedimentos salariais' },
-    { id: 'payroll', label: 'PROCESSAMENTO', icon: <Calculator size={14} />, description: 'CÃ¡lculo de vencimentos e subsÃ­dios' },
-    { id: 'pay_salary', label: 'PAGAR SALÃRIO', icon: <Wallet size={14} />, description: 'LiquidaÃ§Ã£o de salÃ¡rios processados' },
-    { id: 'salary_receipts', label: 'RECIBOS DE SALÃRIO', icon: <FileCheck size={14} />, description: 'EmissÃ£o de recibos de vencimento' },
+    { id: 'salary_procedures', label: 'PROCEDIMENTOS DE SALÃRIO', icon: <FileText size={14} />, description: 'Gestão de procedimentos salariais' },
+    { id: 'payroll', label: 'PROCESSAMENTO', icon: <Calculator size={14} />, description: 'Cálculo de vencimentos e subsÃ­dios' },
+    { id: 'pay_salary', label: 'PAGAR SALÃRIO', icon: <Wallet size={14} />, description: 'Liquidação de salários processados' },
+    { id: 'salary_receipts', label: 'RECIBOS DE SALÃRIO', icon: <FileCheck size={14} />, description: 'Emissão de recibos de vencimento' },
     { id: 'contracts', label: 'GESTÃƒO DE CONTRATOS', icon: <FileText size={14} />, description: 'Controle de vÃ­nculos laborais' },
-    { id: 'irt_table', label: 'TABELA IRT', icon: <Table size={14} />, description: 'ConfiguraÃ§Ã£o de escalÃµes de imposto' },
+    { id: 'irt_table', label: 'TABELA IRT', icon: <Table size={14} />, description: 'Configuração de escalões de imposto' },
     { id: 'transfer_order', label: 'ORDEM DE TRANSFERÃŠNCIA', icon: <ArrowRightLeft size={14} />, description: 'Pagamentos bancÃ¡rios' },
-    { id: 'irt_inss_map', label: 'MAPA GERAL IRT/INSS', icon: <Layers size={14} />, description: 'RelatÃ³rios fiscais e seguranÃ§a social' },
+    { id: 'irt_inss_map', label: 'MAPA GERAL IRT/INSS', icon: <Layers size={14} />, description: 'Relatórios fiscais e segurança social' },
     { id: 'personal_registry', label: 'CADASTRO PESSOAL', icon: <UserCheck size={14} />, description: 'Dossier individual do colaborador' },
-    { id: 'maps', label: 'MAPAS', icon: <Map size={14} />, description: 'Mapas estatÃ­sticos e obrigatÃ³rios' },
-    { id: 'work_card', label: 'CARTÃƒO DE TRABALHO', icon: <CreditCard size={14} />, description: 'IdentificaÃ§Ã£o profissional' },
+    { id: 'maps', label: 'MAPAS', icon: <Map size={14} />, description: 'Mapas estatÃ­sticos e obrigatórios' },
+    { id: 'work_card', label: 'CARTÃƒO DE TRABALHO', icon: <CreditCard size={14} />, description: 'Identificação profissional' },
     { id: 'labor_registration', label: 'INSCRIÃ‡ÃƒO LABORAL', icon: <FilePlus size={14} />, description: 'Registo nos Ã³rgÃ£os competentes' },
-    { id: 'performance_analysis', label: 'ANÃLISE DE DESEMPENHO', icon: <TrendingUp size={14} />, description: 'AvaliaÃ§Ã£o de produtividade' },
-    { id: 'workstation_management', label: 'GESTÃƒO DE POSTO', icon: <Monitor size={14} />, description: 'AlocaÃ§Ã£o de recursos fÃ­sicos' },
-    { id: 'labor_extinction', label: 'EXTINÃ‡ÃƒO LABORAL', icon: <UserMinus size={14} />, description: 'Processos de rescisÃ£o' },
-    { id: 'print_list', label: 'IMPRIMIR LISTA', icon: <Printer size={14} />, description: 'RelatÃ³rios rÃ¡pidos de pessoal' },
+    { id: 'performance_analysis', label: 'ANÃLISE DE DESEMPENHO', icon: <TrendingUp size={14} />, description: 'Avaliação de produtividade' },
+    { id: 'workstation_management', label: 'GESTÃƒO DE POSTO', icon: <Monitor size={14} />, description: 'Alocação de recursos fÃ­sicos' },
+    { id: 'labor_extinction', label: 'EXTINÃ‡ÃƒO LABORAL', icon: <UserMinus size={14} />, description: 'Processos de rescisão' },
+    { id: 'print_list', label: 'IMPRIMIR LISTA', icon: <Printer size={14} />, description: 'Relatórios rÃ¡pidos de pessoal' },
     { id: 'ficha_pessoal', label: 'FICHA PESSOAL', icon: <FileText size={14} />, description: 'Dossier individual do colaborador' },
-    { id: 'declaracao_servico', label: 'DECLARAÃ‡ÃƒO DE SERVIÃ‡O', icon: <FileSignature size={14} />, description: 'EmissÃ£o de declaraÃ§Ãµes' },
+    { id: 'declaracao_servico', label: 'DECLARAÃ‡ÃƒO DE SERVIÃ‡O', icon: <FileSignature size={14} />, description: 'Emissão de declarações' },
     { id: 'acordo_confidencialidade', label: 'ACORDO DE CONFIDENCIALIDADE', icon: <ShieldCheck size={14} />, description: 'Acordo de confidencialidade' },
-    { id: 'colaboradores_demitidos', label: 'COLABORADORES DEMITIDOS', icon: <UserMinus size={14} />, description: 'GestÃ£o de demissÃµes' },
+    { id: 'colaboradores_demitidos', label: 'COLABORADORES DEMITIDOS', icon: <UserMinus size={14} />, description: 'Gestão de demissões' },
   ];
 
   useEffect(() => {
@@ -4870,7 +4870,7 @@ const HRModule = ({
                 ExercÃ­cio {fiscalYear} Ativo
               </span>
             </div>
-            <p className="text-zinc-500 text-sm">GestÃ£o completa de capital humano e processamento.</p>
+            <p className="text-zinc-500 text-sm">Gestão completa de capital humano e processamento.</p>
           </div>
         </div>
       </header>
@@ -4925,7 +4925,7 @@ const HRModule = ({
                     const FormLabel = ({ children, required = false, info = false, tooltip = "" }: { children: React.ReactNode, required?: boolean, info?: boolean, tooltip?: string }) => (
                       <div className="flex items-center gap-1 mb-1">
                         {required && (
-                          <span className="w-1.5 h-1.5 bg-red-600 rounded-full shrink-0" title="Campo ObrigatÃ³rio"></span>
+                          <span className="w-1.5 h-1.5 bg-red-600 rounded-full shrink-0" title="Campo Obrigatório"></span>
                         )}
                         <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">{children}</label>
                         {info && (
@@ -4955,7 +4955,7 @@ const HRModule = ({
 
                     return (
                       <>
-                        {/* Header Info Banner: Data de AdmissÃ£o, Agente NÂº & Photo */}
+                        {/* Header Info Banner: Data de Admissão, Agente NÂº & Photo */}
                         <div className="flex flex-col md:flex-row shadow-sm border border-zinc-200 p-6 bg-zinc-50/50 gap-6 items-center">
                           {/* Image Upload Block */}
                           <div className="relative group shrink-0">
@@ -4978,7 +4978,7 @@ const HRModule = ({
                           {/* Admission Data Fields */}
                           <div className="flex-1 w-full grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-1 block">
-                              <FormLabel required>Data de AdmissÃ£o</FormLabel>
+                              <FormLabel required>Data de Admissão</FormLabel>
                               <input 
                                 type="date" 
                                 value={hiredAt} 
@@ -5057,7 +5057,7 @@ const HRModule = ({
                                     required
                                   >
                                     <option value="">Seleccione Tipo</option>
-                                    <option value="OR">OrÃ§amento (OR)</option>
+                                    <option value="OR">Orçamento (OR)</option>
                                     <option value="BI">BI (Bilhete de Identidade)</option>
                                     <option value="Passaporte">Passaporte</option>
                                     <option value="CartÃ£o de Residente">CartÃ£o de Residente</option>
@@ -5070,7 +5070,7 @@ const HRModule = ({
                                     value={bi} 
                                     onChange={e => setBi(e.target.value)} 
                                     className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366] font-bold font-mono" 
-                                    placeholder="NÂº de identificaÃ§Ã£o do documento"
+                                    placeholder="NÂº de identificação do documento"
                                     required 
                                   />
                                 </div>
@@ -5080,7 +5080,7 @@ const HRModule = ({
                                     value={entidadeEmissora} 
                                     onChange={e => setEntidadeEmissora(e.target.value)} 
                                     className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" 
-                                    placeholder="Ex: DirecÃ§Ã£o Nacional de IdentificaÃ§Ã£o"
+                                    placeholder="Ex: Direção Nacional de Identificação"
                                     required 
                                   />
                                 </div>
@@ -5088,7 +5088,7 @@ const HRModule = ({
 
                               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <div className="space-y-1">
-                                  <FormLabel required>Data de EmissÃ£o</FormLabel>
+                                  <FormLabel required>Data de Emissão</FormLabel>
                                   <input 
                                     type="date" 
                                     value={dataEmissaoDoc} 
@@ -5187,19 +5187,19 @@ const HRModule = ({
                             onClick={() => setOpenDadosFiscais(!openDadosFiscais)}
                             className="w-full flex justify-between items-center px-6 py-3.5 bg-zinc-50 border-b border-zinc-200 text-[#003366] font-black text-xs uppercase tracking-widest"
                           >
-                            <span className="flex items-center gap-2">Dados Fiscais & SeguranÃ§a Social</span>
+                            <span className="flex items-center gap-2">Dados Fiscais & Segurança Social</span>
                             {openDadosFiscais ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                           </button>
                           {openDadosFiscais && (
                             <div className="p-6 space-y-4">
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div className="space-y-1">
-                                  <FormLabel required info tooltip="NÃºmero de IdentificaÃ§Ã£o Fiscal">NIF</FormLabel>
+                                  <FormLabel required info tooltip="Número de Identificação Fiscal">NIF</FormLabel>
                                   <input 
                                     value={nif} 
                                     onChange={e => setNif(e.target.value)} 
                                     className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366] font-bold font-mono text-zinc-800" 
-                                    placeholder="NÃºmero de NIF em Angola"
+                                    placeholder="Número de NIF em Angola"
                                     required 
                                   />
                                 </div>
@@ -5217,7 +5217,7 @@ const HRModule = ({
 
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div className="space-y-1">
-                                  <FormLabel required>NÂº de SeguranÃ§a Social (INSS)</FormLabel>
+                                  <FormLabel required>NÂº de Segurança Social (INSS)</FormLabel>
                                   <input 
                                     value={inssNumber} 
                                     onChange={e => setInssNumber(e.target.value)} 
@@ -5227,7 +5227,7 @@ const HRModule = ({
                                   />
                                 </div>
                                 <div className="space-y-1">
-                                  <FormLabel required info tooltip="NÃºmero de inscriÃ§Ã£o INSS anterior do funcionÃ¡rio">NÂº de INSS Antigo</FormLabel>
+                                  <FormLabel required info tooltip="Número de inscriÃ§Ã£o INSS anterior do funcionÃ¡rio">NÂº de INSS Antigo</FormLabel>
                                   <input 
                                     value={inssNumberAntigo} 
                                     onChange={e => setInssNumberAntigo(e.target.value)} 
@@ -5311,7 +5311,7 @@ const HRModule = ({
                             onClick={() => setOpenDadosProfissionais(!openDadosProfissionais)}
                             className="w-full flex justify-between items-center px-6 py-3.5 bg-zinc-50 border-b border-zinc-200 text-[#003366] font-black text-xs uppercase tracking-widest"
                           >
-                            <span className="flex items-center gap-2">Dados Profissionais & SalÃ¡rio</span>
+                            <span className="flex items-center gap-2">Dados Profissionais & Salário</span>
                             {openDadosProfissionais ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                           </button>
                           {openDadosProfissionais && (
@@ -5352,7 +5352,7 @@ const HRModule = ({
 
                               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <div className="space-y-1">
-                                  <FormLabel required>ProfissÃ£o / Cargo</FormLabel>
+                                  <FormLabel required>Profissão / Cargo</FormLabel>
                                   <select 
                                     value={professionId} 
                                     onChange={e => {
@@ -5367,7 +5367,7 @@ const HRModule = ({
                                     className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366] font-bold"
                                     required
                                   >
-                                    <option value="">Seleccione ProfissÃ£o</option>
+                                    <option value="">Seleccione Profissão</option>
                                     {professions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                                   </select>
                                 </div>
@@ -5396,7 +5396,7 @@ const HRModule = ({
 
                               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <div className="space-y-1">
-                                  <FormLabel required>SalÃ¡rio Base (AOA)</FormLabel>
+                                  <FormLabel required>Salário Base (AOA)</FormLabel>
                                   <input 
                                     type="number" 
                                     value={salary} 
@@ -5415,7 +5415,7 @@ const HRModule = ({
                                   />
                                 </div>
                                 <div className="space-y-1">
-                                  <FormLabel>Total SalÃ¡rio Mensal</FormLabel>
+                                  <FormLabel>Total Salário Mensal</FormLabel>
                                   <div className="w-full bg-emerald-50 border border-emerald-200 rounded-none px-4 py-2 font-mono text-sm font-extrabold text-emerald-700">
                                     {formatCurrency(totalMonthlySalary)}
                                   </div>
@@ -5445,15 +5445,15 @@ const HRModule = ({
 
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div className="space-y-1">
-                                  <FormLabel>HabilitaÃ§Ãµes LiterÃ¡rias</FormLabel>
+                                  <FormLabel>Habilitações LiterÃ¡rias</FormLabel>
                                   <select 
                                     value={academicLevel} 
                                     onChange={e => setAcademicLevel(e.target.value)} 
                                     className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]"
                                   >
                                     <option value="Ensino PrimÃ¡rio">Ensino PrimÃ¡rio</option>
-                                    <option value="Ensino BÃ¡sico">Ensino BÃ¡sico</option>
-                                    <option value="Ensino MÃ©dio">Ensino MÃ©dio</option>
+                                    <option value="Ensino Básico">Ensino Básico</option>
+                                    <option value="Ensino Médio">Ensino Médio</option>
                                     <option value="Licenciatura">Licenciatura</option>
                                     <option value="Mestrado">Mestrado</option>
                                     <option value="Doutoramento">Doutoramento</option>
@@ -5472,21 +5472,21 @@ const HRModule = ({
 
                               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <div className="space-y-1">
-                                  <FormLabel required>Local de ServiÃ§o Base</FormLabel>
+                                  <FormLabel required>Local de Serviço Base</FormLabel>
                                   <select 
                                     value={localTrabalhoId} 
                                     onChange={e => setLocalTrabalhoId(e.target.value)} 
                                     className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366] font-bold"
                                     required
                                   >
-                                    <option value="">Seleccione Local de ServiÃ§o</option>
+                                    <option value="">Seleccione Local de Serviço</option>
                                     {workSites.map(ws => (
                                       <option key={ws.id} value={ws.id.toString()}>{ws.title}</option>
                                     ))}
                                   </select>
                                 </div>
                                 <div className="space-y-1">
-                                  <FormLabel required>Quem Solicitou a AdmissÃ£o</FormLabel>
+                                  <FormLabel required>Quem Solicitou a Admissão</FormLabel>
                                   <input 
                                     value={solicitanteAdmissao} 
                                     onChange={e => setSolicitanteAdmissao(e.target.value)} 
@@ -5496,7 +5496,7 @@ const HRModule = ({
                                   />
                                 </div>
                                 <div className="space-y-1">
-                                  <FormLabel required>Motivo da AdmissÃ£o</FormLabel>
+                                  <FormLabel required>Motivo da Admissão</FormLabel>
                                   <input 
                                     value={motivoAdmissao} 
                                     onChange={e => setMotivoAdmissao(e.target.value)} 
@@ -5550,7 +5550,7 @@ const HRModule = ({
                                       value={zona} 
                                       onChange={e => setZona(e.target.value)} 
                                       className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" 
-                                      placeholder="Zona/QuarteirÃ£o" 
+                                      placeholder="Zona/Quarteirão" 
                                     />
                                   </div>
                                   <div className="space-y-1">
@@ -5672,7 +5672,7 @@ const HRModule = ({
                                       value={bankAccount} 
                                       onChange={e => setBankAccount(e.target.value)} 
                                       className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366] font-mono" 
-                                      placeholder="NÃºmero de Conta" 
+                                      placeholder="Número de Conta" 
                                     />
                                   </div>
                                   <div className="space-y-1">
@@ -5708,7 +5708,7 @@ const HRModule = ({
             {!selectedProcedure ? (
               <div className="bg-white border border-zinc-200 shadow-sm overflow-hidden">
                 <div className="p-6 border-b border-zinc-100 flex justify-between items-center bg-zinc-50/50">
-                  <h3 className="font-bold text-[#003366] uppercase tracking-widest text-xs">Procedimentos de SalÃ¡rio</h3>
+                  <h3 className="font-bold text-[#003366] uppercase tracking-widest text-xs">Procedimentos de Salário</h3>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse">
@@ -5717,9 +5717,9 @@ const HRModule = ({
                         <th className="px-6 py-4">FuncionÃ¡rio</th>
                         <th className="px-6 py-4">Cargo</th>
                         <th className="px-6 py-4">MÃªs/Ano</th>
-                        <th className="px-6 py-4 text-right">SalÃ¡rio Base</th>
+                        <th className="px-6 py-4 text-right">Salário Base</th>
                         <th className="px-6 py-4 text-right">LÃ­quido</th>
-                        <th className="px-6 py-4 text-center">AÃ§Ãµes</th>
+                        <th className="px-6 py-4 text-center">Ações</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-100">
@@ -5788,7 +5788,7 @@ const HRModule = ({
                 <div className="border-2 border-zinc-900 p-8">
                   <div className="flex justify-between items-start mb-8 border-b border-zinc-200 pb-6">
                     <div>
-                      <h2 className="text-xl font-black text-[#003366] uppercase tracking-tighter">Procedimento de Processamento de SalÃ¡rio</h2>
+                      <h2 className="text-xl font-black text-[#003366] uppercase tracking-tighter">Procedimento de Processamento de Salário</h2>
                       <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Grupo TecnoSys - Recursos Humanos</p>
                     </div>
                     <div className="text-right text-[10px] font-bold uppercase">
@@ -5810,7 +5810,7 @@ const HRModule = ({
                       <div className="bg-zinc-50 p-4 border border-zinc-100">
                         <h4 className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-2">Resumo Financeiro</h4>
                         <div className="flex justify-between items-center mb-1">
-                          <span className="text-[10px] font-bold text-zinc-500 uppercase">SalÃ¡rio Base:</span>
+                          <span className="text-[10px] font-bold text-zinc-500 uppercase">Salário Base:</span>
                           <span className="text-xs font-black">{formatCurrency(selectedProcedure?.employee?.salary || 0)}</span>
                         </div>
                         <div className="flex justify-between items-center mb-1">
@@ -5829,19 +5829,19 @@ const HRModule = ({
                     <table className="w-full text-left border-collapse text-[10px]">
                       <thead>
                         <tr className="bg-zinc-900 text-white font-black uppercase tracking-widest">
-                          <th className="px-4 py-2">DescriÃ§Ã£o</th>
+                          <th className="px-4 py-2">Descrição</th>
                           <th className="px-4 py-2 text-right">Vencimentos</th>
                           <th className="px-4 py-2 text-right">Descontos</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-zinc-200 font-bold uppercase">
                         <tr>
-                          <td className="px-4 py-3">SalÃ¡rio Base</td>
+                          <td className="px-4 py-3">Salário Base</td>
                           <td className="px-4 py-3 text-right">{formatCurrency(selectedProcedure?.employee?.salary || 0)}</td>
                           <td className="px-4 py-3 text-right">---</td>
                         </tr>
                         <tr>
-                          <td className="px-4 py-3">SeguranÃ§a Social (3%)</td>
+                          <td className="px-4 py-3">Segurança Social (3%)</td>
                           <td className="px-4 py-3 text-right">---</td>
                           <td className="px-4 py-3 text-right text-red-500">{formatCurrency(selectedProcedure?.calculations?.inss || 0)}</td>
                         </tr>
@@ -5917,11 +5917,11 @@ const HRModule = ({
                     <th className="px-4 py-2 border-r border-zinc-200">Departamento</th>
                     <th className="px-4 py-2 border-r border-zinc-200">Data Adm.</th>
                     <th className="px-4 py-2 border-r border-zinc-200">Tempo Serv.</th>
-                    <th className="px-4 py-2 border-r border-zinc-200 text-right">SalÃ¡rio Base</th>
+                    <th className="px-4 py-2 border-r border-zinc-200 text-right">Salário Base</th>
                     <th className="px-4 py-2 border-r border-zinc-200 text-right">IRT</th>
                     <th className="px-4 py-2 border-r border-zinc-200 text-right">INSS</th>
                     <th className="px-4 py-2 border-r border-zinc-200 text-right">LÃ­quido</th>
-                    <th className="px-4 py-2 text-center">AÃ§Ãµes</th>
+                    <th className="px-4 py-2 text-center">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
@@ -6008,7 +6008,7 @@ const HRModule = ({
             {!selectedReceipt ? (
               <div className="bg-white border border-zinc-200 shadow-sm overflow-hidden">
                 <div className="p-6 border-b border-zinc-100 flex justify-between items-center bg-zinc-50/50">
-                  <h3 className="font-bold text-[#003366] uppercase tracking-widest text-xs">Recibos de SalÃ¡rio Processados</h3>
+                  <h3 className="font-bold text-[#003366] uppercase tracking-widest text-xs">Recibos de Salário Processados</h3>
                   <div className="flex gap-2">
                     <button 
                       onClick={() => {
@@ -6016,7 +6016,7 @@ const HRModule = ({
                             ? processedReceipts.filter(r => selectedReceiptIds.includes(r.id))
                             : processedReceipts;
 
-                        if (receiptsToPrint.length === 0) return alert('Nenhum recibo disponÃ­vel para impressÃ£o.');
+                        if (receiptsToPrint.length === 0) return alert('Nenhum recibo disponível para impressão.');
 
                         const win = window.open('', '_blank');
                         if (!win) return;
@@ -6049,7 +6049,7 @@ const HRModule = ({
                                     </div>
 
                                     <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
-                                        <div>ProfissÃ£o: ${employee.role || '---'}</div>
+                                        <div>Profissão: ${employee.role || '---'}</div>
                                         <div style="text-align: right;">
                                             NIF NÂº: ${employee.nif || '---'}<br/>
                                             INSS NÂº: ${employee.inss_number || '---'}
@@ -6060,7 +6060,7 @@ const HRModule = ({
                                         <thead style="border-bottom: 1px solid #000; border-top: 1px solid #000;">
                                             <tr>
                                                 <th style="text-align: left; padding: 4px 0;">COD</th>
-                                                <th style="text-align: left; padding: 4px 0;">DescriÃ§Ã£o</th>
+                                                <th style="text-align: left; padding: 4px 0;">Descrição</th>
                                                 <th style="text-align: center; padding: 4px 0;">QTD</th>
                                                 <th style="text-align: right; padding: 4px 0;">VALOR</th>
                                             </tr>
@@ -6072,8 +6072,8 @@ const HRModule = ({
                                                 <td style="text-align: center; padding: 2px 0;">30</td>
                                                 <td style="text-align: right; padding: 2px 0;">${fCurrency(employee.salary)}</td>
                                             </tr>
-                                            ${inputs.premios ? `<tr><td style="padding: 2px 0;">02</td><td style="padding: 2px 0;">PrÃ©mios</td><td style="text-align: center; padding: 2px 0;">---</td><td style="text-align: right; padding: 2px 0;">${fCurrency(inputs.premios)}</td></tr>` : ''}
-                                            ${inputs.gratificacoes ? `<tr><td style="padding: 2px 0;">03</td><td style="padding: 2px 0;">GratificaÃ§Ãµes</td><td style="text-align: center; padding: 2px 0;">---</td><td style="text-align: right; padding: 2px 0;">${fCurrency(inputs.gratificacoes)}</td></tr>` : ''}
+                                            ${inputs.premios ? `<tr><td style="padding: 2px 0;">02</td><td style="padding: 2px 0;">Prémios</td><td style="text-align: center; padding: 2px 0;">---</td><td style="text-align: right; padding: 2px 0;">${fCurrency(inputs.premios)}</td></tr>` : ''}
+                                            ${inputs.gratificacoes ? `<tr><td style="padding: 2px 0;">03</td><td style="padding: 2px 0;">Gratificações</td><td style="text-align: center; padding: 2px 0;">---</td><td style="text-align: right; padding: 2px 0;">${fCurrency(inputs.gratificacoes)}</td></tr>` : ''}
                                             ${inputs.abonos ? `<tr><td style="padding: 2px 0;">04</td><td style="padding: 2px 0;">Abonos</td><td style="text-align: center; padding: 2px 0;">---</td><td style="text-align: right; padding: 2px 0;">${fCurrency(inputs.abonos)}</td></tr>` : ''}
                                             <tr>
                                                 <td></td>
@@ -6085,7 +6085,7 @@ const HRModule = ({
                                             <tr>
                                                 <td colspan="4" style="padding: 6px 0 2px 0; font-weight: bold;">Subsidios</td>
                                             </tr>
-                                            ${inputs.subsidioAlimentacao ? `<tr><td style="padding: 2px 0;">10</td><td style="padding: 2px 0;">SubsÃ­dio de AlimentaÃ§Ã£o</td><td style="text-align: center; padding: 2px 0;">---</td><td style="text-align: right; padding: 2px 0;">${fCurrency(inputs.subsidioAlimentacao)}</td></tr>` : ''}
+                                            ${inputs.subsidioAlimentacao ? `<tr><td style="padding: 2px 0;">10</td><td style="padding: 2px 0;">SubsÃ­dio de Alimentação</td><td style="text-align: center; padding: 2px 0;">---</td><td style="text-align: right; padding: 2px 0;">${fCurrency(inputs.subsidioAlimentacao)}</td></tr>` : ''}
                                             ${inputs.subsidioTransporte ? `<tr><td style="padding: 2px 0;">11</td><td style="padding: 2px 0;">SubsÃ­dio de Transporte</td><td style="text-align: center; padding: 2px 0;">---</td><td style="text-align: right; padding: 2px 0;">${fCurrency(inputs.subsidioTransporte)}</td></tr>` : ''}
                                             ${inputs.alojamento ? `<tr><td style="padding: 2px 0;">12</td><td style="padding: 2px 0;">SubsÃ­dio de Alojamento</td><td style="text-align: center; padding: 2px 0;">---</td><td style="text-align: right; padding: 2px 0;">${fCurrency(inputs.alojamento)}</td></tr>` : ''}
                                             <tr>
@@ -6107,7 +6107,7 @@ const HRModule = ({
                                             </tr>
                                             <tr>
                                                 <td style="padding: 2px 0;">19</td>
-                                                <td style="padding: 2px 0;">SeguranÃ§a Social do Trabalhador x3%</td>
+                                                <td style="padding: 2px 0;">Segurança Social do Trabalhador x3%</td>
                                                 <td style="text-align: center; padding: 2px 0;">---</td>
                                                 <td style="text-align: right; padding: 2px 0;">${fCurrency(calculations.inss_worker)}</td>
                                             </tr>
@@ -6195,7 +6195,7 @@ const HRModule = ({
                         <th className="px-6 py-4">PerÃ­odo</th>
                         <th className="px-6 py-4 text-right">Vencimento Base</th>
                         <th className="px-6 py-4 text-right">Total LÃ­quido</th>
-                        <th className="px-6 py-4 text-center">AÃ§Ãµes</th>
+                        <th className="px-6 py-4 text-center">Ações</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-100">
@@ -6239,7 +6239,7 @@ const HRModule = ({
                                   onClick={async () => {
                                     const empName = receipt.employee?.name || receipt.employee_name || 'este colaborador';
                                     const empId = receipt.employee?.id ?? receipt.employee_id ?? receipt.id;
-                                    if (window.confirm(`Tem a certeza que pretende desprocessar o salÃ¡rio de ${empName} para o perÃ­odo ${receipt.period}?`)) {
+                                    if (window.confirm(`Tem a certeza que pretende desprocessar o salário de ${empName} para o perÃ­odo ${receipt.period}?`)) {
                                       try {
                                         if (user?.empresa_id) {
                                            await payrollService.desprocessarPayroll(user.empresa_id, String(empId), receipt.period);
@@ -6253,10 +6253,10 @@ const HRModule = ({
                                           return newState;
                                         });
                                         
-                                        alert(`SalÃ¡rio de ${receipt.employee.name} desprocessado com sucesso!`);
+                                        alert(`Salário de ${receipt.employee.name} desprocessado com sucesso!`);
                                       } catch (err) {
                                         console.error('Erro ao desprocessar:', err);
-                                        alert('Erro de ligaÃ§Ã£o ao servidor.');
+                                        alert('Erro de ligação ao servidor.');
                                       }
                                     }
                                   }}
@@ -6315,7 +6315,7 @@ const HRModule = ({
                                   </div>
 
                                   <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
-                                      <div>ProfissÃ£o: ${employee.role || '---'}</div>
+                                      <div>Profissão: ${employee.role || '---'}</div>
                                       <div style="text-align: right;">
                                           NIF NÂº: ${employee.nif || '---'}<br/>
                                           INSS NÂº: ${employee.inss_number || '---'}
@@ -6326,7 +6326,7 @@ const HRModule = ({
                                       <thead style="border-bottom: 1px solid #000; border-top: 1px solid #000;">
                                           <tr>
                                               <th style="text-align: left; padding: 4px 0;">COD</th>
-                                              <th style="text-align: left; padding: 4px 0;">DescriÃ§Ã£o</th>
+                                              <th style="text-align: left; padding: 4px 0;">Descrição</th>
                                               <th style="text-align: center; padding: 4px 0;">QTD</th>
                                               <th style="text-align: right; padding: 4px 0;">VALOR</th>
                                           </tr>
@@ -6338,8 +6338,8 @@ const HRModule = ({
                                               <td style="text-align: center; padding: 2px 0;">30</td>
                                               <td style="text-align: right; padding: 2px 0;">${fCurrency(employee.salary)}</td>
                                           </tr>
-                                          ${inputs.premios ? `<tr><td style="padding: 2px 0;">02</td><td style="padding: 2px 0;">PrÃ©mios</td><td style="text-align: center; padding: 2px 0;">---</td><td style="text-align: right; padding: 2px 0;">${fCurrency(inputs.premios)}</td></tr>` : ''}
-                                          ${inputs.gratificacoes ? `<tr><td style="padding: 2px 0;">03</td><td style="padding: 2px 0;">GratificaÃ§Ãµes</td><td style="text-align: center; padding: 2px 0;">---</td><td style="text-align: right; padding: 2px 0;">${fCurrency(inputs.gratificacoes)}</td></tr>` : ''}
+                                          ${inputs.premios ? `<tr><td style="padding: 2px 0;">02</td><td style="padding: 2px 0;">Prémios</td><td style="text-align: center; padding: 2px 0;">---</td><td style="text-align: right; padding: 2px 0;">${fCurrency(inputs.premios)}</td></tr>` : ''}
+                                          ${inputs.gratificacoes ? `<tr><td style="padding: 2px 0;">03</td><td style="padding: 2px 0;">Gratificações</td><td style="text-align: center; padding: 2px 0;">---</td><td style="text-align: right; padding: 2px 0;">${fCurrency(inputs.gratificacoes)}</td></tr>` : ''}
                                           ${inputs.abonos ? `<tr><td style="padding: 2px 0;">04</td><td style="padding: 2px 0;">Abonos</td><td style="text-align: center; padding: 2px 0;">---</td><td style="text-align: right; padding: 2px 0;">${fCurrency(inputs.abonos)}</td></tr>` : ''}
                                           <tr>
                                               <td></td>
@@ -6351,7 +6351,7 @@ const HRModule = ({
                                           <tr>
                                               <td colspan="4" style="padding: 6px 0 2px 0; font-weight: bold;">Subsidios</td>
                                           </tr>
-                                          ${inputs.subsidioAlimentacao ? `<tr><td style="padding: 2px 0;">10</td><td style="padding: 2px 0;">SubsÃ­dio de AlimentaÃ§Ã£o</td><td style="text-align: center; padding: 2px 0;">---</td><td style="text-align: right; padding: 2px 0;">${fCurrency(inputs.subsidioAlimentacao)}</td></tr>` : ''}
+                                          ${inputs.subsidioAlimentacao ? `<tr><td style="padding: 2px 0;">10</td><td style="padding: 2px 0;">SubsÃ­dio de Alimentação</td><td style="text-align: center; padding: 2px 0;">---</td><td style="text-align: right; padding: 2px 0;">${fCurrency(inputs.subsidioAlimentacao)}</td></tr>` : ''}
                                           ${inputs.subsidioTransporte ? `<tr><td style="padding: 2px 0;">11</td><td style="padding: 2px 0;">SubsÃ­dio de Transporte</td><td style="text-align: center; padding: 2px 0;">---</td><td style="text-align: right; padding: 2px 0;">${fCurrency(inputs.subsidioTransporte)}</td></tr>` : ''}
                                           ${inputs.alojamento ? `<tr><td style="padding: 2px 0;">12</td><td style="padding: 2px 0;">SubsÃ­dio de Alojamento</td><td style="text-align: center; padding: 2px 0;">---</td><td style="text-align: right; padding: 2px 0;">${fCurrency(inputs.alojamento)}</td></tr>` : ''}
                                           <tr>
@@ -6373,7 +6373,7 @@ const HRModule = ({
                                           </tr>
                                           <tr>
                                               <td style="padding: 2px 0;">19</td>
-                                              <td style="padding: 2px 0;">SeguranÃ§a Social do Trabalhador x3%</td>
+                                              <td style="padding: 2px 0;">Segurança Social do Trabalhador x3%</td>
                                               <td style="text-align: center; padding: 2px 0;">---</td>
                                               <td style="text-align: right; padding: 2px 0;">${fCurrency(calculations.inss_worker)}</td>
                                           </tr>
@@ -6604,7 +6604,7 @@ const HRModule = ({
                       <div className="w-12 h-12 bg-[#003366] flex items-center justify-center text-white font-black text-xl">TS</div>
                       <div>
                         <h1 className="text-2xl font-black text-[#003366] uppercase tracking-tighter">Grupo TecnoSys</h1>
-                        <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">SoluÃ§Ãµes TecnolÃ³gicas & GestÃ£o</p>
+                        <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Soluções Tecnológicas & Gestão</p>
                       </div>
                     </div>
                     <div className="text-[10px] font-bold text-zinc-600 space-y-1 uppercase">
@@ -6615,11 +6615,11 @@ const HRModule = ({
                   </div>
                   <div className="text-right">
                     <div className="bg-zinc-900 text-white px-6 py-2 font-black uppercase tracking-[0.3em] text-sm mb-4">
-                      Recibo de SalÃ¡rio
+                      Recibo de Salário
                     </div>
                     <div className="text-[10px] font-bold text-zinc-600 space-y-1 uppercase">
                       <p>NÂº Recibo: {new Date().getFullYear()}/{selectedReceipt.id.toString().padStart(4, '0')}</p>
-                      <p>Data de EmissÃ£o: {new Date().toLocaleDateString('pt-AO')}</p>
+                      <p>Data de Emissão: {new Date().toLocaleDateString('pt-AO')}</p>
                     </div>
                   </div>
                 </div>
@@ -6633,14 +6633,14 @@ const HRModule = ({
                       <p className="text-[10px] font-bold text-zinc-500 uppercase mt-1">NÂº {1000 + selectedReceipt.employee.id}</p>
                     </div>
                     <div>
-                      <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block mb-1">Cargo / FunÃ§Ã£o</label>
+                      <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block mb-1">Cargo / Função</label>
                       <p className="text-xs font-bold text-zinc-700 uppercase">{selectedReceipt.employee.role}</p>
                     </div>
                   </div>
                   <div className="space-y-3">
                     <div className="grid grid-cols-3 gap-4">
                       <div>
-                        <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block mb-1">Data AdmissÃ£o</label>
+                        <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block mb-1">Data Admissão</label>
                         <p className="text-xs font-bold text-zinc-700 uppercase">{new Date(selectedReceipt.employee.hired_at).toLocaleDateString('pt-AO')}</p>
                       </div>
                       <div>
@@ -6665,7 +6665,7 @@ const HRModule = ({
                     <thead>
                       <tr className="border-b-2 border-zinc-900 text-[10px] font-black uppercase tracking-widest text-zinc-900">
                         <th className="py-3 w-16">CÃ³d.</th>
-                        <th className="py-3">DescriÃ§Ã£o das Verbas</th>
+                        <th className="py-3">Descrição das Verbas</th>
                         <th className="py-3 text-center w-24">Qtd/Ref</th>
                         <th className="py-3 text-right w-32">Vencimentos</th>
                         <th className="py-3 text-right w-32">Descontos</th>
@@ -6691,7 +6691,7 @@ const HRModule = ({
                       {selectedReceipt.inputs.subsidioAlimentacao > 0 && (
                         <tr className="border-b border-zinc-100">
                           <td className="py-4">03</td>
-                          <td className="py-4">SubsÃ­dio de AlimentaÃ§Ã£o</td>
+                          <td className="py-4">SubsÃ­dio de Alimentação</td>
                           <td className="py-4 text-center">-</td>
                           <td className="py-4 text-right font-mono">{selectedReceipt.inputs.subsidioAlimentacao.toLocaleString('pt-AO', { minimumFractionDigits: 2 })}</td>
                           <td className="py-4 text-right font-mono">-</td>
@@ -6709,7 +6709,7 @@ const HRModule = ({
                       {selectedReceipt.inputs.premios > 0 && (
                         <tr className="border-b border-zinc-100">
                           <td className="py-4">05</td>
-                          <td className="py-4">PrÃ©mios de Desempenho</td>
+                          <td className="py-4">Prémios de Desempenho</td>
                           <td className="py-4 text-center">-</td>
                           <td className="py-4 text-right font-mono">{selectedReceipt.inputs.premios.toLocaleString('pt-AO', { minimumFractionDigits: 2 })}</td>
                           <td className="py-4 text-right font-mono">-</td>
@@ -6718,7 +6718,7 @@ const HRModule = ({
                       {selectedReceipt.inputs.gratificacoes > 0 && (
                         <tr className="border-b border-zinc-100">
                           <td className="py-4">06</td>
-                          <td className="py-4">GratificaÃ§Ãµes</td>
+                          <td className="py-4">Gratificações</td>
                           <td className="py-4 text-center">-</td>
                           <td className="py-4 text-right font-mono">{selectedReceipt.inputs.gratificacoes.toLocaleString('pt-AO', { minimumFractionDigits: 2 })}</td>
                           <td className="py-4 text-right font-mono">-</td>
@@ -6773,7 +6773,7 @@ const HRModule = ({
                       {/* Deductions */}
                       <tr className="border-b border-zinc-100">
                         <td className="py-4">D1</td>
-                        <td className="py-4">SeguranÃ§a Social (INSS 3%)</td>
+                        <td className="py-4">Segurança Social (INSS 3%)</td>
                         <td className="py-4 text-center">3%</td>
                         <td className="py-4 text-right font-mono">-</td>
                         <td className="py-4 text-right font-mono text-red-600">{selectedReceipt.calculations.inss_worker.toLocaleString('pt-AO', { minimumFractionDigits: 2 })}</td>
@@ -6824,7 +6824,7 @@ const HRModule = ({
                       {selectedReceipt.inputs.ferias > 0 && (
                         <tr className="border-b border-zinc-100">
                           <td className="py-4">I2</td>
-                          <td className="py-4 text-zinc-400 italic">FÃ©rias (Informativo)</td>
+                          <td className="py-4 text-zinc-400 italic">Férias (Informativo)</td>
                           <td className="py-4 text-center text-zinc-400 italic">{selectedReceipt.inputs.ferias} Dias</td>
                           <td className="py-4 text-right font-mono text-zinc-400 italic">-</td>
                           <td className="py-4 text-right font-mono text-zinc-400 italic">-</td>
@@ -6858,7 +6858,7 @@ const HRModule = ({
                 <div className="grid grid-cols-2 gap-24 mt-24">
                   <div className="text-center space-y-4">
                     <div className="border-t border-zinc-900 pt-4">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-zinc-900">A AdministraÃ§Ã£o</p>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-zinc-900">A Administração</p>
                       <p className="text-[8px] font-bold text-zinc-400 uppercase mt-1">Assinatura e Carimbo</p>
                     </div>
                   </div>
@@ -6908,10 +6908,10 @@ const HRModule = ({
                   <tr className="bg-[#003366] text-white text-[10px] uppercase tracking-[0.2em] font-black">
                     <th className="px-6 py-4">Nome</th>
                     <th className="px-6 py-4">Cargo</th>
-                    <th className="px-6 py-4 text-right">SalÃ¡rio Base</th>
+                    <th className="px-6 py-4 text-right">Salário Base</th>
                     <th className="px-6 py-4 text-right">INSS</th>
                     <th className="px-6 py-4 text-right">IRT</th>
-                    <th className="px-6 py-4 text-right">SalÃ¡rio LÃ­quido</th>
+                    <th className="px-6 py-4 text-right">Salário LÃ­quido</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
@@ -6967,8 +6967,8 @@ const HRModule = ({
                     <tr className="bg-[#003366] text-white text-[10px] uppercase tracking-[0.2em] font-black">
                       <th className="px-6 py-4 w-16">Foto</th>
                       <th className="px-6 py-4">Nome Completo</th>
-                      <th className="px-6 py-4">Cargo / ProfissÃ£o</th>
-                      <th className="px-6 py-4 text-right">SalÃ¡rio Base</th>
+                      <th className="px-6 py-4">Cargo / Profissão</th>
+                      <th className="px-6 py-4 text-right">Salário Base</th>
                       <th className="px-6 py-4 text-center">Estado</th>
                       <th className="px-6 py-4 text-center">OpÃ§Ã£o</th>
                     </tr>
@@ -7392,7 +7392,7 @@ const HRModule = ({
                         Preenchidos: <span className="text-emerald-300">{filledDaysCount}</span>
                       </span>
                       <span className="bg-white/10 text-white px-2 py-0.5 rounded-full text-[8px] font-black uppercase">
-                        ServiÃ§o: <span className="text-blue-300">{countServico}</span>
+                        Serviço: <span className="text-blue-300">{countServico}</span>
                       </span>
                       <span className="bg-white/10 text-white px-2 py-0.5 rounded-full text-[8px] font-black uppercase">
                         Folga: <span className="text-emerald-300">{countFolga}</span>
@@ -7670,7 +7670,7 @@ const HRModule = ({
                       <Check size={16} className="stroke-[3]" />
                     </div>
                     <div>
-                      <div className="text-[8px] font-black text-zinc-400 uppercase tracking-widest leading-none">Estado de ValidaÃ§Ã£o</div>
+                      <div className="text-[8px] font-black text-zinc-400 uppercase tracking-widest leading-none">Estado de Validação</div>
                       <div className={`text-[10px] font-black uppercase tracking-wide mt-1 leading-none ${attendanceDone[`${empId}_${selectedMonth}`] ? 'text-amber-600' : 'text-emerald-600'}`}>
                         {attendanceDone[`${empId}_${selectedMonth}`] 
                           ? "Processo jÃ¡ concluÃ­do e bloqueado" 
@@ -7755,12 +7755,12 @@ const HRModule = ({
                 <button 
                   onClick={() => {
                     // Logic fix: Just go to settlement page, do not mark as paid yet
-                    alert('Processamento concluÃ­do! Pode agora proceder Ã  liquidaÃ§Ã£o dos salÃ¡rios na pÃ¡gina seguinte.');
+                    alert('Processamento concluÃ­do! Pode agora proceder Ã  liquidação dos salários na página seguinte.');
                     setActiveTab('pay_salary');
                   }}
                   className="bg-[#F27D26] hover:bg-[#d96a1a] text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all shadow-lg"
                 >
-                  <ArrowRightLeft size={14} /> Proceder Ã  LiquidaÃ§Ã£o
+                  <ArrowRightLeft size={14} /> Proceder Ã  Liquidação
                 </button>
               )}
             </div>
@@ -7842,14 +7842,14 @@ const HRModule = ({
                     .filter(id => !processedAttendance[`${id}_${selectedMonth}`]);
                   
                   if (selectedEmpIds.length === 0) {
-                    alert("Por favor, selecione os funcionÃ¡rios na lista que ainda nÃ£o foram processados!");
+                    alert("Por favor, selecione os funcionÃ¡rios na lista que ainda não foram processados!");
                     return;
                   }
 
                   // VALIDATION: Cannot process without attendance
                   const pendingAttendance = selectedEmpIds.filter(id => !attendanceDone[`${id}_${selectedMonth}`]);
                   if (pendingAttendance.length > 0) {
-                     alert("AtenÃ§Ã£o: Os salÃ¡rios nÃ£o podem ser processados sem assiduidade processada primeiro! Verifique os colaboradores selecionados.");
+                     alert("AtenÃ§Ã£o: Os salários não podem ser processados sem assiduidade processada primeiro! Verifique os colaboradores selecionados.");
                      return;
                   }
 
@@ -7946,7 +7946,7 @@ const HRModule = ({
                     return;
                   }
 
-                  if (!confirm("Tem certeza que deseja desprocessar os salÃ¡rios selecionados?")) return;
+                  if (!confirm("Tem certeza que deseja desprocessar os salários selecionados?")) return;
 
                   const nextProcessed = { ...processedAttendance };
                   selectedEmpIds.forEach(id => {
@@ -7965,7 +7965,7 @@ const HRModule = ({
                   const stillProcessed = processedReceipts.filter(r => !selectedEmpIds.includes(Number(r?.employee?.id ?? r?.employee_id ?? r?.id)) && r.period === selectedMonth);
                   if (stillProcessed.length === 0) setIsProcessingComplete(false);
 
-                  alert('SalÃ¡rios desprocessados com sucesso.');
+                  alert('Salários desprocessados com sucesso.');
                 }}
                 className="px-4 py-2 text-xs font-black uppercase tracking-widest transition-all shadow-lg bg-zinc-600 hover:bg-zinc-700 text-white ml-2"
               >
@@ -8027,7 +8027,7 @@ const HRModule = ({
                     <tbody className="divide-y divide-zinc-100">
                       <tr className="bg-zinc-50/80 text-[8.5px] font-black text-zinc-500 uppercase border-b border-zinc-200">
                         <td className="px-2 py-1.5 text-center"></td>
-                        <td className="px-2 py-1.5" colSpan={9}>Empresa: Grupo TecnoSys â€¢ Caixa: {selectedPaymentCaixa ? selectedPaymentCaixa.replace('_', ' ').toUpperCase() : 'NÃƒO SELECIONADO'}</td>
+                        <td className="px-2 py-1.5" colSpan={9}>Empresa: Grupo TecnoSys • Caixa: {selectedPaymentCaixa ? selectedPaymentCaixa.replace('_', ' ').toUpperCase() : 'NÃƒO SELECIONADO'}</td>
                       </tr>
                       {payrollFiltered.map(emp => {
                       const baseInputs = payrollInputs[`${emp.id}_${selectedMonth}`] || { 
@@ -8126,7 +8126,7 @@ const HRModule = ({
                                     </span>
                                   )}
                                 </div>
-                                <div className="text-[8.5px] text-zinc-400 uppercase truncate">NÂº {String(emp.id).padStart(3, '0')} â€¢ {emp.role}</div>
+                                <div className="text-[8.5px] text-zinc-400 uppercase truncate">NÂº {String(emp.id).padStart(3, '0')} • {emp.role}</div>
                               </div>
                             </div>
                           </td>
@@ -8187,7 +8187,7 @@ const HRModule = ({
                           <td className="p-1 border-r border-zinc-200">
                             <div className="flex flex-col gap-1">
                               <div className="flex items-center justify-between text-[7.5px] font-black text-amber-700 uppercase">
-                                <span>FÃ©rias:</span>
+                                <span>Férias:</span>
                                 <input 
                                   type="number" 
                                   value={inputs.ferias ?? 0}
@@ -8233,7 +8233,7 @@ const HRModule = ({
                                 />
                               </div>
                               <div className="flex items-center justify-between text-[7.5px] font-black text-emerald-700 uppercase">
-                                <span>PrÃ©mio:</span>
+                                <span>Prémio:</span>
                                 <input 
                                   type="number" 
                                   value={inputs.premios ?? 0}
@@ -8481,7 +8481,7 @@ const HRModule = ({
         {activeTab === 'professions' && (
           <div className="space-y-8">
             <div className="flex justify-between items-center">
-              <h3 className="text-lg font-bold text-[#003366]">GestÃ£o de ProfissÃµes</h3>
+              <h3 className="text-lg font-bold text-[#003366]">Gestão de Profissões</h3>
               <button 
                 onClick={() => {
                   setEditingProfession(null);
@@ -8494,7 +8494,7 @@ const HRModule = ({
                 className="bg-[#003366] hover:bg-[#002244] text-white font-bold px-4 py-2 text-xs uppercase tracking-wider flex items-center gap-2 transition-all shadow-sm flex-row"
               >
                 <Plus size={14} />
-                Registar ProfissÃ£o
+                Registar Profissão
               </button>
             </div>
 
@@ -8513,7 +8513,7 @@ const HRModule = ({
                 <div className="w-16 h-16 bg-zinc-50 rounded-full flex items-center justify-center group-hover:bg-[#003366]/5 transition-colors">
                   <Plus size={32} className="text-[#003366]" />
                 </div>
-                <span className="font-bold uppercase tracking-widest text-xs">Registar ProfissÃ£o</span>
+                <span className="font-bold uppercase tracking-widest text-xs">Registar Profissão</span>
               </button>
               
               <button 
@@ -8525,7 +8525,7 @@ const HRModule = ({
                 <div className="w-16 h-16 bg-zinc-50 rounded-full flex items-center justify-center group-hover:bg-[#003366]/5 transition-colors">
                   <FileText size={32} className="text-[#003366]" />
                 </div>
-                <span className="font-bold uppercase tracking-widest text-xs">Listar ProfissÃµes</span>
+                <span className="font-bold uppercase tracking-widest text-xs">Listar Profissões</span>
               </button>
             </div>
 
@@ -8538,7 +8538,7 @@ const HRModule = ({
                 >
                   <div className="flex justify-between items-center border-b border-zinc-150 pb-4">
                     <h4 className="font-bold text-[#003366] text-base uppercase tracking-wider">
-                      {editingProfession ? 'Alterar ProfissÃ£o' : 'Registar ProfissÃ£o'}
+                      {editingProfession ? 'Alterar Profissão' : 'Registar Profissão'}
                     </h4>
                     <button 
                       onClick={() => {
@@ -8553,7 +8553,7 @@ const HRModule = ({
 
                   <div className="space-y-4">
                     <div className="space-y-1 relative">
-                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">ProfissÃ£o INSS</label>
+                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Profissão INSS</label>
                       <div 
                         onClick={() => setShowInssList(true)}
                         className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-3 text-zinc-800 cursor-pointer text-sm flex justify-between items-center hover:border-zinc-400 transition-colors"
@@ -8570,7 +8570,7 @@ const HRModule = ({
                             className="bg-white w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col rounded-none shadow-2xl"
                           >
                             <div className="p-6 border-b border-zinc-100 flex justify-between items-center bg-[#003366] text-white">
-                              <h4 className="font-bold">Lista de ProfissÃµes INSS (Angola)</h4>
+                              <h4 className="font-bold">Lista de Profissões INSS (Angola)</h4>
                               <button 
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -8586,7 +8586,7 @@ const HRModule = ({
                                 <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
                                 <input 
                                   type="text"
-                                  placeholder="Pesquisar profissÃ£o..."
+                                  placeholder="Pesquisar profissão..."
                                   value={inssSearch}
                                   onChange={e => setInssSearch(e.target.value)}
                                   className="w-full bg-white border border-zinc-200 rounded-none pl-10 pr-4 py-2 text-sm focus:outline-none focus:border-[#003366]"
@@ -8619,19 +8619,19 @@ const HRModule = ({
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">ProfissÃ£o Empresa</label>
+                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Profissão Empresa</label>
                       <input 
                         type="text" 
                         value={companyProfession}
                         onChange={e => setCompanyProfession(e.target.value)}
-                        placeholder="Ex: TÃ©cnico Especialista"
+                        placeholder="Ex: Técnico Especialista"
                         className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] transition-colors"
                       />
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">SalÃ¡rio Base</label>
+                        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Salário Base</label>
                         <input 
                           type="number" 
                           value={baseSalary}
@@ -8668,7 +8668,7 @@ const HRModule = ({
                       onClick={async () => {
                         const cProf = companyProfession.trim();
                         if (!cProf) {
-                          alert('Por favor preencha o campo ProfissÃ£o Empresa');
+                          alert('Por favor preencha o campo Profissão Empresa');
                           return;
                         }
 
@@ -8677,7 +8677,7 @@ const HRModule = ({
                         const targetEmpresaId = companyData?.id || user?.empresa_id;
 
                         if (!targetEmpresaId) {
-                          alert('Empresa nÃ£o identificada. Por favor recarregue a pÃ¡gina.');
+                          alert('Empresa não identificada. Por favor recarregue a página.');
                           return;
                         }
 
@@ -8702,8 +8702,8 @@ const HRModule = ({
                           }
                           await fetchHRData();
                         } catch (err: any) {
-                          console.error('[App] Erro ao salvar profissÃ£o:', err);
-                          alert(`Erro ao salvar profissÃ£o: ${err.message || 'Verifique a conexÃ£o'}`);
+                          console.error('[App] Erro ao salvar profissão:', err);
+                          alert(`Erro ao salvar profissão: ${err.message || 'Verifique a conexão'}`);
                         }
 
                         setInssProfession('');
@@ -8716,7 +8716,7 @@ const HRModule = ({
                       className="bg-[#003366] text-white px-8 py-2 rounded-none text-sm font-bold hover:bg-[#002244] transition-colors shadow-sm flex items-center gap-2 cursor-pointer"
                     >
                       <Check size={16} />
-                      {editingProfession ? 'Salvar AlteraÃ§Ãµes' : 'Registar'}
+                      {editingProfession ? 'Salvar Alterações' : 'Registar'}
                     </button>
                   </div>
                 </motion.div>
@@ -8727,21 +8727,21 @@ const HRModule = ({
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-[#003366] text-white text-[10px] uppercase tracking-wider font-bold animate-fade-in">
-                    <th className="px-6 py-4">ProfissÃ£o Empresa</th>
-                    <th className="px-6 py-4">ProfissÃ£o INSS</th>
-                    <th className="px-6 py-4 text-right">SalÃ¡rio Base</th>
+                    <th className="px-6 py-4">Profissão Empresa</th>
+                    <th className="px-6 py-4">Profissão INSS</th>
+                    <th className="px-6 py-4 text-right">Salário Base</th>
                     <th className="px-6 py-4 text-right">Acerto Salarial</th>
                     <th className="px-6 py-4 text-right">INSS Trab. (3%)</th>
                     <th className="px-6 py-4 text-right">INSS Emp. (8%)</th>
                     <th className="px-6 py-4 text-right">Custo Total</th>
-                    <th className="px-6 py-4 text-center">AÃ§Ãµes</th>
+                    <th className="px-6 py-4 text-center">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
                   {professions.length === 0 ? (
                     <tr>
                       <td colSpan={8} className="px-6 py-12 text-center text-zinc-400 italic">
-                        Nenhuma profissÃ£o registada.
+                        Nenhuma profissão registada.
                       </td>
                     </tr>
                   ) : professions.map(p => {
@@ -8814,7 +8814,7 @@ const HRModule = ({
                 <tr className="bg-zinc-50 text-[10px] font-bold uppercase text-zinc-400">
                   <th className="px-6 py-4">FuncionÃ¡rio</th>
                   <th className="px-6 py-4">Estado Atual</th>
-                  <th className="px-6 py-4 text-right">AÃ§Ãµes</th>
+                  <th className="px-6 py-4 text-right">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
@@ -8868,10 +8868,10 @@ const HRModule = ({
 
         {activeTab === 'absences' && (
           <div className="bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm p-6">
-            <h3 className="font-bold text-[#003366] mb-6">GestÃ£o de FÃ©rias & AusÃªncias</h3>
+            <h3 className="font-bold text-[#003366] mb-6">Gestão de Férias & Ausências</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               <div className="bg-zinc-50 p-6 border border-zinc-100">
-                <h4 className="text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-4">Registar AusÃªncia</h4>
+                <h4 className="text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-4">Registar Ausência</h4>
                 <form onSubmit={(e) => {
                   e.preventDefault();
                   const form = e.target as HTMLFormElement;
@@ -8937,11 +8937,11 @@ const HRModule = ({
             {!selectedReport ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {[
-                  { id: 'remunerations', label: 'Mapa de RemuneraÃ§Ãµes', icon: Calculator },
+                  { id: 'remunerations', label: 'Mapa de Remunerações', icon: Calculator },
                   { id: 'inss', label: 'Mapas de INSS', icon: ShieldCheck },
                   { id: 'irt', label: 'Mapas de IRT', icon: Wallet },
-                  { id: 'vacations', label: 'Mapas de FÃ©rias', icon: Calendar },
-                  { id: 'receipts', label: 'Recibos de SalÃ¡rio', icon: Printer },
+                  { id: 'vacations', label: 'Mapas de Férias', icon: Calendar },
+                  { id: 'receipts', label: 'Recibos de Salário', icon: Printer },
                 ].map((report) => (
                   <button 
                     key={report.id} 
@@ -8963,7 +8963,7 @@ const HRModule = ({
                     className="flex items-center gap-2 text-zinc-500 hover:text-[#003366] transition-colors font-bold text-sm"
                   >
                     <ArrowLeft size={16} />
-                    Voltar aos RelatÃ³rios
+                    Voltar aos Relatórios
                   </button>
                   <div className="flex gap-2">
                     <button className="bg-white border border-zinc-200 px-4 py-2 text-xs font-bold flex items-center gap-2 hover:bg-zinc-50">
@@ -8978,7 +8978,7 @@ const HRModule = ({
                 {selectedReport === 'remunerations' && (
                   <div className="bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm">
                     <div className="p-6 border-b border-zinc-100 bg-zinc-50 flex justify-between items-center">
-                      <h3 className="font-bold text-[#003366]">Mapa de RemuneraÃ§Ãµes - {new Date().toLocaleDateString('pt-PT', { month: 'long', year: 'numeric' })}</h3>
+                      <h3 className="font-bold text-[#003366]">Mapa de Remunerações - {new Date().toLocaleDateString('pt-PT', { month: 'long', year: 'numeric' })}</h3>
                     </div>
                     <div className="overflow-x-auto">
                       <table className="w-full text-left border-collapse">
@@ -8986,10 +8986,10 @@ const HRModule = ({
                           <tr className="bg-[#003366] text-white text-[10px] uppercase tracking-wider font-bold">
                             <th className="px-6 py-4">FuncionÃ¡rio</th>
                             <th className="px-6 py-4">Cargo</th>
-                            <th className="px-6 py-4 text-right">SalÃ¡rio Base</th>
+                            <th className="px-6 py-4 text-right">Salário Base</th>
                             <th className="px-6 py-4 text-right">INSS (3%)</th>
                             <th className="px-6 py-4 text-right">IRT</th>
-                            <th className="px-6 py-4 text-right">SalÃ¡rio LÃ­quido</th>
+                            <th className="px-6 py-4 text-right">Salário LÃ­quido</th>
                             <th className="px-6 py-4 text-right">INSS Emp. (8%)</th>
                             <th className="px-6 py-4 text-right">Custo Total</th>
                           </tr>
@@ -9046,7 +9046,7 @@ const HRModule = ({
                         <thead>
                           <tr className="bg-[#003366] text-white text-[10px] uppercase tracking-wider font-bold">
                             <th className="px-6 py-4">FuncionÃ¡rio</th>
-                            <th className="px-6 py-4 text-right">SalÃ¡rio Base</th>
+                            <th className="px-6 py-4 text-right">Salário Base</th>
                             <th className="px-6 py-4 text-right">Segurado (3%)</th>
                             <th className="px-6 py-4 text-right">Empresa (8%)</th>
                             <th className="px-6 py-4 text-right">Total (11%)</th>
@@ -9087,9 +9087,9 @@ const HRModule = ({
                         <thead>
                           <tr className="bg-[#003366] text-white text-[10px] uppercase tracking-wider font-bold">
                             <th className="px-6 py-4">FuncionÃ¡rio</th>
-                            <th className="px-6 py-4 text-right">SalÃ¡rio Bruto</th>
+                            <th className="px-6 py-4 text-right">Salário Bruto</th>
                             <th className="px-6 py-4 text-right">INSS (3%)</th>
-                            <th className="px-6 py-4 text-right">MatÃ©ria ColectÃ¡vel</th>
+                            <th className="px-6 py-4 text-right">Matéria ColectÃ¡vel</th>
                             <th className="px-6 py-4 text-right">IRT Devido</th>
                           </tr>
                         </thead>
@@ -9136,7 +9136,7 @@ const HRModule = ({
                         </div>
                         <div className="space-y-1 text-xs">
                           <div className="flex justify-between">
-                            <span className="text-zinc-500">SalÃ¡rio Base</span>
+                            <span className="text-zinc-500">Salário Base</span>
                             <span className="font-medium">{formatCurrency(emp.salary)}</span>
                           </div>
                           <div className="flex justify-between">
@@ -9162,7 +9162,7 @@ const HRModule = ({
                 
                 {['remunerations', 'inss', 'irt', 'receipts'].indexOf(selectedReport || '') === -1 && (
                   <div className="p-12 text-center text-zinc-400 italic bg-white border border-zinc-200">
-                    RelatÃ³rio em desenvolvimento...
+                    Relatório em desenvolvimento...
                   </div>
                 )}
               </div>
@@ -9211,7 +9211,7 @@ const HRModule = ({
           <div className="bg-white border border-zinc-200 rounded-none shadow-sm p-6">
             {!appSelectedEmployee ? (
               <div className="space-y-4">
-                <h3 className="font-bold text-[#003366] uppercase tracking-widest text-xs mb-4">Selecione um Colaborador para a DeclaraÃ§Ã£o de ServiÃ§o</h3>
+                <h3 className="font-bold text-[#003366] uppercase tracking-widest text-xs mb-4">Selecione um Colaborador para a Declaração de Serviço</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {localEmployees.map(emp => (
                     <button
@@ -9290,31 +9290,31 @@ const HRModule = ({
                   </div>
                   <div>
                     <h2 className="text-xl font-black text-zinc-900 uppercase tracking-tighter">Processo de ExtinÃ§Ã£o de VÃ­nculo Laboral</h2>
-                    <p className="text-[10px] font-bold text-red-600 uppercase tracking-widest mt-1">CessaÃ§Ã£o do contrato de trabalho</p>
+                    <p className="text-[10px] font-bold text-red-600 uppercase tracking-widest mt-1">Cessação do contrato de trabalho</p>
                   </div>
                </div>
 
                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                   <div className="space-y-6">
                     <div>
-                      <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Motivo da RescisÃ£o / DemissÃ£o:</label>
+                      <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Motivo da Rescisão / Demissão:</label>
                       <select className="w-full border border-zinc-200 px-4 py-2.5 text-xs font-black uppercase text-red-700 bg-red-50/30 outline-none">
                         <option>MÃºtuo Acordo</option>
                         <option>Caducidade de Contrato</option>
-                        <option>RescisÃ£o por Iniciativa do Trabalhador</option>
+                        <option>Rescisão por Iniciativa do Trabalhador</option>
                         <option>Despedimento Disciplinar</option>
                         <option>Aposentadoria</option>
                         <option>Morte do Trabalhador</option>
                       </select>
                     </div>
                     <div>
-                      <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Data da Ãšltima PresenÃ§a:</label>
+                      <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Data da Ãšltima Presença:</label>
                       <input type="date" className="w-full border border-zinc-200 px-4 py-2 text-xs font-bold focus:outline-none focus:border-red-600" />
                     </div>
                     <div className="bg-zinc-50 p-6 border border-zinc-200">
-                       <h4 className="text-[10px] font-black text-zinc-800 uppercase mb-4">Checklist de SaÃ­da</h4>
+                       <h4 className="text-[10px] font-black text-zinc-800 uppercase mb-4">Checklist de Saída</h4>
                        <div className="space-y-3">
-                          {['DevoluÃ§Ã£o de Ativos', 'Entrega de Chaves', 'RevogaÃ§Ã£o de Acessos TI', 'Entrega de CartÃ£o de Trabalho', 'Assinatura TRCT'].map(item => (
+                          {['DevoluÃ§Ã£o de Ativos', 'Entrega de Chaves', 'Revogação de Acessos TI', 'Entrega de CartÃ£o de Trabalho', 'Assinatura TRCT'].map(item => (
                             <label key={item} className="flex items-center gap-3 cursor-pointer group">
                                <input type="checkbox" className="w-4 h-4 rounded-none accent-red-600" />
                                <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-tight group-hover:text-zinc-800 transition-colors">{item}</span>
@@ -9326,18 +9326,18 @@ const HRModule = ({
 
                   <div className="space-y-6">
                     <div className="bg-red-50 p-6 border border-red-100">
-                      <h4 className="text-[10px] font-black text-red-900 uppercase mb-4">CÃ¡lculo Estimado de IndemnizaÃ§Ã£o</h4>
+                      <h4 className="text-[10px] font-black text-red-900 uppercase mb-4">Cálculo Estimado de Indemnização</h4>
                       <div className="space-y-3">
                          <div className="flex justify-between text-[10px] text-red-800/70 uppercase font-bold">
                            <span>MÃªs Corrente (Proporcional):</span>
                            <span>{formatCurrency(0)}</span>
                          </div>
                          <div className="flex justify-between text-[10px] text-red-800/70 uppercase font-bold">
-                           <span>FÃ©rias nÃ£o Gozadas:</span>
+                           <span>Férias não Gozadas:</span>
                            <span>{formatCurrency(0)}</span>
                          </div>
                          <div className="flex justify-between text-[10px] text-red-800/70 uppercase font-bold">
-                           <span>SubsÃ­dio FÃ©rias / Natal:</span>
+                           <span>SubsÃ­dio Férias / Natal:</span>
                            <span>{formatCurrency(0)}</span>
                          </div>
                          <div className="pt-3 border-t border-red-200 flex justify-between font-black text-red-900 text-sm">
@@ -9349,7 +9349,7 @@ const HRModule = ({
                     <button className="w-full bg-zinc-900 text-white font-black py-4 uppercase tracking-widest text-[10px] hover:bg-black transition-all shadow-xl">
                       Iniciar Processo de ExtinÃ§Ã£o
                     </button>
-                    <p className="text-[9px] text-zinc-400 italic text-center">Este processo Ã© irreversÃ­vel e exige validaÃ§Ã£o jurÃ­dica.</p>
+                    <p className="text-[9px] text-zinc-400 italic text-center">Este processo é irreversível e exige validação jurÃ­dica.</p>
                   </div>
                </div>
             </div>
@@ -9410,7 +9410,7 @@ const HRModule = ({
                       <h2 className="text-2xl font-black text-[#003366] uppercase tracking-tighter">
                         {appSelectedEmployee?.name || 'Selecione um Colaborador'}
                       </h2>
-                      <p className="text-sm font-bold text-zinc-500 uppercase">{appSelectedEmployee?.role || 'Cargo nÃ£o definido'}</p>
+                      <p className="text-sm font-bold text-zinc-500 uppercase">{appSelectedEmployee?.role || 'Cargo não definido'}</p>
                       <p className="text-xs text-zinc-400 mt-2 font-bold">ID: {appSelectedEmployee ? String(appSelectedEmployee.id).padStart(4, '0') : '---'}</p>
                     </div>
                   </div>
@@ -9427,7 +9427,7 @@ const HRModule = ({
                   <div className="space-y-6">
                     <div className="bg-zinc-50 p-4 border border-zinc-200">
                       <h3 className="text-[10px] font-black text-[#003366] uppercase tracking-widest mb-4 flex items-center gap-2">
-                         <UserIcon size={14} className="text-[#F27D26]" /> InformaÃ§Ãµes Gerais
+                         <UserIcon size={14} className="text-[#F27D26]" /> Informações Gerais
                       </h3>
                       <div className="space-y-3">
                         <div className="flex justify-between border-b border-zinc-100 pb-1">
@@ -9443,7 +9443,7 @@ const HRModule = ({
                           <span className="text-[10px] font-black uppercase">{appSelectedEmployee?.marital_status || '---'}</span>
                         </div>
                         <div className="flex justify-between border-b border-zinc-100 pb-1">
-                          <span className="text-[9px] font-bold text-zinc-400 uppercase">HabilitaÃ§Ãµes</span>
+                          <span className="text-[9px] font-bold text-zinc-400 uppercase">Habilitações</span>
                           <span className="text-[10px] font-black uppercase">{appSelectedEmployee?.academic_level || '---'}</span>
                         </div>
                       </div>
@@ -9466,7 +9466,7 @@ const HRModule = ({
                         </div>
                         <div className="space-y-1">
                           <span className="text-[9px] font-bold text-zinc-400 uppercase block">Morada completa</span>
-                          <span className="text-[10px] font-black uppercase leading-tight block">{appSelectedEmployee?.address || 'EndereÃ§o nÃ£o disponÃ­vel'}</span>
+                          <span className="text-[10px] font-black uppercase leading-tight block">{appSelectedEmployee?.address || 'EndereÃ§o não disponível'}</span>
                         </div>
                       </div>
                     </div>
@@ -9475,11 +9475,11 @@ const HRModule = ({
                   <div className="space-y-6">
                     <div className="bg-zinc-50 p-4 border border-zinc-200">
                       <h3 className="text-[10px] font-black text-[#003366] uppercase tracking-widest mb-4 flex items-center gap-2">
-                         <ShieldCheck size={14} className="text-[#F27D26]" /> SituaÃ§Ã£o Laboral
+                         <ShieldCheck size={14} className="text-[#F27D26]" /> Situação Laboral
                       </h3>
                       <div className="space-y-3">
                         <div className="flex justify-between border-b border-zinc-100 pb-1">
-                          <span className="text-[9px] font-bold text-zinc-400 uppercase">AdmissÃ£o</span>
+                          <span className="text-[9px] font-bold text-zinc-400 uppercase">Admissão</span>
                           <span className="text-[10px] font-black">{appSelectedEmployee?.hired_at || '---'}</span>
                         </div>
                         <div className="flex justify-between border-b border-zinc-100 pb-1">
@@ -9522,7 +9522,7 @@ const HRModule = ({
             <div className="bg-white border border-zinc-200 p-6 flex flex-col md:flex-row justify-between items-center gap-4 no-print">
                <div>
                   <h3 className="text-xl font-black text-[#003366] uppercase tracking-tighter">CartÃµes de Colaborador</h3>
-                  <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mt-1">IdentificaÃ§Ã£o profissional e acesso operacional</p>
+                  <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mt-1">Identificação profissional e acesso operacional</p>
                </div>
                <div className="flex items-center gap-4 w-full md:w-auto">
                  <div className="relative flex-1 md:w-64">
@@ -9603,7 +9603,7 @@ const HRModule = ({
                          </div>
                          <div className="grid grid-cols-2 gap-1 text-[7.5px]">
                             <div>
-                               <span className="block text-[6.5px] font-extrabold text-zinc-400 uppercase leading-none mb-0.5">AdmissÃ£o</span>
+                               <span className="block text-[6.5px] font-extrabold text-zinc-400 uppercase leading-none mb-0.5">Admissão</span>
                                <span className="font-bold text-zinc-650">{emp.hired_at || '---'}</span>
                             </div>
                             <div>
@@ -9617,7 +9617,7 @@ const HRModule = ({
 
                   {/* Corporate Pattern Footer */}
                   <div className="h-8 bg-[#003366] px-4 flex items-center justify-between mt-auto">
-                     <span className="text-[6.5px] text-white/75 font-black uppercase tracking-widest">CartÃ£o de Identidade Profissional â€¢ GRUPO TECNOSYS</span>
+                     <span className="text-[6.5px] text-white/75 font-black uppercase tracking-widest">CartÃ£o de Identidade Profissional • GRUPO TECNOSYS</span>
                      <button 
                        onClick={() => {
                          const printContents = document.getElementById(`employee-card-${emp.id}`)?.outerHTML;
@@ -9681,7 +9681,7 @@ const HRModule = ({
                                                </tr>
                                                <tr style="height: 4px;"></tr>
                                                <tr>
-                                                  <td style="color: #a1a1aa; font-weight: 800; text-transform: uppercase;">AdmissÃ£o</td>
+                                                  <td style="color: #a1a1aa; font-weight: 800; text-transform: uppercase;">Admissão</td>
                                                   <td style="color: #a1a1aa; font-weight: 800; text-transform: uppercase;">Contrato</td>
                                                </tr>
                                                <tr>
@@ -9693,7 +9693,7 @@ const HRModule = ({
                                        </div>
                                      </div>
                                      <div style="height: 28px; background-color: #003366; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; margin-top: auto;">
-                                        <span style="color: rgba(255,255,255,0.75); font-size: 6.5px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px;">CartÃ£o de Identidade Profissional â€¢ GRUPO TECNOSYS</span>
+                                        <span style="color: rgba(255,255,255,0.75); font-size: 6.5px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px;">CartÃ£o de Identidade Profissional • GRUPO TECNOSYS</span>
                                         <div style="display: flex; gap: 4px;">
                                            <div style="width: 6px; height: 6px; border-radius: 50%; background-color: #F27D26;"></div>
                                            <div style="width: 6px; height: 6px; border-radius: 50%; background-color: #10b981;"></div>
@@ -9752,7 +9752,7 @@ const HRModule = ({
                                      </tr>
                                      <tr style={{ height: '4px' }}></tr>
                                      <tr>
-                                        <td style={{ color: '#a1a1aa', fontWeight: '800', textTransform: 'uppercase' }}>AdmissÃ£o</td>
+                                        <td style={{ color: '#a1a1aa', fontWeight: '800', textTransform: 'uppercase' }}>Admissão</td>
                                         <td style={{ color: '#a1a1aa', fontWeight: '800', textTransform: 'uppercase' }}>Contrato</td>
                                      </tr>
                                      <tr>
@@ -9765,7 +9765,7 @@ const HRModule = ({
                            </div>
                          </div>
                          <div style={{ height: '28px', backgroundColor: '#003366', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', marginTop: 'auto' }}>
-                            <span style={{ color: 'rgba(255,255,255,0.75)', fontSize: '6.5px', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '0.5px' }}>CartÃ£o de Identidade Profissional â€¢ GRUPO TECNOSYS</span>
+                            <span style={{ color: 'rgba(255,255,255,0.75)', fontSize: '6.5px', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '0.5px' }}>CartÃ£o de Identidade Profissional • GRUPO TECNOSYS</span>
                             <div style={{ display: 'flex', gap: '4px' }}>
                                <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#F27D26' }}></div>
                                <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981' }}></div>
@@ -9798,11 +9798,11 @@ const HRModule = ({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
                 <div className="border border-zinc-100 p-6 bg-zinc-50/50">
                   <h3 className="text-xs font-black text-[#003366] uppercase mb-6 flex items-center gap-2 border-b border-zinc-200 pb-2">
-                    <div className="w-1.5 h-1.5 bg-[#F27D26]"></div> SeguranÃ§a Social (INSS)
+                    <div className="w-1.5 h-1.5 bg-[#F27D26]"></div> Segurança Social (INSS)
                   </h3>
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1.5">NÃºmero de InscriÃ§Ã£o</label>
+                      <label className="block text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1.5">Número de InscriÃ§Ã£o</label>
                       <input 
                         className="w-full bg-white border border-zinc-200 px-4 py-2 text-xs font-bold focus:outline-none" 
                         defaultValue={appSelectedEmployee?.inss_number || ''}
@@ -9850,11 +9850,11 @@ const HRModule = ({
 
               <div className="bg-zinc-50 border border-zinc-200 overflow-hidden">
                 <div className="p-4 bg-white border-b border-zinc-200 flex justify-between items-center">
-                  <h4 className="text-[10px] font-black text-[#003366] uppercase tracking-widest">DocumentaÃ§Ã£o Anexa</h4>
+                  <h4 className="text-[10px] font-black text-[#003366] uppercase tracking-widest">Documentação Anexa</h4>
                   <button className="text-[9px] font-black text-blue-600 uppercase">Ver Todos</button>
                 </div>
                 <div className="p-2 grid grid-cols-1 md:grid-cols-3 gap-2">
-                  {['BI / Passaporte', 'CartÃ£o de ResidÃªncia', 'Certificado HabilitaÃ§Ãµes', 'Registo Criminal', 'Atestado MÃ©dico'].map(doc => (
+                  {['BI / Passaporte', 'CartÃ£o de ResidÃªncia', 'Certificado Habilitações', 'Registo Criminal', 'Atestado Médico'].map(doc => (
                     <div key={doc} className="flex items-center justify-between p-3 bg-white border border-zinc-100 hover:bg-zinc-50 cursor-pointer transition-colors group">
                       <div className="flex items-center gap-3">
                         <FileText size={14} className="text-zinc-300 group-hover:text-[#003366]" />
@@ -9874,8 +9874,8 @@ const HRModule = ({
             <div className="bg-white border border-zinc-200 shadow-sm p-8">
               <div className="flex justify-between items-center mb-10 border-b border-zinc-100 pb-6">
                 <div>
-                   <h2 className="text-xl font-black text-[#003366] uppercase tracking-tighter">AnÃ¡lise de Desempenho e KPI</h2>
-                   <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mt-1">MÃ©tricas de produtividade e avaliaÃ§Ã£o contÃ­nua</p>
+                   <h2 className="text-xl font-black text-[#003366] uppercase tracking-tighter">Análise de Desempenho e KPI</h2>
+                   <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mt-1">Métricas de produtividade e avaliação contÃ­nua</p>
                 </div>
                 <div className="flex gap-4">
                   <select className="border border-zinc-200 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-[#003366] bg-zinc-50">
@@ -9889,8 +9889,8 @@ const HRModule = ({
                 {[
                   { label: 'Assiduidade', val: '98%', color: 'text-emerald-600', icon: Clock },
                   { label: 'Pontualidade', val: '92%', color: 'text-blue-600', icon: CheckCircle },
-                  { label: 'SuperaÃ§Ã£o Metas', val: '105%', color: 'text-[#F27D26]', icon: TrendingUp },
-                  { label: 'Ãndice AvaliaÃ§Ã£o', val: '4.8/5', color: 'text-purple-600', icon: Star }
+                  { label: 'Superação Metas', val: '105%', color: 'text-[#F27D26]', icon: TrendingUp },
+                  { label: 'Ãndice Avaliação', val: '4.8/5', color: 'text-purple-600', icon: Star }
                 ].map((stat, idx) => (
                   <div key={idx} className="bg-zinc-50 p-6 border border-zinc-200 text-center space-y-2 group hover:bg-[#003366] transition-all duration-300 cursor-default">
                     <stat.icon size={20} className="mx-auto text-zinc-300 group-hover:text-white/40" />
@@ -9923,8 +9923,8 @@ const HRModule = ({
                   <h4 className="font-black text-[#003366] uppercase text-xs border-b border-zinc-100 pb-2">Feedback dos Supervisores</h4>
                   <div className="space-y-4">
                     {[
-                      { supervisor: 'Dr. Joaquim Silva', date: '12/03/2026', comment: 'Demonstra uma evoluÃ§Ã£o notÃ¡vel na gestÃ£o de equipas e resoluÃ§Ã£o de conflitos.' },
-                      { supervisor: 'Eng. Maria AntÃ³nia', date: '15/01/2026', comment: 'Capacidade tÃ©cnica excelente, mantÃ©m os padrÃµes de qualidade exigidos.' }
+                      { supervisor: 'Dr. Joaquim Silva', date: '12/03/2026', comment: 'Demonstra uma evoluÃ§Ã£o notÃ¡vel na gestão de equipas e resoluÃ§Ã£o de conflitos.' },
+                      { supervisor: 'Eng. Maria AntÃ³nia', date: '15/01/2026', comment: 'Capacidade técnica excelente, mantém os padrÃµes de qualidade exigidos.' }
                     ].map((f, i) => (
                       <div key={i} className="bg-zinc-50 p-4 border-l-4 border-[#003366]">
                         <div className="flex justify-between items-center mb-2">
@@ -9946,7 +9946,7 @@ const HRModule = ({
             <div className="bg-white border border-zinc-200 p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
               <div>
                 <h3 className="text-lg font-black text-[#003366] uppercase tracking-wider">GESTÃƒO DE POSTO DE TRABALHO</h3>
-                <p className="text-xs text-zinc-400 font-bold uppercase mt-1">Controle de alocaÃ§Ã£o de locais de trabalho e colaboradores</p>
+                <p className="text-xs text-zinc-400 font-bold uppercase mt-1">Controle de alocação de locais de trabalho e colaboradores</p>
               </div>
               <div className="flex flex-wrap gap-2 w-full md:w-auto">
                 <button 
@@ -9974,7 +9974,7 @@ const HRModule = ({
                             <span style="font-family: monospace; font-size: 10px; font-weight: bold; background-color: #003366; color: #ffffff; padding: 2px 6px;">${ws.code || 'PT-100'}</span>
                           </div>
                           <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; font-size: 10px; margin-bottom: 12px; color: #4b5563;">
-                            <div><strong>LocalizaÃ§Ã£o:</strong> ${ws.location || 'Sede'}</div>
+                            <div><strong>Localização:</strong> ${ws.location || 'Sede'}</div>
                             <div><strong>Efetivo Activo:</strong> ${wsEmployees.length} Colaboradores (Meta: ${ws.staff_per_day || 0})</div>
                             <div><strong>ResponsÃ¡vel:</strong> ${ws.client_name || '---'}</div>
                           </div>
@@ -9985,7 +9985,7 @@ const HRModule = ({
                                 <th style="padding: 6px;">Nome</th>
                                 <th style="padding: 6px;">Cargo</th>
                                 <th style="padding: 6px;">BI/NIF</th>
-                                <th style="text-align: right; padding: 6px;">SalÃ¡rio</th>
+                                <th style="text-align: right; padding: 6px;">Salário</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -9999,7 +9999,7 @@ const HRModule = ({
                     win.document.write(`
                       <html>
                         <head>
-                          <title>RelatÃ³rio Geral dos Locais de Trabalho</title>
+                          <title>Relatório Geral dos Locais de Trabalho</title>
                           <style>
                             body { font-family: 'Inter', sans-serif; padding: 40px; color: #18181b; }
                             .header { border-bottom: 4px solid #003366; padding-bottom: 16px; margin-bottom: 24px; }
@@ -10012,12 +10012,12 @@ const HRModule = ({
                             <p style="margin: 4px 0 0 0; font-size: 11px; font-weight: bold; color: #4b5563; text-transform: uppercase; letter-spacing: 0.1em;">RELATÃ“RIO DE ALOCAÃ‡ÃƒO MULTI-POSTOS DE TRABALHO</p>
                             <div style="margin-top: 10px; font-size: 11px; color: #52525b;">
                               <strong>Total de Postos:</strong> ${workSites.length} <br/>
-                              <strong>Data de EmissÃ£o:</strong> ${new Date().toLocaleDateString('pt-AO')}
+                              <strong>Data de Emissão:</strong> ${new Date().toLocaleDateString('pt-AO')}
                             </div>
                           </div>
                           ${sections}
                           <div class="footer">
-                            Sistema Integrado de Recursos Humanos â€¢ ${companyName}
+                            Sistema Integrado de Recursos Humanos • ${companyName}
                           </div>
                         </body>
                       </html>
@@ -10039,8 +10039,8 @@ const HRModule = ({
                     
                     doc.setFontSize(10);
                     doc.setTextColor(100, 100, 100);
-                    doc.text(`Empresa: ${companyName}  â€¢  Data: ${new Date().toLocaleDateString('pt-AO')}`, 14, 26);
-                    doc.text(`Total de Postos: ${workSites.length}  â€¢  Total de Colaboradores: ${localEmployees.length}`, 14, 32);
+                    doc.text(`Empresa: ${companyName}  •  Data: ${new Date().toLocaleDateString('pt-AO')}`, 14, 26);
+                    doc.text(`Total de Postos: ${workSites.length}  •  Total de Colaboradores: ${localEmployees.length}`, 14, 32);
                     
                     let y = 40;
                     
@@ -10065,7 +10065,7 @@ const HRModule = ({
                       doc.setFontSize(8);
                       doc.setTextColor(80, 80, 80);
                       doc.setFont(undefined, 'normal');
-                      const wsInfo = `Local: ${ws.location || 'Sede'} | ResponsÃ¡vel: ${ws.client_name || '---'} | AlocaÃ§Ã£o: ${wsEmployees.length} (Meta: ${ws.staff_per_day || 0})`;
+                      const wsInfo = `Local: ${ws.location || 'Sede'} | ResponsÃ¡vel: ${ws.client_name || '---'} | Alocação: ${wsEmployees.length} (Meta: ${ws.staff_per_day || 0})`;
                       doc.text(wsInfo, 100, y + 6);
                       
                       y += 10;
@@ -10106,7 +10106,7 @@ const HRModule = ({
                 </button>
                 <button 
                   onClick={() => {
-                    alert("Para cadastrar novos postos de trabalho, utilize o MÃ³dulo de Contabilidade / Local de Trabalho do menu principal.");
+                    alert("Para cadastrar novos postos de trabalho, utilize o Módulo de Contabilidade / Local de Trabalho do menu principal.");
                   }}
                   className="bg-orange-500 text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-orange-600 transition-colors"
                 >
@@ -10176,9 +10176,9 @@ const HRModule = ({
                           <div style="margin-top: 14px; font-size: 11px; color: #52525b; line-height: 1.5;">
                             <strong>Posto de Trabalho:</strong> ${wsItem.title} <br/>
                             <strong>CÃ³digo de Posto:</strong> ${wsItem.code || 'PT-100'} <br/>
-                            <strong>LocalizaÃ§Ã£o:</strong> ${wsItem.location || 'Sede'} <br/>
+                            <strong>Localização:</strong> ${wsItem.location || 'Sede'} <br/>
                             <strong>Efetivo Activo:</strong> ${filteredWsEmployees.length} colaboradores <br/>
-                            <strong>Data de EmissÃ£o:</strong> ${new Date().toLocaleDateString('pt-AO')}
+                            <strong>Data de Emissão:</strong> ${new Date().toLocaleDateString('pt-AO')}
                           </div>
                         </div>
                         <table>
@@ -10186,18 +10186,18 @@ const HRModule = ({
                             <tr>
                               <th>ID</th>
                               <th>Nome do Colaborador</th>
-                              <th>Cargo / FunÃ§Ã£o</th>
+                              <th>Cargo / Função</th>
                               <th>NIF / BI</th>
                               <th>Contacto</th>
-                              <th style="text-align: right;">SalÃ¡rio Base</th>
+                              <th style="text-align: right;">Salário Base</th>
                             </tr>
                           </thead>
                           <tbody>
-                            ${rows.length ? rows : '<tr><td colspan="6" style="padding: 20px; text-align: center; color: #a1a1aa;">Nenhum colaborador alocado neste posto de trabalho sob estes critÃ©rios.</td></tr>'}
+                            ${rows.length ? rows : '<tr><td colspan="6" style="padding: 20px; text-align: center; color: #a1a1aa;">Nenhum colaborador alocado neste posto de trabalho sob estes critérios.</td></tr>'}
                           </tbody>
                         </table>
                         <div class="footer">
-                          Sistema Integrado de Recursos Humanos â€¢ ${companyName}
+                          Sistema Integrado de Recursos Humanos • ${companyName}
                         </div>
                       </body>
                     </html>
@@ -10210,7 +10210,7 @@ const HRModule = ({
                   doc.setFontSize(16);
                   doc.text(`Lista de Colaboradores - Posto: ${wsItem.title || 'S/ Nome'}`, 14, 20);
                   doc.setFontSize(10);
-                  doc.text(`CÃ³digo: ${wsItem.code || 'PT-100'}  â€¢  LocalizaÃ§Ã£o: ${wsItem.location || 'S/ LocalizaÃ§Ã£o'}`, 14, 26);
+                  doc.text(`CÃ³digo: ${wsItem.code || 'PT-100'}  •  Localização: ${wsItem.location || 'S/ Localização'}`, 14, 26);
                   doc.text(`Data: ${new Date().toLocaleDateString('pt-AO')}`, 14, 32);
                   
                   let y = 42;
@@ -10220,9 +10220,9 @@ const HRModule = ({
                   doc.setTextColor(255, 255, 255);
                   doc.text('ID', 16, y + 5);
                   doc.text('Nome Completo', 32, y + 5);
-                  doc.text('Cargo / FunÃ§Ã£o', 92, y + 5);
+                  doc.text('Cargo / Função', 92, y + 5);
                   doc.text('BI / NIF', 142, y + 5);
-                  doc.text('SalÃ¡rio Base', 172, y + 5);
+                  doc.text('Salário Base', 172, y + 5);
                   
                   y += 8;
                   doc.setTextColor(50, 50, 50);
@@ -10290,7 +10290,7 @@ const HRModule = ({
                             </div>
                             <div className="space-y-1 text-[10px] font-medium">
                               <div className={`flex justify-between ${isSelected ? 'text-white/80' : 'text-zinc-500'}`}>
-                                <span className="uppercase text-[8px] tracking-widest font-black">LocalizaÃ§Ã£o:</span>
+                                <span className="uppercase text-[8px] tracking-widest font-black">Localização:</span>
                                 <span className="truncate">{ws.location || 'Sede'}</span>
                               </div>
                               <div className={`flex justify-between font-bold ${isSelected ? 'text-white/90' : 'text-[#003366]'}`}>
@@ -10314,7 +10314,7 @@ const HRModule = ({
                               <h4 className="text-sm font-black text-[#003366] uppercase tracking-tighter">{activeWS.title}</h4>
                             </div>
                             <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mt-1">
-                              InformaÃ§Ãµes especÃ­ficas e quadro nominal do posto
+                              Informações especÃ­ficas e quadro nominal do posto
                             </p>
                           </div>
                           
@@ -10342,7 +10342,7 @@ const HRModule = ({
                             <span className="text-zinc-800 font-black">{activeWS.code || 'PT-100'}</span>
                           </div>
                           <div>
-                            <span className="block text-[8px] text-zinc-400 uppercase tracking-widest font-black">LocalizaÃ§Ã£o</span>
+                            <span className="block text-[8px] text-zinc-400 uppercase tracking-widest font-black">Localização</span>
                             <span className="text-zinc-800 font-bold capitalize">{activeWS.location || 'Sede'}</span>
                           </div>
                           <div>
@@ -10360,8 +10360,8 @@ const HRModule = ({
                             <span className="text-zinc-500 font-bold normal-case truncate block">{activeWS.contact || 'S/ Contacto registado'}</span>
                           </div>
                           <div className="col-span-2 pt-2 border-t border-zinc-100">
-                            <span className="block text-[8px] text-zinc-400 uppercase tracking-widest font-black">ObservaÃ§Ãµes</span>
-                            <span className="text-zinc-500 font-bold normal-case truncate block">{activeWS.observations || 'Nenhuma observaÃ§Ã£o registada.'}</span>
+                            <span className="block text-[8px] text-zinc-400 uppercase tracking-widest font-black">Observações</span>
+                            <span className="text-zinc-500 font-bold normal-case truncate block">{activeWS.observations || 'Nenhuma observação registada.'}</span>
                           </div>
                         </div>
                       </div>
@@ -10393,7 +10393,7 @@ const HRModule = ({
                               <th className="px-4 py-3 border-r border-zinc-200">Cargo</th>
                               <th className="px-4 py-3 border-r border-zinc-200">BI / NIF</th>
                               <th className="px-4 py-3 border-r border-zinc-200">Contacto</th>
-                              <th className="px-4 py-3 border-r border-zinc-200 text-right">SalÃ¡rio Base</th>
+                              <th className="px-4 py-3 border-r border-zinc-200 text-right">Salário Base</th>
                               <th className="px-4 py-3 text-center">AcÃ§Ãµes</th>
                             </tr>
                           </thead>
@@ -10535,7 +10535,7 @@ const HRModule = ({
         {activeTab === 'print_list' && (
           <div className="bg-white border border-zinc-200 p-12 space-y-12">
             <div className="flex justify-between items-center no-print">
-              <h3 className="font-black text-[#003366] uppercase tracking-widest">RelatÃ³rio de Pessoal para ImpressÃ£o</h3>
+              <h3 className="font-black text-[#003366] uppercase tracking-widest">Relatório de Pessoal para Impressão</h3>
               <button 
                 onClick={() => window.print()}
                 className="bg-[#003366] text-white px-6 py-2 text-xs font-black uppercase tracking-widest flex items-center gap-2 shadow-xl"
@@ -10564,7 +10564,7 @@ const HRModule = ({
                     <th className="px-4 py-3 border-r border-zinc-200">Cargo</th>
                     <th className="px-4 py-3 border-r border-zinc-200">NIF</th>
                     <th className="px-4 py-3 border-r border-zinc-200">Data Adm.</th>
-                    <th className="px-4 py-3 text-right">SalÃ¡rio Base</th>
+                    <th className="px-4 py-3 text-right">Salário Base</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-200">
@@ -10612,7 +10612,7 @@ const HRModule = ({
                    <h4 className="text-xs font-black text-[#003366] uppercase truncate max-w-[200px]">
                      {user?.empresa_nome || 'TECNOSYS'}
                    </h4>
-                   <p className="text-[9px] text-zinc-400 font-bold uppercase tracking-widest">MÃ³dulo de Contratos</p>
+                   <p className="text-[9px] text-zinc-400 font-bold uppercase tracking-widest">Módulo de Contratos</p>
                 </div>
                 <div className="w-10 h-10 bg-[#003366] flex items-center justify-center">
                   <FileText size={20} className="text-white" />
@@ -10623,7 +10623,7 @@ const HRModule = ({
             {contractView === 'emit' ? (
               <div className="bg-white border border-zinc-200 overflow-hidden shadow-sm">
                 <div className="p-6 bg-zinc-50 border-b border-zinc-200">
-                  <h3 className="text-sm font-black text-[#003366] uppercase tracking-tighter">Selecione o Colaborador para EmissÃ£o de Contrato</h3>
+                  <h3 className="text-sm font-black text-[#003366] uppercase tracking-tighter">Selecione o Colaborador para Emissão de Contrato</h3>
                   <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mt-1">Lista nominal de trabalhadores ativos no quadro</p>
                 </div>
                 <div className="overflow-x-auto">
@@ -10695,9 +10695,9 @@ const HRModule = ({
                   <tr className="bg-zinc-50 font-black uppercase tracking-widest text-zinc-400">
                     <th className="px-4 py-3 border-b">FuncionÃ¡rio</th>
                     <th className="px-4 py-3 border-b">Cargo Anterior</th>
-                    <th className="px-4 py-3 border-b">Data DemissÃ£o</th>
+                    <th className="px-4 py-3 border-b">Data Demissão</th>
                     <th className="px-4 py-3 border-b">Estado</th>
-                    <th className="px-4 py-3 border-b text-center">AÃ§Ã£o</th>
+                    <th className="px-4 py-3 border-b text-center">Ação</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -10711,7 +10711,7 @@ const HRModule = ({
                       </td>
                       <td className="px-4 py-4 text-center">
                         <button 
-                          onClick={() => handleReadmitEmployee(emp.id, new Date().toISOString().split('T')[0], 'ReadmissÃ£o administrativa')}
+                          onClick={() => handleReadmitEmployee(emp.id, new Date().toISOString().split('T')[0], 'Readmissão administrativa')}
                           className="bg-emerald-600 text-white px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.1em] hover:bg-emerald-700"
                         >
                           Readmitir
@@ -10734,14 +10734,14 @@ const HRModule = ({
           <div className="bg-white border border-zinc-200 p-8 space-y-6">
             <div className="border-b border-zinc-100 pb-4">
               <h3 className="text-lg font-black text-[#003366] uppercase tracking-[0.1em]">EscalÃµes de IRT (Imposto sobre o Rendimento de Trabalho - Grupo A)</h3>
-              <p className="text-xs text-zinc-500 font-medium mt-1">Conforme a Lei nÂº 28/20 de 22 de Julho / LegislaÃ§Ã£o AGT RepÃºblica de Angola</p>
+              <p className="text-xs text-zinc-500 font-medium mt-1">Conforme a Lei nÂº 28/20 de 22 de Julho / Legislação AGT RepÃºblica de Angola</p>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-[11px]">
                 <thead>
                   <tr className="bg-[#003366] text-white font-black uppercase tracking-widest">
-                    <th className="px-4 py-3 border-b">EscalÃ£o</th>
-                    <th className="px-4 py-3 border-b">MatÃ©ria ColectÃ¡vel (Kz)</th>
+                    <th className="px-4 py-3 border-b">Escalão</th>
+                    <th className="px-4 py-3 border-b">Matéria ColectÃ¡vel (Kz)</th>
                     <th className="px-4 py-3 border-b text-right">Parcela Fixa (Kz)</th>
                     <th className="px-4 py-3 border-b text-center">Taxa (%)</th>
                     <th className="px-4 py-3 border-b text-right">Excesso de (Kz)</th>
@@ -10859,7 +10859,7 @@ const HRModule = ({
 
             // Clear selected pays
             setSelectedPayEmployees({});
-            alert("SalÃ¡rios liquidados com sucesso! Ordem de transferÃªncia gerada.");
+            alert("Salários liquidados com sucesso! Ordem de transferÃªncia gerada.");
             setActiveTab('transfer_order');
           };
 
@@ -10935,7 +10935,7 @@ const HRModule = ({
 
               {unpaidReceipts.length === 0 ? (
                 <div className="p-12 text-center text-zinc-400 font-bold uppercase tracking-widest bg-zinc-50 border border-zinc-200">
-                  NÃ£o restam salÃ¡rios pendentes de liquidaÃ§Ã£o para {selectedMonth}. Por favor, processe salÃ¡rios na folha de processamento primeiro!
+                  Não restam salários pendentes de liquidação para {selectedMonth}. Por favor, processe salários na folha de processamento primeiro!
                 </div>
               ) : (
                 <div className="bg-white border border-zinc-200 shadow-sm overflow-hidden">
@@ -11100,7 +11100,7 @@ const HRModule = ({
                         </div>
                         <div>
                           <h2 className="text-2xl font-black text-[#003366] uppercase tracking-tighter">{companyName}</h2>
-                          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Recursos Humanos â€¢ GestÃ£o de Pagamentos</p>
+                          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Recursos Humanos • Gestão de Pagamentos</p>
                         </div>
                       </div>
                       <div className="text-right">
@@ -11111,7 +11111,7 @@ const HRModule = ({
 
                     <div className="grid grid-cols-3 gap-8 mb-8 bg-zinc-50 p-6 border border-zinc-200">
                       <div>
-                        <p className="text-[9px] font-black uppercase text-zinc-400 tracking-widest mb-1">Data de EmissÃ£o</p>
+                        <p className="text-[9px] font-black uppercase text-zinc-400 tracking-widest mb-1">Data de Emissão</p>
                         <p className="font-bold text-[#003366]">{new Date(printingOrder.date).toLocaleDateString('pt-AO')}</p>
                       </div>
                       <div>
@@ -11166,7 +11166,7 @@ const HRModule = ({
                       </div>
                       <div className="text-center space-y-4">
                         <div className="border-t border-zinc-400 w-full pt-2">
-                          <p className="text-[10px] font-black uppercase text-[#003366]">DirecÃ§Ã£o Financeira / AdministraÃ§Ã£o</p>
+                          <p className="text-[10px] font-black uppercase text-[#003366]">Direção Financeira / Administração</p>
                           <p className="text-[9px] text-zinc-400 uppercase tracking-widest mt-1">Assinatura e Carimbo</p>
                         </div>
                       </div>
@@ -11187,7 +11187,7 @@ const HRModule = ({
               <div className="flex justify-between items-center bg-white p-6 border border-zinc-200 shadow-sm">
                 <div>
                   <h3 className="text-lg font-black text-[#003366] uppercase tracking-wider">ORDEM DE TRANSFERÃŠNCIA BANCÃRIA</h3>
-                  <p className="text-xs text-zinc-400 font-bold uppercase mt-1">Controle operacional e emissÃ£o de lotes de pagamento</p>
+                  <p className="text-xs text-zinc-400 font-bold uppercase mt-1">Controle operacional e emissão de lotes de pagamento</p>
                 </div>
                 <button 
                   onClick={() => setActiveTab('pay_salary')}
@@ -11199,7 +11199,7 @@ const HRModule = ({
 
               {transferOrders.length === 0 ? (
                 <div className="p-12 text-center text-zinc-400 font-bold uppercase tracking-widest bg-zinc-50 border border-zinc-200">
-                  Nenhuma ordem de transferÃªncia gerada ainda. VÃ¡ para a pÃ¡gina "Pagar SalÃ¡rio" para processar liquidaÃ§Ãµes!
+                  Nenhuma ordem de transferÃªncia gerada ainda. VÃ¡ para a página "Pagar Salário" para processar liquidações!
                 </div>
               ) : (
                 <div className="grid grid-cols-1 gap-6">
@@ -11273,7 +11273,7 @@ const HRModule = ({
                           onClick={() => handlePrint('print-order-content')}
                           className="bg-white/10 hover:bg-white/20 text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-1"
                         >
-                          <Printer size={12} /> Confirmar ImpressÃ£o
+                          <Printer size={12} /> Confirmar Impressão
                         </button>
                         <button 
                           onClick={() => exportToPDF('print-order-content', `Ordem_${printingOrder.id}.pdf`)}
@@ -11287,7 +11287,7 @@ const HRModule = ({
                               'ID': emp.id,
                               'Colaborador': emp.name,
                               'Cargo': emp.role,
-                              'SalÃ¡rio': emp.salary,
+                              'Salário': emp.salary,
                               'IRT': emp.irt,
                               'INSS': emp.inss,
                               'Banco': emp.bankName || 'BFA',
@@ -11313,7 +11313,7 @@ const HRModule = ({
                       <div className="flex justify-between items-start border-b border-zinc-100 pb-6">
                         <div>
                           <h2 className="text-xl font-black text-[#003366] uppercase tracking-[0.1em]">ORDEM DE TRANSFERÃŠNCIA COLECTIVA BANCÃRIA</h2>
-                          <div className="text-xs text-zinc-500 font-bold mt-1 uppercase tracking-widest font-sans">Controle de Lote Salarial â€¢ PerÃ­odo: {printingOrder.month}</div>
+                          <div className="text-xs text-zinc-500 font-bold mt-1 uppercase tracking-widest font-sans">Controle de Lote Salarial • PerÃ­odo: {printingOrder.month}</div>
                         </div>
                         <div className="text-right font-sans">
                           <div className="text-xs text-zinc-400 font-bold uppercase font-sans">NÂº de Controle</div>
@@ -11334,7 +11334,7 @@ const HRModule = ({
                         <div className="space-y-3">
                           <h4 className="font-black text-[#003366] uppercase tracking-wider border-b border-zinc-100 pb-1">INFORME DE COBERTURA</h4>
                           <div>
-                            <p className="text-zinc-500 font-bold">Data de EmissÃ£o: {new Date(printingOrder.date).toLocaleDateString('pt-AO')}</p>
+                            <p className="text-zinc-500 font-bold">Data de Emissão: {new Date(printingOrder.date).toLocaleDateString('pt-AO')}</p>
                             <p className="text-zinc-500 font-bold">Caixa de Pagamento: {printingOrder.caixaName.toUpperCase()}</p>
                             <p className="text-zinc-500 font-bold">Total de FuncionÃ¡rios BeneficiÃ¡rios: {printingOrder.employeeCount}</p>
                             <p className="text-sm font-black text-emerald-600 font-mono mt-1">Valor Total Pago: {formatCurrency(printingOrder.totalPaid)}</p>
@@ -11396,7 +11396,7 @@ const HRModule = ({
                         <div className="text-center space-y-4 font-sans">
                           <div className="border-t border-zinc-900 pt-4">
                             <p className="text-[10px] font-black uppercase tracking-widest text-zinc-800">Assinatura Autorizada</p>
-                            <p className="text-[8px] font-bold text-zinc-400 uppercase">AdministraÃ§Ã£o / DireÃ§Ã£o Geral</p>
+                            <p className="text-[8px] font-bold text-zinc-400 uppercase">Administração / DireÃ§Ã£o Geral</p>
                           </div>
                         </div>
                         <div className="text-center space-y-4 font-sans">
@@ -11449,14 +11449,14 @@ const HRModule = ({
                 </div>
                 <div>
                   <h3 className="text-xl font-black uppercase tracking-widest">{appSelectedEmployee?.name}</h3>
-                  <p className="text-xs text-white/60 uppercase tracking-tighter font-bold">{appSelectedEmployee?.role} â€¢ ID: {appSelectedEmployee?.id}</p>
+                  <p className="text-xs text-white/60 uppercase tracking-tighter font-bold">{appSelectedEmployee?.role} • ID: {appSelectedEmployee?.id}</p>
                 </div>
               </div>
 
               <div className="p-8">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                   <div className="bg-emerald-50 border border-emerald-100 p-6 text-center">
-                    <span className="block text-[10px] font-black uppercase tracking-widest text-emerald-600 mb-2">Elogios / MÃ©ritos</span>
+                    <span className="block text-[10px] font-black uppercase tracking-widest text-emerald-600 mb-2">Elogios / Méritos</span>
                     <span className="text-3xl font-black text-emerald-700">04</span>
                   </div>
                   <div className="bg-amber-50 border border-amber-100 p-6 text-center">
@@ -11470,29 +11470,29 @@ const HRModule = ({
                 </div>
 
                 <div className="space-y-4">
-                  <h4 className="font-black text-[#003366] uppercase tracking-widest text-xs border-b border-zinc-100 pb-2">HistÃ³rico de OcorrÃªncias</h4>
+                  <h4 className="font-black text-[#003366] uppercase tracking-widest text-xs border-b border-zinc-100 pb-2">Histórico de OcorrÃªncias</h4>
                   <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse text-[10px]">
                       <thead>
                         <tr className="bg-zinc-100 text-zinc-600 uppercase tracking-widest font-black">
                           <th className="px-4 py-3 border-b border-zinc-200">Data</th>
                           <th className="px-4 py-3 border-b border-zinc-200">Tipo</th>
-                          <th className="px-4 py-3 border-b border-zinc-200">DescriÃ§Ã£o</th>
+                          <th className="px-4 py-3 border-b border-zinc-200">Descrição</th>
                           <th className="px-4 py-3 border-b border-zinc-200">ResponsÃ¡vel</th>
-                          <th className="px-4 py-3 border-b border-zinc-200 text-center">AÃ§Ãµes</th>
+                          <th className="px-4 py-3 border-b border-zinc-200 text-center">Ações</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-zinc-100">
                         {[
                           { date: '15/03/2026', type: 'Elogio', desc: 'Excelente desempenho no projeto trimestral.', resp: 'Admin' },
                           { date: '02/02/2026', type: 'AdvertÃªncia Verbal', desc: 'Atrasos recorrentes na entrada.', resp: 'Supervisor' },
-                          { date: '10/01/2026', type: 'MÃ©rito', desc: 'Colaborador do mÃªs de Janeiro.', resp: 'DireÃ§Ã£o' },
+                          { date: '10/01/2026', type: 'Mérito', desc: 'Colaborador do mÃªs de Janeiro.', resp: 'DireÃ§Ã£o' },
                         ].map((item, idx) => (
                           <tr key={idx} className="hover:bg-zinc-50 transition-colors">
                             <td className="px-4 py-3 font-bold text-zinc-500">{item.date}</td>
                             <td className="px-4 py-3">
                               <span className={`px-2 py-1 font-black uppercase tracking-tighter ${
-                                item.type.includes('Elogio') || item.type.includes('MÃ©rito') ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                                item.type.includes('Elogio') || item.type.includes('Mérito') ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
                               }`}>
                                 {item.type}
                               </span>
@@ -11531,7 +11531,7 @@ const HRModule = ({
                 </div>
                 <div>
                   <h3 className="text-xl font-black uppercase tracking-widest">Redirecionamento Interno</h3>
-                  <p className="text-xs text-white/60 uppercase tracking-tighter font-bold">{appSelectedEmployee?.name} â€¢ {appSelectedEmployee?.role}</p>
+                  <p className="text-xs text-white/60 uppercase tracking-tighter font-bold">{appSelectedEmployee?.name} • {appSelectedEmployee?.role}</p>
                 </div>
               </div>
 
@@ -11543,10 +11543,10 @@ const HRModule = ({
                       <div>
                         <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Novo Departamento:</label>
                         <select className="w-full border border-zinc-200 px-4 py-2 text-xs focus:outline-none focus:border-[#003366] font-bold text-[#003366]">
-                          <option>AdministraÃ§Ã£o</option>
+                          <option>Administração</option>
                           <option>Recursos Humanos</option>
                           <option>Financeiro</option>
-                          <option>OperaÃ§Ãµes</option>
+                          <option>Operações</option>
                           <option>TI</option>
                         </select>
                       </div>
@@ -11562,7 +11562,7 @@ const HRModule = ({
                   </div>
 
                   <div className="space-y-4">
-                    <h4 className="font-black text-[#003366] uppercase tracking-widest text-xs border-b border-zinc-100 pb-2">Justificativa / ObservaÃ§Ãµes</h4>
+                    <h4 className="font-black text-[#003366] uppercase tracking-widest text-xs border-b border-zinc-100 pb-2">Justificativa / Observações</h4>
                     <textarea 
                       className="w-full h-40 border border-zinc-200 p-4 text-xs focus:outline-none focus:border-[#003366] resize-none"
                       placeholder="Descreva o motivo do redirecionamento..."
@@ -11587,7 +11587,7 @@ const HRModule = ({
                 <ArrowLeft size={14} /> Voltar aos Colaboradores
               </button>
               <button className="bg-[#003366] text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-[#002244] transition-all">
-                <Edit size={14} /> Editar FunÃ§Ãµes
+                <Edit size={14} /> Editar Funções
               </button>
             </div>
 
@@ -11597,8 +11597,8 @@ const HRModule = ({
                   {appSelectedEmployee?.image_url ? <img src={appSelectedEmployee.image_url} className="w-full h-full object-cover" /> : <UserIcon size={32} />}
                 </div>
                 <div>
-                  <h3 className="text-xl font-black uppercase tracking-widest">FunÃ§Ãµes e AtribuiÃ§Ãµes</h3>
-                  <p className="text-xs text-white/60 uppercase tracking-tighter font-bold">{appSelectedEmployee?.name} â€¢ {appSelectedEmployee?.role}</p>
+                  <h3 className="text-xl font-black uppercase tracking-widest">Funções e AtribuiÃ§Ãµes</h3>
+                  <p className="text-xs text-white/60 uppercase tracking-tighter font-bold">{appSelectedEmployee?.name} • {appSelectedEmployee?.role}</p>
                 </div>
               </div>
 
@@ -11607,10 +11607,10 @@ const HRModule = ({
                   <div className="space-y-6">
                     <div>
                       <h4 className="font-black text-[#003366] uppercase tracking-widest text-[10px] mb-4 flex items-center gap-2">
-                        <div className="w-2 h-2 bg-[#F27D26]"></div> DescriÃ§Ã£o do Cargo
+                        <div className="w-2 h-2 bg-[#F27D26]"></div> Descrição do Cargo
                       </h4>
                       <p className="text-xs text-zinc-600 leading-relaxed italic border-l-2 border-zinc-100 pl-4">
-                        ResponsÃ¡vel pela coordenaÃ§Ã£o e execuÃ§Ã£o das atividades administrativas da unidade, garantindo a conformidade com os processos internos e a eficiÃªncia operacional.
+                        ResponsÃ¡vel pela coordenação e execução das atividades administrativas da unidade, garantindo a conformidade com os processos internos e a eficiÃªncia operacional.
                       </p>
                     </div>
 
@@ -11620,11 +11620,11 @@ const HRModule = ({
                       </h4>
                       <ul className="space-y-3">
                         {[
-                          'GestÃ£o de documentos e arquivos fÃ­sicos/digitais.',
-                          'CoordenaÃ§Ã£o de fluxos de caixa e pequenos pagamentos.',
-                          'SupervisÃ£o da equipe de apoio administrativo.',
-                          'ElaboraÃ§Ã£o de relatÃ³rios mensais de desempenho.',
-                          'Interface com fornecedores e prestadores de serviÃ§o.'
+                          'Gestão de documentos e arquivos fÃ­sicos/digitais.',
+                          'Coordenação de fluxos de caixa e pequenos pagamentos.',
+                          'Supervisão da equipe de apoio administrativo.',
+                          'Elaboração de relatórios mensais de desempenho.',
+                          'Interface com fornecedores e prestadores de serviço.'
                         ].map((resp, idx) => (
                           <li key={idx} className="flex items-start gap-3 text-xs text-zinc-600">
                             <Check size={14} className="text-emerald-500 mt-0.5" />
@@ -11638,10 +11638,10 @@ const HRModule = ({
                   <div className="space-y-6">
                     <div>
                       <h4 className="font-black text-[#003366] uppercase tracking-widest text-[10px] mb-4 flex items-center gap-2">
-                        <div className="w-2 h-2 bg-[#F27D26]"></div> CompetÃªncias NecessÃ¡rias
+                        <div className="w-2 h-2 bg-[#F27D26]"></div> Competências NecessÃ¡rias
                       </h4>
                       <div className="flex flex-wrap gap-2">
-                        {['LideranÃ§a', 'OrganizaÃ§Ã£o', 'ComunicaÃ§Ã£o Assertiva', 'DomÃ­nio de Excel', 'GestÃ£o de Tempo'].map((comp, idx) => (
+                        {['Liderança', 'Organização', 'Comunicação Assertiva', 'Domínio de Excel', 'Gestão de Tempo'].map((comp, idx) => (
                           <span key={idx} className="px-3 py-1 bg-zinc-100 text-zinc-600 text-[9px] font-black uppercase tracking-widest">
                             {comp}
                           </span>
@@ -11683,7 +11683,7 @@ const HRModule = ({
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white w-full max-w-[800px] shadow-2xl relative">
             <div className="sticky top-0 bg-zinc-100 p-4 border-b border-zinc-200 flex justify-between items-center z-10">
-              <h3 className="text-sm font-black uppercase tracking-widest text-[#003366]">Recibo de SalÃ¡rio - Rascunho</h3>
+              <h3 className="text-sm font-black uppercase tracking-widest text-[#003366]">Recibo de Salário - Rascunho</h3>
               <div className="flex gap-2">
                 <button 
                   onClick={() => setDraftReceipt(null)}
@@ -11724,13 +11724,13 @@ const HRModule = ({
                   </div>
                   <div>
                     <h1 className="text-xl font-black text-[#003366] uppercase tracking-tighter">{companyData?.name || companyData?.nome_empresa || companyName || "Grupo TecnoSys"}</h1>
-                    <p className="text-[10px] text-zinc-500 uppercase font-bold">{companyData?.activity || companyData?.regime || "SoluÃ§Ãµes TecnolÃ³gicas Integradas"}</p>
-                    <p className="text-[9px] text-zinc-400 mt-1">{companyData?.address || companyData?.localizacao || "Luanda, Angola"} â€¢ NIF: {companyData?.nif || "5417283940"}</p>
+                    <p className="text-[10px] text-zinc-500 uppercase font-bold">{companyData?.activity || companyData?.regime || "Soluções Tecnológicas Integradas"}</p>
+                    <p className="text-[9px] text-zinc-400 mt-1">{companyData?.address || companyData?.localizacao || "Luanda, Angola"} • NIF: {companyData?.nif || "5417283940"}</p>
                   </div>
                 </div>
                 <div className="text-right">
                   <div className="bg-[#003366] text-white px-4 py-1 text-[10px] font-black uppercase tracking-widest mb-2">
-                    Recibo de SalÃ¡rio
+                    Recibo de Salário
                   </div>
                   <p className="text-[10px] font-bold text-zinc-500 uppercase">PerÃ­odo: {draftReceipt.period}</p>
                   <p className="text-[10px] font-bold text-zinc-500 uppercase">Data: {draftReceipt.paymentDate}</p>
@@ -11751,7 +11751,7 @@ const HRModule = ({
                     <p className="text-xs font-bold text-zinc-700">{String(draftReceipt.employee.id).padStart(4, '0')}</p>
                   </div>
                   <div>
-                    <label className="block text-[9px] font-black text-zinc-400 uppercase tracking-widest">Data AdmissÃ£o</label>
+                    <label className="block text-[9px] font-black text-zinc-400 uppercase tracking-widest">Data Admissão</label>
                     <p className="text-xs font-bold text-zinc-700">{draftReceipt.employee.hired_at || '---'}</p>
                   </div>
                   <div>
@@ -11794,7 +11794,7 @@ const HRModule = ({
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-[#003366] text-white text-[10px] uppercase font-black tracking-widest">
-                      <th className="px-4 py-3 border-r border-white/10">DescriÃ§Ã£o</th>
+                      <th className="px-4 py-3 border-r border-white/10">Descrição</th>
                       <th className="px-4 py-3 border-r border-white/10 text-center w-24">Qtd/Base</th>
                       <th className="px-4 py-3 border-r border-white/10 text-right w-32">Vencimentos</th>
                       <th className="px-4 py-3 text-right w-32">Descontos</th>
@@ -11803,7 +11803,7 @@ const HRModule = ({
                   <tbody className="text-[11px] font-bold text-zinc-700 divide-y divide-zinc-100">
                     {/* Salary Base */}
                     <tr>
-                      <td className="px-4 py-3 uppercase">SalÃ¡rio Base</td>
+                      <td className="px-4 py-3 uppercase">Salário Base</td>
                       <td className="px-4 py-3 text-center">30 Dias</td>
                       <td className="px-4 py-3 text-right font-mono">{formatCurrency(draftReceipt.employee.salary)}</td>
                       <td className="px-4 py-3 text-right font-mono">---</td>
@@ -11811,11 +11811,11 @@ const HRModule = ({
 
                     {/* Subsidies - Editable */}
                     {[
-                      { label: 'SubsÃ­dio de AlimentaÃ§Ã£o', field: 'subsidioAlimentacao' },
+                      { label: 'SubsÃ­dio de Alimentação', field: 'subsidioAlimentacao' },
                       { label: 'SubsÃ­dio de Transporte', field: 'subsidioTransporte' },
                       { label: 'SubsÃ­dio de Alojamento', field: 'alojamento' },
                       { label: 'PrÃªmios', field: 'premios' },
-                      { label: 'GratificaÃ§Ãµes', field: 'gratificacoes' },
+                      { label: 'Gratificações', field: 'gratificacoes' },
                       { label: 'Abonos', field: 'abonos' },
                       { label: 'Acertos Salariais', field: 'acertos' },
                       { label: 'SubsÃ­dio de Natal', field: 'subsidioNatal' },
@@ -11924,7 +11924,7 @@ const HRModule = ({
 
                     {/* Deductions */}
                     <tr>
-                      <td className="px-4 py-3 uppercase">SeguranÃ§a Social (3%)</td>
+                      <td className="px-4 py-3 uppercase">Segurança Social (3%)</td>
                       <td className="px-4 py-3 text-center">3%</td>
                       <td className="px-4 py-3 text-right font-mono">---</td>
                       <td className="px-4 py-3 text-right font-mono text-red-600">{formatCurrency(draftReceipt.calculations.inss_worker)}</td>
@@ -12097,7 +12097,7 @@ const HRModule = ({
 
               {/* Footer Note */}
               <div className="mt-16 text-center text-[8px] text-zinc-400 uppercase font-bold tracking-widest">
-                Este documento serve como comprovativo de pagamento de salÃ¡rio para efeitos legais.
+                Este documento serve como comprovativo de pagamento de salário para efeitos legais.
               </div>
             </div>
           </div>
@@ -12203,12 +12203,12 @@ const DocumentActionsModal = ({ document, onClose, onAction }: {
 
             <button onClick={() => handleAction('reports')} className="flex flex-col items-center gap-3 p-6 border border-zinc-100 hover:bg-zinc-50 transition-all group">
               <BarChart3 size={24} className="text-zinc-400 group-hover:text-[#003366]" />
-              <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-600 group-hover:text-[#003366] text-center">RelatÃ³rios</span>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-600 group-hover:text-[#003366] text-center">Relatórios</span>
             </button>
 
             <button onClick={() => handleAction('credit_note')} className="flex flex-col items-center gap-3 p-6 border border-zinc-100 hover:bg-zinc-50 transition-all group">
               <FileText size={24} className="text-zinc-400 group-hover:text-[#003366]" />
-              <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-600 group-hover:text-[#003366] text-center">Nota de CrÃ©dito</span>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-600 group-hover:text-[#003366] text-center">Nota de Crédito</span>
             </button>
 
             {(document.tipo_documento || '').toLowerCase().includes('fatura') && (
@@ -12258,15 +12258,15 @@ const CertifyModal = ({ document, onConfirm, onClose }: {
         </div>
         <h3 className="text-xl font-bold text-[#003366] mb-2">Certificar Documento</h3>
         <p className="text-zinc-500 text-sm mb-8">
-          A certificaÃ§Ã£o do documento <span className="font-bold text-zinc-800">{document.numero_documento}</span> Ã© um processo <span className="text-red-600 font-bold uppercase">irreversÃ­vel</span>. 
-          ApÃ³s a certificaÃ§Ã£o, o documento serÃ¡ trancado e nÃ£o poderÃ¡ ser editado ou apagado.
+          A certificação do documento <span className="font-bold text-zinc-800">{document.numero_documento}</span> é um processo <span className="text-red-600 font-bold uppercase">irreversível</span>. 
+          ApÃ³s a certificação, o documento serÃ¡ trancado e não poderÃ¡ ser editado ou apagado.
         </p>
         <div className="flex flex-col gap-3">
           <button 
             onClick={onConfirm}
             className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-none transition-all shadow-md"
           >
-            Confirmar CertificaÃ§Ã£o
+            Confirmar Certificação
           </button>
           <button 
             onClick={onClose}
@@ -12427,7 +12427,7 @@ const ProfitLossReport = ({ fiscalYear, empresa_id, companyData }: { fiscalYear:
     loadData();
   }, [fiscalYear, empresa_id, user?.empresa_id]);
 
-  if (loading) return <div className="p-12 text-center text-zinc-400 italic">Carregando relatÃ³rio de proveitos e custos ({fiscalYear})...</div>;
+  if (loading) return <div className="p-12 text-center text-zinc-400 italic">Carregando relatório de proveitos e custos ({fiscalYear})...</div>;
 
   const safeData = Array.isArray(data) ? data : [];
   const totals = safeData.reduce((acc, curr) => {
@@ -12474,7 +12474,7 @@ const ProfitLossReport = ({ fiscalYear, empresa_id, companyData }: { fiscalYear:
       <div className="flex justify-between items-start border-b border-zinc-200 pb-4">
         <div className="space-y-1">
           <h2 className="text-sm font-bold text-zinc-800">{companyData?.nome || companyData?.name || 'EMPRESA REGISTADA'}</h2>
-          <p className="text-[10px] text-zinc-400 uppercase tracking-widest font-bold">Movimentos Gerais GestÃ£o Proveitos/Custos (Ordenados por Data Valor )</p>
+          <p className="text-[10px] text-zinc-400 uppercase tracking-widest font-bold">Movimentos Gerais Gestão Proveitos/Custos (Ordenados por Data Valor )</p>
         </div>
         <div className="text-right">
           <p className="text-xs font-bold text-zinc-500">ExercÃ­cio de {fiscalYear}</p>
@@ -12492,13 +12492,13 @@ const ProfitLossReport = ({ fiscalYear, empresa_id, companyData }: { fiscalYear:
         </div>
       </div>
 
-      {/* Mensagem obrigatÃ³ria caso o exercÃ­cio selecionado nÃ£o possua dados */}
+      {/* Mensagem obrigatÃ³ria caso o exercÃ­cio selecionado não possua dados */}
       {!hasDataForSelectedYear && (
         <div className="p-4 bg-amber-50 border border-amber-200 rounded-none flex items-center gap-3 text-amber-800">
           <AlertCircle size={20} className="text-amber-600 flex-shrink-0" />
           <div>
-            <p className="font-bold text-xs">NÃ£o existem dados para o exercÃ­cio seleccionado.</p>
-            <p className="text-[11px] text-amber-700">NÃ£o foram localizadas faturas emitidas ou compras registadas no exercÃ­cio fiscal de {fiscalYear}.</p>
+            <p className="font-bold text-xs">Não existem dados para o exercÃ­cio seleccionado.</p>
+            <p className="text-[11px] text-amber-700">Não foram localizadas faturas emitidas ou compras registadas no exercÃ­cio fiscal de {fiscalYear}.</p>
           </div>
         </div>
       )}
@@ -12506,7 +12506,7 @@ const ProfitLossReport = ({ fiscalYear, empresa_id, companyData }: { fiscalYear:
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-zinc-50 p-4 border border-zinc-100">
-          <p className="text-[9px] font-black text-zinc-400 uppercase mb-1">Total FacturaÃ§Ã£o (S/ Imp)</p>
+          <p className="text-[9px] font-black text-zinc-400 uppercase mb-1">Total Faturação (S/ Imp)</p>
           <p className="text-lg font-black text-[#003366]">{formatCurrency(totals.facturacaoSImposto)}</p>
         </div>
         <div className="bg-zinc-50 p-4 border border-zinc-100">
@@ -12533,7 +12533,7 @@ const ProfitLossReport = ({ fiscalYear, empresa_id, companyData }: { fiscalYear:
         </thead>
         <tbody className="divide-y divide-zinc-100">
           <tr>
-            <td className="py-2 font-medium text-zinc-700">FacturaÃ§Ã£o S/ imposto (a)</td>
+            <td className="py-2 font-medium text-zinc-700">Faturação S/ imposto (a)</td>
             { months.map((_, idx) => <td key={idx} className="text-right py-2 px-1 text-zinc-500">{formatValue(getMonthValue(idx, 'facturacaoSImposto'))}</td>) }
             <td className="text-right py-2 px-1 font-bold text-zinc-700">{formatValue(totals.facturacaoSImposto)}</td>
           </tr>
@@ -12543,7 +12543,7 @@ const ProfitLossReport = ({ fiscalYear, empresa_id, companyData }: { fiscalYear:
             <td className="text-right py-2 px-1 font-bold text-zinc-700">{formatValue(totals.impostoRecebido)}</td>
           </tr>
           <tr className="bg-zinc-50/50">
-            <td className="py-2 font-bold text-zinc-800">FacturaÃ§Ã£o c/ imposto</td>
+            <td className="py-2 font-bold text-zinc-800">Faturação c/ imposto</td>
             { months.map((_, idx) => <td key={idx} className="text-right py-2 px-1 text-zinc-600 font-medium">{formatValue(getMonthValue(idx, 'facturacaoCImposto'))}</td>) }
             <td className="text-right py-2 px-1 font-black text-zinc-900">{formatValue(totals.facturacaoCImposto)}</td>
           </tr>
@@ -12597,10 +12597,10 @@ const ProfitLossReport = ({ fiscalYear, empresa_id, companyData }: { fiscalYear:
       <div className="grid grid-cols-1 md:grid-cols-2 gap-12 pt-8 border-t border-zinc-100">
         <div className="space-y-4">
           <p className="text-[9px] text-zinc-400 leading-relaxed italic">
-            Obs: Imposto Industrial Previsional (Pode dferir do imposto real a pagar. NÃ£o contempla os impostos jÃ¡ pagos e considera as facturas nÃ£o aceites fiscalmente)
+            Obs: Imposto Industrial Previsional (Pode dferir do imposto real a pagar. Não contempla os impostos jÃ¡ pagos e considera as facturas não aceites fiscalmente)
           </p>
           <p className="text-[9px] text-zinc-400 leading-relaxed italic">
-            O Imposto previsional Contab pode dferir do imposto real a pagar . NÃ£o contempla os impostos jÃ¡ pagos e considera apenas os custos aceites fiscalmente.
+            O Imposto previsional Contab pode dferir do imposto real a pagar . Não contempla os impostos jÃ¡ pagos e considera apenas os custos aceites fiscalmente.
           </p>
           <div className="pt-8">
             <h4 className="text-[10px] font-black text-zinc-800 uppercase tracking-widest mb-4">GRAFICO COMPARATIVO DE RECEITAS E CUSTOS</h4>
@@ -12634,7 +12634,7 @@ const ProfitLossReport = ({ fiscalYear, empresa_id, companyData }: { fiscalYear:
         </div>
         <div className="space-y-2">
           <div className="flex justify-between items-center text-[10px] text-zinc-600">
-            <span>Imp Previsional GestÃ£o (a-b-c-d)*25%</span>
+            <span>Imp Previsional Gestão (a-b-c-d)*25%</span>
             <span className="font-bold text-zinc-900">{formatValue(impPrevisional)}</span>
           </div>
           <div className="flex justify-between items-center text-[10px] text-zinc-600">
@@ -12824,7 +12824,7 @@ const RetencaoFonteModule = ({ issuedDocuments }: { issuedDocuments: IssuedDocum
                     <td className="px-6 py-4 text-zinc-600">{new Date(doc.date).toLocaleDateString()}</td>
                     <td className="px-6 py-4 font-bold text-zinc-900">{doc.invoice_number || doc.reference || 'N/A'}</td>
                     <td className="px-6 py-4 text-zinc-800">{doc.supplier_name || 'Desconhecido'}</td>
-                    <td className="px-6 py-4 text-zinc-600">ServiÃ§o/PrestaÃ§Ã£o</td>
+                    <td className="px-6 py-4 text-zinc-600">Serviço/Prestação</td>
                     <td className="px-6 py-4 text-right font-black text-red-600">{new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(doc.retencao_fonte_total || doc.irt_retido || 0)}</td>
                   </tr>
                 )) : (
@@ -12890,7 +12890,7 @@ const OtherMovements = ({ transactions, onRefresh, caixas, user }: { transaction
     }
   };
 
-  const categories = ['Vendas', 'ServiÃ§os', 'Aluguer', 'SalÃ¡rios', 'Impostos', 'Fornecedores', 'ManutenÃ§Ã£o', 'Outros'];
+  const categories = ['Vendas', 'Serviços', 'Aluguer', 'Salários', 'Impostos', 'Fornecedores', 'Manutenção', 'Outros'];
 
   return (
     <div className="space-y-8">
@@ -12906,7 +12906,7 @@ const OtherMovements = ({ transactions, onRefresh, caixas, user }: { transaction
         </div>
         <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm relative overflow-hidden group">
           <div className="absolute top-0 right-0 w-24 h-24 bg-red-50 rounded-full -mr-12 -mt-12 transition-transform group-hover:scale-110" />
-          <p className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2">Total SaÃ­das</p>
+          <p className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2">Total Saídas</p>
           <p className="text-3xl font-black text-red-600">{formatCurrency(totalExpense)}</p>
           <div className="mt-4 flex items-center gap-2 text-red-600">
             <ArrowDownRight size={14} />
@@ -12944,7 +12944,7 @@ const OtherMovements = ({ transactions, onRefresh, caixas, user }: { transaction
           <thead>
             <tr className="bg-[#003366] text-white text-[10px] font-black uppercase tracking-widest border-b border-zinc-200">
               <th className="px-6 py-4">Data</th>
-              <th className="px-6 py-4">DescriÃ§Ã£o</th>
+              <th className="px-6 py-4">Descrição</th>
               <th className="px-6 py-4">Categoria</th>
               <th className="px-6 py-4">Ref/Obs</th>
               <th className="px-6 py-4">Pagamento</th>
@@ -12974,7 +12974,7 @@ const OtherMovements = ({ transactions, onRefresh, caixas, user }: { transaction
                   <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-none ${
                     t.type === 'income' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'
                   }`}>
-                    {t.type === 'income' ? 'Entrada' : 'SaÃ­da'}
+                    {t.type === 'income' ? 'Entrada' : 'Saída'}
                   </span>
                 </td>
                 <td className={`px-6 py-4 text-right font-black ${t.type === 'income' ? 'text-emerald-600' : 'text-red-600'}`}>
@@ -13016,13 +13016,13 @@ const OtherMovements = ({ transactions, onRefresh, caixas, user }: { transaction
                     className="w-full border border-zinc-200 p-2.5 text-sm focus:outline-none focus:border-[#003366] bg-zinc-50 font-bold"
                   >
                     <option value="income">Entrada (Receita)</option>
-                    <option value="expense">SaÃ­da (Despesa)</option>
+                    <option value="expense">Saída (Despesa)</option>
                   </select>
                 </div>
               </div>
 
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">DescriÃ§Ã£o</label>
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Descrição</label>
                 <input 
                   required 
                   value={description}
@@ -13058,7 +13058,7 @@ const OtherMovements = ({ transactions, onRefresh, caixas, user }: { transaction
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">MÃ©todo de Pagamento</label>
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Método de Pagamento</label>
                   <select 
                     value={paymentMethod}
                     onChange={(e) => setPaymentMethod(e.target.value)}
@@ -13082,12 +13082,12 @@ const OtherMovements = ({ transactions, onRefresh, caixas, user }: { transaction
               </div>
 
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">ObservaÃ§Ãµes</label>
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Observações</label>
                 <textarea 
                   value={observation}
                   onChange={(e) => setObservation(e.target.value)}
                   className="w-full border border-zinc-200 p-2.5 text-sm focus:outline-none focus:border-[#003366] bg-zinc-50 font-medium h-20 resize-none" 
-                  placeholder="InformaÃ§Ãµes adicionais..."
+                  placeholder="Informações adicionais..."
                 />
               </div>
 
@@ -13227,7 +13227,7 @@ const AnnualMovementModule = ({
         tipo: d.tipo_documento || 'Fatura',
         natureza: 'entrada',
         entidade: d.cliente_nome || d.client_name || 'Consumidor Final',
-        descricao: (d.items?.[0]?.description || d.items?.[0]?.descricao || d.detalhes?.descricao || 'Venda de Artigos / ServiÃ§os'),
+        descricao: (d.items?.[0]?.description || d.items?.[0]?.descricao || d.detalhes?.descricao || 'Venda de Artigos / Serviços'),
         imposto: Number(d.imposto || d.tax || (Number(d.total || 0) * 0.14)),
         total: Number(d.total || d.valor_total || d.contravalor || 0)
       }));
@@ -13242,7 +13242,7 @@ const AnnualMovementModule = ({
         tipo: c.tipo_documento || 'Compra / Despesa',
         natureza: 'saida',
         entidade: c.fornecedor_nome || 'Fornecedor',
-        descricao: (c.items?.[0]?.description || c.items?.[0]?.descricao || c.itens?.[0]?.descricao || 'AquisiÃ§Ã£o de Mercadorias / ServiÃ§os'),
+        descricao: (c.items?.[0]?.description || c.items?.[0]?.descricao || c.itens?.[0]?.descricao || 'AquisiÃ§Ã£o de Mercadorias / Serviços'),
         imposto: Number(c.tax || c.iva || (Number(c.total || 0) * 0.14)),
         total: Number(c.total || c.valor_total || 0)
       }));
@@ -13302,13 +13302,13 @@ const AnnualMovementModule = ({
         m.tipo,
         m.entidade,
         m.descricao.substring(0, 35),
-        m.natureza === 'entrada' ? 'Entrada' : 'SaÃ­da',
+        m.natureza === 'entrada' ? 'Entrada' : 'Saída',
         `${m.total.toLocaleString('pt-AO', { minimumFractionDigits: 2 })} Kz`
       ]);
 
       autoTable(doc, {
         startY: 42,
-        head: [['Data', 'Documento', 'Tipo', 'Entidade', 'DescriÃ§Ã£o', 'Natureza', 'Total']],
+        head: [['Data', 'Documento', 'Tipo', 'Entidade', 'Descrição', 'Natureza', 'Total']],
         body: tableRows,
         styles: { fontSize: 8, cellPadding: 2 },
         headStyles: { fillColor: [0, 51, 102], textColor: 255, fontStyle: 'bold' },
@@ -13334,7 +13334,7 @@ const AnnualMovementModule = ({
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-4 border-b border-zinc-100">
           <div>
             <h2 className="text-xl font-black text-[#003366] uppercase tracking-tight">Mapas Movimento Anual por MÃªs</h2>
-            <p className="text-xs text-zinc-500 font-medium">ExercÃ­cio Fiscal {fiscalYear} â€¢ Clique em qualquer mÃªs para abrir o mapa detalhado com cÃ¡lculos e documentos</p>
+            <p className="text-xs text-zinc-500 font-medium">ExercÃ­cio Fiscal {fiscalYear} • Clique em qualquer mÃªs para abrir o mapa detalhado com cálculos e documentos</p>
           </div>
           <div className="flex gap-4 items-center">
             <span className="px-3 py-1.5 bg-emerald-50 text-emerald-700 text-xs font-black uppercase tracking-wider border border-emerald-200">
@@ -13424,7 +13424,7 @@ const AnnualMovementModule = ({
               <div>
                 <span className="text-[10px] font-black uppercase tracking-widest text-blue-200">Mapa de Movimento Mensal</span>
                 <h3 className="text-2xl font-black tracking-tight">{selectedMonthInfo.name} de {fiscalYear}</h3>
-                <p className="text-xs text-blue-100 mt-0.5">{companyData?.nome || companyData?.name || 'EMPRESA'} â€¢ NIF: {companyData?.nif || '999999999'}</p>
+                <p className="text-xs text-blue-100 mt-0.5">{companyData?.nome || companyData?.name || 'EMPRESA'} • NIF: {companyData?.nif || '999999999'}</p>
               </div>
               <div className="flex items-center gap-2">
                 <button 
@@ -13458,7 +13458,7 @@ const AnnualMovementModule = ({
                   <p className="text-[10px] text-emerald-600 mt-1">{monthMovements.filter(m => m.natureza === 'entrada').length} documentos registados</p>
                 </div>
                 <div className="bg-red-50 border border-red-200 p-4">
-                  <p className="text-[10px] font-black text-red-700 uppercase tracking-widest mb-1">Total Compras / SaÃ­das</p>
+                  <p className="text-[10px] font-black text-red-700 uppercase tracking-widest mb-1">Total Compras / Saídas</p>
                   <p className="text-xl font-black text-red-800">{selectedMonthInfo.compras.toLocaleString('pt-AO', { minimumFractionDigits: 2 })} Kz</p>
                   <p className="text-[10px] text-red-600 mt-1">{monthMovements.filter(m => m.natureza === 'saida').length} documentos registados</p>
                 </div>
@@ -13475,7 +13475,7 @@ const AnnualMovementModule = ({
               <div className="border border-zinc-200 overflow-hidden shadow-sm">
                 <div className="bg-zinc-100 px-4 py-3 border-b border-zinc-200 flex justify-between items-center">
                   <h4 className="text-xs font-black text-zinc-800 uppercase tracking-wider">
-                    DiscriminaÃ§Ã£o dos Movimentos â€” {selectedMonthInfo.name} {fiscalYear}
+                    Discriminação dos Movimentos â€” {selectedMonthInfo.name} {fiscalYear}
                   </h4>
                   <span className="text-[10px] font-bold text-zinc-500 uppercase">
                     Total de {monthMovements.length} Registos Reais
@@ -13495,7 +13495,7 @@ const AnnualMovementModule = ({
                           <th className="px-4 py-2.5 font-bold">NÂº Documento</th>
                           <th className="px-4 py-2.5 font-bold">Tipo</th>
                           <th className="px-4 py-2.5 font-bold">Entidade</th>
-                          <th className="px-4 py-2.5 font-bold">DescriÃ§Ã£o</th>
+                          <th className="px-4 py-2.5 font-bold">Descrição</th>
                           <th className="px-4 py-2.5 font-bold text-center">Natureza</th>
                           <th className="px-4 py-2.5 font-bold text-right">Valor Total</th>
                         </tr>
@@ -13520,7 +13520,7 @@ const AnnualMovementModule = ({
                             </td>
                             <td className="px-4 py-2.5 text-center">
                               <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-wider ${mov.natureza === 'entrada' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
-                                {mov.natureza === 'entrada' ? 'Entrada' : 'SaÃ­da'}
+                                {mov.natureza === 'entrada' ? 'Entrada' : 'Saída'}
                               </span>
                             </td>
                             <td className={`px-4 py-2.5 text-right font-bold ${mov.natureza === 'entrada' ? 'text-emerald-700' : 'text-red-700'}`}>
@@ -13548,7 +13548,7 @@ const AnnualMovementModule = ({
 
             {/* Footer Modal */}
             <div className="bg-zinc-50 border-t border-zinc-200 p-4 flex justify-between items-center text-xs text-zinc-500">
-              <span>ExercÃ­cio Fiscal {fiscalYear} â€¢ Dados Oficiais do Banco de Dados</span>
+              <span>ExercÃ­cio Fiscal {fiscalYear} • Dados Oficiais do Banco de Dados</span>
               <button 
                 onClick={() => setSelectedMonth(null)} 
                 className="px-5 py-2 bg-[#003366] text-white font-bold uppercase tracking-wider hover:bg-[#002244] transition-colors"
@@ -13628,13 +13628,13 @@ const FinancialModule = ({
   };
 
   const menuItems = [
-    { id: 'caixa', label: 'SessÃµes de Caixas', icon: Wallet, description: 'GestÃ£o de fluxos financeiros e conciliaÃ§Ã£o' },
-    { id: 'irt_inss_map', label: 'Mapa Geral IRT/INSS', icon: Calculator, description: 'RelatÃ³rio consolidado de encargos sociais' },
-    { id: 'profit-loss-report', label: 'RelatÃ³rio GestÃ£o Proveitos/Custos', icon: FileText, description: 'AnÃ¡lise detalhada de proveitos e custos mensais' },
-    { id: 'sales-reports', label: 'RelatÃ³rios de Vendas', icon: BarChart3, description: 'Movimentos de faturas, devoluÃ§Ãµes e anulaÃ§Ãµes' },
-    { id: 'cost-revenue', label: 'Mapas Custos Proveitos', icon: TrendingUp, description: 'AnÃ¡lise de rentabilidade e margens' },
+    { id: 'caixa', label: 'Sessões de Caixas', icon: Wallet, description: 'Gestão de fluxos financeiros e conciliação' },
+    { id: 'irt_inss_map', label: 'Mapa Geral IRT/INSS', icon: Calculator, description: 'Relatório consolidado de encargos sociais' },
+    { id: 'profit-loss-report', label: 'Relatório Gestão Proveitos/Custos', icon: FileText, description: 'Análise detalhada de proveitos e custos mensais' },
+    { id: 'sales-reports', label: 'Relatórios de Vendas', icon: BarChart3, description: 'Movimentos de faturas, devoluÃ§Ãµes e anulações' },
+    { id: 'cost-revenue', label: 'Mapas Custos Proveitos', icon: TrendingUp, description: 'Análise de rentabilidade e margens' },
     { id: 'annual-movement', label: 'Mapas Movimento Anual', icon: History, description: 'EvoluÃ§Ã£o financeira ao longo do ano' },
-    { id: 'supplier-maps', label: 'Mapas Fornecedores', icon: Truck, description: 'MovimentaÃ§Ã£o e pendentes de fornecedores' },
+    { id: 'supplier-maps', label: 'Mapas Fornecedores', icon: Truck, description: 'Movimentação e pendentes de fornecedores' },
     { id: 'other-movements', label: 'Outras Movimento', icon: Layers, description: 'Registos financeiros diversos' },
     { id: 'retencao-fonte', label: 'RetenÃ§Ã£o na Fonte', icon: Percent, description: 'Mapas de retenÃ§Ã£o a pagar e a receber' },
   ];
@@ -13643,15 +13643,15 @@ const FinancialModule = ({
     return (
       <div className="space-y-8">
         <header>
-          <Breadcrumbs paths={['Home', 'GestÃ£o Financeira']} />
+          <Breadcrumbs paths={['Home', 'Gestão Financeira']} />
           <div className="flex items-center gap-3">
-            <h2 className="text-2xl font-bold text-[#003366] tracking-tight">GestÃ£o Financeira</h2>
+            <h2 className="text-2xl font-bold text-[#003366] tracking-tight">Gestão Financeira</h2>
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 text-[10px] font-black uppercase tracking-wider border border-emerald-200">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               ExercÃ­cio {fiscalYear} Ativo
             </span>
           </div>
-          <p className="text-zinc-500 text-sm">Selecione uma secÃ§Ã£o para visualizar relatÃ³rios e mapas financeiros.</p>
+          <p className="text-zinc-500 text-sm">Selecione uma secÃ§Ã£o para visualizar relatórios e mapas financeiros.</p>
         </header>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -13686,7 +13686,7 @@ const FinancialModule = ({
           <h2 className="text-2xl font-bold text-[#003366] tracking-tight">
             {menuItems.find(i => i.id === activeSubTab)?.label}
           </h2>
-          <Breadcrumbs paths={['Home', 'GestÃ£o Financeira', menuItems.find(i => i.id === activeSubTab)?.label || '']} />
+          <Breadcrumbs paths={['Home', 'Gestão Financeira', menuItems.find(i => i.id === activeSubTab)?.label || '']} />
         </div>
       </div>
 
@@ -13733,7 +13733,7 @@ const FinancialModule = ({
                 <option value="FT">Fatura</option>
                 <option value="FR">Fatura Recibo</option>
                 <option value="RE">Recibo</option>
-                <option value="NC">Nota de CrÃ©dito</option>
+                <option value="NC">Nota de Crédito</option>
               </select>
             </div>
             <button className="bg-[#003366] text-white px-6 py-2 text-xs font-bold hover:bg-[#002244] transition-all flex items-center gap-2">
@@ -13757,7 +13757,7 @@ const FinancialModule = ({
                   <th className="px-4 py-3 text-right">Valor</th>
                   <th className="px-4 py-3 text-center">Estado</th>
                   <th className="px-4 py-3">Rota</th>
-                  <th className="px-4 py-3 text-right">DiferenÃ§a</th>
+                  <th className="px-4 py-3 text-right">Diferença</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
@@ -13771,11 +13771,11 @@ const FinancialModule = ({
                     <td className="px-4 py-3 font-medium text-zinc-900">
                       <div>{doc.numero_documento}</div>
                       <div className="text-[9px] text-zinc-400 uppercase">
-                        {doc.tipo_documento === 'NC' ? 'DevoluÃ§Ã£o (Nota de CrÃ©dito)' : doc.tipo_documento}
+                        {doc.tipo_documento === 'NC' ? 'DevoluÃ§Ã£o (Nota de Crédito)' : doc.tipo_documento}
                       </div>
                     </td>
                     <td className="px-4 py-3 text-zinc-600">{doc.client_name || '---'}</td>
-                    <td className="px-4 py-3 text-zinc-500">ServiÃ§o/Produto</td>
+                    <td className="px-4 py-3 text-zinc-500">Serviço/Produto</td>
                     <td className="px-4 py-3 text-zinc-500">1</td>
                     <td className="px-4 py-3 text-zinc-400 text-[9px]">Taxa AplicÃ¡vel</td>
                     <td className="px-4 py-3 text-right font-bold text-[#003366]">{formatCurrency(doc.contravalor)}</td>
@@ -13784,7 +13784,7 @@ const FinancialModule = ({
                         {doc.estado_documento}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-zinc-400">PadrÃ£o</td>
+                    <td className="px-4 py-3 text-zinc-400">Padrão</td>
                     <td className="px-4 py-3 text-right text-zinc-400">0,00 Kz</td>
                   </tr>
                 ))}
@@ -13903,7 +13903,7 @@ const UserIssuerButton = ({ doc, globalUsers }: { doc: any, globalUsers?: any[] 
       if (foundUser) return foundUser.name || foundUser.username || foundUser.email;
     }
     
-    return 'NÃ£o identificado';
+    return 'Não identificado';
   };
 
   const name = getIssuerName();
@@ -13951,13 +13951,13 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isD
       <table className="w-full text-left border-collapse min-w-[900px]">
         <thead>
           <tr className="bg-[#003366] text-white text-[10px] uppercase tracking-widest font-black border-b border-zinc-200">
-            <th className="px-6 py-4">Data EmissÃ£o</th>
+            <th className="px-6 py-4">Data Emissão</th>
             <th className="px-6 py-4">Status Fiscal</th>
             <th className="px-6 py-4">Tipo</th>
-            <th className="px-6 py-4">NÃºmero / Hash</th>
+            <th className="px-6 py-4">Número / Hash</th>
             <th className="px-6 py-4">Cliente</th>
             <th className="px-6 py-4 text-right">Valor</th>
-            <th className="px-6 py-4 text-center">AÃ§Ãµes</th>
+            <th className="px-6 py-4 text-center">Ações</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-zinc-100">
@@ -14052,7 +14052,7 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isD
                       e.stopPropagation();
                       onAction('print_a4', doc);
                     }} 
-                    title="PrÃ©-visualizar e Imprimir (A4)"
+                    title="Pré-visualizar e Imprimir (A4)"
                     className="transition-all p-1.5 hover:bg-zinc-100 text-[#003366] rounded-sm"
                   >
                     <Printer size={14} />
@@ -14084,7 +14084,7 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isD
                       e.stopPropagation();
                       setShowActionsModal(doc);
                     }} 
-                    title="Mais AÃ§Ãµes"
+                    title="Mais Ações"
                     className="text-zinc-300 hover:text-[#003366] transition-all p-1.5 hover:bg-zinc-100"
                   >
                     <MoreHorizontal size={14} />
@@ -14098,7 +14098,7 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isD
       {documents.length === 0 && (
         <div className="p-20 text-center">
           <FileText size={48} className="mx-auto text-zinc-100 mb-4" />
-          <p className="text-zinc-400 text-sm font-bold uppercase tracking-widest">Nenhum documento emitido atÃ© ao momento.</p>
+          <p className="text-zinc-400 text-sm font-bold uppercase tracking-widest">Nenhum documento emitido até ao momento.</p>
         </div>
       )}
 
@@ -14145,7 +14145,7 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isD
                     {showActionsModal.invoice_number || showActionsModal.numero_documento}
                   </h3>
                   <p className="text-xs text-zinc-500 font-bold uppercase tracking-wider mt-0.5">
-                    Cliente: <span className="text-zinc-800">{showActionsModal.client_name || showActionsModal.cliente_id || 'Consumidor Final'}</span> â€¢ Total: <span className="text-[#003366] font-black">{formatCurrency(showActionsModal.counter_value || showActionsModal.total || showActionsModal.contravalor || 0)}</span>
+                    Cliente: <span className="text-zinc-800">{showActionsModal.client_name || showActionsModal.cliente_id || 'Consumidor Final'}</span> • Total: <span className="text-[#003366] font-black">{formatCurrency(showActionsModal.counter_value || showActionsModal.total || showActionsModal.contravalor || 0)}</span>
                   </p>
                 </div>
                 <button 
@@ -14158,9 +14158,9 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isD
 
               {/* Body with structured sections */}
               <div className="p-6 space-y-5 overflow-y-auto custom-scrollbar">
-                {/* 1. VisualizaÃ§Ã£o e ExportaÃ§Ã£o */}
+                {/* 1. Visualização e Exportação */}
                 <div>
-                  <h4 className="text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">VisualizaÃ§Ã£o e ExportaÃ§Ã£o</h4>
+                  <h4 className="text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Visualização e Exportação</h4>
                   <div className="grid grid-cols-3 gap-2.5">
                     <button 
                       onClick={() => { onAction('print_a4', showActionsModal); setShowActionsModal(null); }}
@@ -14170,7 +14170,7 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isD
                         <Eye size={16} />
                       </div>
                       <div>
-                        <div className="text-[11px] font-black uppercase text-zinc-900 group-hover:text-[#003366]">PrÃ©-visualizar A4</div>
+                        <div className="text-[11px] font-black uppercase text-zinc-900 group-hover:text-[#003366]">Pré-visualizar A4</div>
                         <div className="text-[9px] text-zinc-400 font-semibold uppercase tracking-tight">Ver antes de imprimir</div>
                       </div>
                     </button>
@@ -14196,16 +14196,16 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isD
                         <FileBarChart size={16} />
                       </div>
                       <div>
-                        <div className="text-[11px] font-black uppercase text-zinc-900">AnÃ¡lise do Documento</div>
-                        <div className="text-[9px] text-zinc-400 font-semibold uppercase tracking-tight">CÃ¡lculos e impostos</div>
+                        <div className="text-[11px] font-black uppercase text-zinc-900">Análise do Documento</div>
+                        <div className="text-[9px] text-zinc-400 font-semibold uppercase tracking-tight">Cálculos e impostos</div>
                       </div>
                     </button>
                   </div>
                 </div>
 
-                {/* 2. Vias e Formatos de ImpressÃ£o */}
+                {/* 2. Vias e Formatos de Impressão */}
                 <div>
-                  <h4 className="text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Vias & Formatos de ImpressÃ£o</h4>
+                  <h4 className="text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Vias & Formatos de Impressão</h4>
                   <div className="grid grid-cols-7 gap-2">
                     <button 
                       onClick={() => { onAction('print_a4_orig', showActionsModal); setShowActionsModal(null); }}
@@ -14245,7 +14245,7 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isD
                     >
                       <Printer size={15} className="mb-1 text-zinc-500" />
                       <span className="text-[9px] font-black uppercase">P24</span>
-                      <span className="text-[8px] text-zinc-400 font-semibold">TÃ©rmico</span>
+                      <span className="text-[8px] text-zinc-400 font-semibold">Térmico</span>
                     </button>
                     <button 
                       onClick={() => { onAction('print_p24xl', showActionsModal); setShowActionsModal(null); }}
@@ -14253,7 +14253,7 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isD
                     >
                       <Printer size={15} className="mb-1 text-zinc-500" />
                       <span className="text-[9px] font-black uppercase">P24-XL</span>
-                      <span className="text-[8px] text-zinc-400 font-semibold">TÃ©rmico</span>
+                      <span className="text-[8px] text-zinc-400 font-semibold">Térmico</span>
                     </button>
                     <button 
                       onClick={() => { onAction('print_p80', showActionsModal); setShowActionsModal(null); }}
@@ -14266,9 +14266,9 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isD
                   </div>
                 </div>
 
-                {/* 3. OperaÃ§Ãµes Comerciais e Fiscais */}
+                {/* 3. Operações Comerciais e Fiscais */}
                 <div>
-                  <h4 className="text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">OperaÃ§Ãµes Comerciais & Fiscais</h4>
+                  <h4 className="text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Operações Comerciais & Fiscais</h4>
                   <div className="grid grid-cols-2 gap-2.5">
                     {/* Editar (Apenas Rascunhos) */}
                     {!showActionsModal.is_certified && (
@@ -14296,7 +14296,7 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isD
                       </div>
                       <div>
                         <div className="text-[11px] font-black uppercase text-zinc-900">Clonar Documento</div>
-                        <div className="text-[9px] text-zinc-400 font-semibold uppercase tracking-tight">Duplicar c/ nova numeraÃ§Ã£o</div>
+                        <div className="text-[9px] text-zinc-400 font-semibold uppercase tracking-tight">Duplicar c/ nova numeração</div>
                       </div>
                     </button>
 
@@ -14344,7 +14344,7 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isD
                       </div>
                     </button>
 
-                    {/* Nota de CrÃ©dito */}
+                    {/* Nota de Crédito */}
                     <button 
                       disabled={!showActionsModal.is_certified}
                       onClick={() => { onAction('credit_note', showActionsModal); setShowActionsModal(null); }}
@@ -14354,8 +14354,8 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isD
                         <FileMinus2 size={16} />
                       </div>
                       <div>
-                        <div className="text-[11px] font-black uppercase text-zinc-900">Nota de CrÃ©dito</div>
-                        <div className="text-[9px] text-zinc-400 font-semibold uppercase tracking-tight">RetificaÃ§Ã£o fiscal</div>
+                        <div className="text-[11px] font-black uppercase text-zinc-900">Nota de Crédito</div>
+                        <div className="text-[9px] text-zinc-400 font-semibold uppercase tracking-tight">Retificação fiscal</div>
                       </div>
                     </button>
                   </div>
@@ -14380,9 +14380,9 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isD
                   )}
                 </div>
 
-                {/* 4. Envio & ComunicaÃ§Ã£o */}
+                {/* 4. Envio & Comunicação */}
                 <div>
-                  <h4 className="text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">ComunicaÃ§Ã£o</h4>
+                  <h4 className="text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Comunicação</h4>
                   <div className="grid grid-cols-2 gap-2.5">
                     <button 
                       onClick={() => { onAction('send_email', showActionsModal); setShowActionsModal(null); }}
@@ -14412,7 +14412,7 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isD
                   </div>
                 </div>
 
-                {/* 5. Zona CrÃ­tica (AnulaÃ§Ã£o / EliminaÃ§Ã£o) */}
+                {/* 5. Zona CrÃ­tica (Anulação / Eliminação) */}
                 <div>
                   <h4 className="text-[10px] font-black uppercase tracking-widest text-red-500 mb-2">Zona CrÃ­tica</h4>
                   {(showActionsModal.is_certified && showActionsModal.status !== 'anulado' && showActionsModal.estado_documento !== 'anulado' && !showActionsModal.documento_anulado) ? (
@@ -14428,7 +14428,7 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isD
                       </div>
                       <div>
                         <div className="text-[11px] font-black uppercase text-red-800">Anular Documento Fiscal</div>
-                        <div className="text-[9px] text-red-600 font-semibold uppercase tracking-tight">OperaÃ§Ã£o irreversÃ­vel comunicada Ã  AGT</div>
+                        <div className="text-[9px] text-red-600 font-semibold uppercase tracking-tight">Operação irreversível comunicada Ã  AGT</div>
                       </div>
                     </button>
                   ) : (showActionsModal.status === 'anulado' || showActionsModal.estado_documento === 'anulado' || showActionsModal.documento_anulado) ? (
@@ -14519,7 +14519,7 @@ const POSManagementView = ({
           </div>
           <div>
             <h1 className="text-2xl font-black text-[#003366] tracking-tighter uppercase">{title}</h1>
-            <p className="text-zinc-400 text-[10px] font-bold uppercase tracking-[0.2em]">GestÃ£o de Ponto de Venda</p>
+            <p className="text-zinc-400 text-[10px] font-bold uppercase tracking-[0.2em]">Gestão de Ponto de Venda</p>
           </div>
         </div>
         <div className="flex gap-3">
@@ -14570,9 +14570,9 @@ const POSManagementView = ({
               <tr className="bg-[#003366] text-white text-[11px] uppercase tracking-wider font-bold">
                 <th className="px-6 py-4">Data</th>
                 <th className="px-6 py-4">ReferÃªncia</th>
-                <th className="px-6 py-4">DescriÃ§Ã£o</th>
+                <th className="px-6 py-4">Descrição</th>
                 <th className="px-6 py-4 text-right">Valor / Info</th>
-                <th className="px-6 py-4 text-right">AÃ§Ãµes</th>
+                <th className="px-6 py-4 text-right">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
@@ -14616,11 +14616,11 @@ const POSManagementView = ({
                   </div>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">DescriÃ§Ã£o Detalhada</label>
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Descrição Detalhada</label>
                   <textarea required className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm focus:outline-none focus:border-[#003366] h-32" placeholder="Descreva o registro..."></textarea>
                 </div>
                 <div className="bg-blue-50 p-4 border border-blue-100">
-                  <p className="text-[10px] font-bold text-blue-600 uppercase mb-2">CÃ¡lculos / Valores</p>
+                  <p className="text-[10px] font-bold text-blue-600 uppercase mb-2">Cálculos / Valores</p>
                   <div className="flex justify-between items-center">
                     <span className="text-xs text-blue-700">Total Estimado:</span>
                     <span className="font-black text-blue-800">{formatCurrency(0)}</span>
@@ -14670,42 +14670,42 @@ const SpecializedManagementModule = ({ activeTab, setActiveTab }: { activeTab?: 
 
   if (activeModule === 'literacy') return (
     <div>
-      <button onClick={() => setActiveModule(null)} className="mb-4 text-[#003366] font-bold text-xs uppercase hover:underline flex items-center gap-1">â† Voltar para GestÃ£o Especializada</button>
+      <button onClick={() => setActiveModule(null)} className="mb-4 text-[#003366] font-bold text-xs uppercase hover:underline flex items-center gap-1">â† Voltar para Gestão Especializada</button>
       <LiteracyModule />
     </div>
   );
 
   if (activeModule === 'school') return (
     <div>
-      <button onClick={() => setActiveModule(null)} className="mb-4 text-[#003366] font-bold text-xs uppercase hover:underline flex items-center gap-1">â† Voltar para GestÃ£o Especializada</button>
+      <button onClick={() => setActiveModule(null)} className="mb-4 text-[#003366] font-bold text-xs uppercase hover:underline flex items-center gap-1">â† Voltar para Gestão Especializada</button>
       <SchoolModule onNavigate={setActiveTab} onEmitirFatura={() => setActiveTab && setActiveTab('invoices')} />
     </div>
   );
   
   if (activeModule === 'restaurant') return (
     <div>
-      <button onClick={() => setActiveModule(null)} className="mb-4 text-[#003366] font-bold text-xs uppercase hover:underline flex items-center gap-1">â† Voltar para GestÃ£o Especializada</button>
+      <button onClick={() => setActiveModule(null)} className="mb-4 text-[#003366] font-bold text-xs uppercase hover:underline flex items-center gap-1">â† Voltar para Gestão Especializada</button>
       <RestaurantModule />
     </div>
   );
 
   if (activeModule === 'hotel') return (
     <div>
-      <button onClick={() => setActiveModule(null)} className="mb-4 text-[#003366] font-bold text-xs uppercase hover:underline flex items-center gap-1">â† Voltar para GestÃ£o Especializada</button>
+      <button onClick={() => setActiveModule(null)} className="mb-4 text-[#003366] font-bold text-xs uppercase hover:underline flex items-center gap-1">â† Voltar para Gestão Especializada</button>
       <HotelModule />
     </div>
   );
 
   if (activeModule === 'fleet') return (
     <div>
-      <button onClick={() => setActiveModule(null)} className="mb-4 text-[#003366] font-bold text-xs uppercase hover:underline flex items-center gap-1">â† Voltar para GestÃ£o Especializada</button>
+      <button onClick={() => setActiveModule(null)} className="mb-4 text-[#003366] font-bold text-xs uppercase hover:underline flex items-center gap-1">â† Voltar para Gestão Especializada</button>
       <FleetManagementModule />
     </div>
   );
 
   if (activeModule === 'projects') return (
     <div>
-      <button onClick={() => setActiveModule(null)} className="mb-4 text-[#003366] font-bold text-xs uppercase hover:underline flex items-center gap-1">â† Voltar para GestÃ£o Especializada</button>
+      <button onClick={() => setActiveModule(null)} className="mb-4 text-[#003366] font-bold text-xs uppercase hover:underline flex items-center gap-1">â† Voltar para Gestão Especializada</button>
       <ProjectManagementModule />
     </div>
   );
@@ -14713,19 +14713,19 @@ const SpecializedManagementModule = ({ activeTab, setActiveTab }: { activeTab?: 
   return (
     <div className="space-y-8">
       <header>
-        <Breadcrumbs paths={['Home', 'Ãrea Reservada', 'GestÃ£o Especializada']} />
-        <h2 className="text-2xl font-bold text-[#003366] tracking-tight">GestÃ£o Especializada</h2>
-        <p className="text-zinc-500 text-sm">MÃ³dulos de ERP focados para gerir fluxos de trabalho do seu setor.</p>
+        <Breadcrumbs paths={['Home', 'Ãrea Reservada', 'Gestão Especializada']} />
+        <h2 className="text-2xl font-bold text-[#003366] tracking-tight">Gestão Especializada</h2>
+        <p className="text-zinc-500 text-sm">Módulos de ERP focados para gerir fluxos de trabalho do seu setor.</p>
       </header>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {[
-          { id: 'school', label: 'GestÃ£o Escolar ERP', desc: 'MatrÃ­culas, Turmas, Notas e Tesouraria AcadÃ©mica.', icon: GraduationCap, img: 'https://images.unsplash.com/photo-1523050335392-93851179ae22?auto=format&fit=crop&q=80&w=800' },
-          { id: 'restaurant', label: 'Restaurante / Bar', desc: 'GestÃ£o de mesas, pedidos Cozinha/Bar e Ementa.', icon: Utensils, img: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&q=80&w=800' },
+          { id: 'school', label: 'Gestão Escolar ERP', desc: 'Matrículas, Turmas, Notas e Tesouraria Académica.', icon: GraduationCap, img: 'https://images.unsplash.com/photo-1523050335392-93851179ae22?auto=format&fit=crop&q=80&w=800' },
+          { id: 'restaurant', label: 'Restaurante / Bar', desc: 'Gestão de mesas, pedidos Cozinha/Bar e Ementa.', icon: Utensils, img: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&q=80&w=800' },
           { id: 'hotel', label: 'Hotelaria / Alojamento', desc: 'Check-in, Reservas, Quartos e Housekeeping.', icon: Bed, img: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=800' },
           { id: 'literacy', label: 'Literacia Financeira e Fiscal', desc: 'Biblioteca de conhecimentos fiscais angolanos.', icon: BookOpen, img: 'https://images.unsplash.com/photo-1434030216411-0b793f4b4173?auto=format&fit=crop&q=80&w=800' },
-          { id: 'inventory', label: 'InventÃ¡rio / Stock', desc: 'Controlo de stock e mÃºltiplos armazÃ©ns.', icon: Package, img: 'https://images.unsplash.com/photo-1493946747813-f3023c53d18e?auto=format&fit=crop&q=80&w=800' },
-          { id: 'projects', label: 'GestÃ£o de Projetos', desc: 'Acompanhamento de tarefas e prazos.', icon: Layers, img: 'https://images.unsplash.com/photo-1542621315-24ed26ac729f?auto=format&fit=crop&q=80&w=800' },
-          { id: 'fleet', label: 'GestÃ£o de Frotas', desc: 'ManutenÃ§Ã£o e custos de veÃ­culos.', icon: Truck, img: 'https://images.unsplash.com/photo-1510903117032-f1596c327647?auto=format&fit=crop&q=80&w=800' },
+          { id: 'inventory', label: 'InventÃ¡rio / Stock', desc: 'Controlo de stock e mÃºltiplos armazéns.', icon: Package, img: 'https://images.unsplash.com/photo-1493946747813-f3023c53d18e?auto=format&fit=crop&q=80&w=800' },
+          { id: 'projects', label: 'Gestão de Projetos', desc: 'Acompanhamento de tarefas e prazos.', icon: Layers, img: 'https://images.unsplash.com/photo-1542621315-24ed26ac729f?auto=format&fit=crop&q=80&w=800' },
+          { id: 'fleet', label: 'Gestão de Frotas', desc: 'Manutenção e custos de veÃ­culos.', icon: Truck, img: 'https://images.unsplash.com/photo-1510903117032-f1596c327647?auto=format&fit=crop&q=80&w=800' },
         ].map((m) => (
           <div key={m.id} 
             onClick={() => setActiveModule(m.id)}
@@ -14844,14 +14844,14 @@ const UsersSettings = () => {
     
     const isAdmin = Boolean(u.is_admin || u.role === 'admin' || u.role === 'admin_empresa' || u.role === 'super_admin' || u.role === 'proprietario' || (u.level && Number(u.level) >= 10));
     
-    // REGRA SUPREMA: Se o utilizador possui Ã¡reas de permissÃ£o gravadas, carregar estritamente essas Ã¡reas
+    // REGRA SUPREMA: Se o utilizador possui áreas de permissão gravadas, carregar estritamente essas áreas
     const rawAreas = u.permission_areas ?? u.permissions ?? u.permissoes ?? (u.permission_area ? [u.permission_area] : null);
     const parsedSavedAreas = mapPermissionAreasFromDB(rawAreas);
     
     if (parsedSavedAreas.length > 0) {
       setPermissionAreas(parsedSavedAreas);
     } else if (isAdmin && (rawAreas === null || rawAreas === undefined)) {
-      // Se Ã© admin e NÃƒO tem nenhuma restriÃ§Ã£o gravada no banco, prÃ©-selecionar todas
+      // Se é admin e NÃƒO tem nenhuma restriÃ§Ã£o gravada no banco, pré-selecionar todas
       setPermissionAreas(SIDEBAR_MENU_ITEMS.map(m => m.id));
     } else {
       setPermissionAreas(parsedSavedAreas);
@@ -14890,13 +14890,13 @@ const UsersSettings = () => {
     const currentEmpresaId = user?.empresa_id || user?.company_id || (user?.company as any)?.id || userToToggle.empresa_id || '';
     if (!currentEmpresaId || togglingUserId === userToToggle.id) return;
     
-    // ProteÃ§Ã£o 1: nÃ£o permitir desativar a prÃ³pria conta em sessÃ£o
+    // ProteÃ§Ã£o 1: não permitir desativar a prÃ³pria conta em sessão
     if (userToToggle.id === user?.id && userToToggle.is_active !== false) {
-      showToast("NÃ£o Ã© permitido bloquear a sua prÃ³pria conta de administrador em sessÃ£o!", 'error');
+      showToast("Não é permitido bloquear a sua prÃ³pria conta de administrador em sessão!", 'error');
       return;
     }
 
-    // ProteÃ§Ã£o 2: nÃ£o permitir bloquear o Administrador Principal da empresa
+    // ProteÃ§Ã£o 2: não permitir bloquear o Administrador Principal da empresa
     const isPrincipalAdmin = (u: any) =>
       u?.is_admin === true ||
       u?.role === 'proprietario' ||
@@ -14941,10 +14941,10 @@ const UsersSettings = () => {
       // Tem permissÃµes especÃ­ficas gravadas â€” mostrar apenas essas
       setPermissionAreas(parsedSavedAreas);
     } else if (isAdmin && (rawAreas === null || rawAreas === undefined || (Array.isArray(rawAreas) && rawAreas.length === 0))) {
-      // Admin sem restriÃ§Ãµes configuradas = acesso total (mostrar todos os mÃ³dulos selecionados)
+      // Admin sem restriÃ§Ãµes configuradas = acesso total (mostrar todos os módulos selecionados)
       setPermissionAreas(SIDEBAR_MENU_ITEMS.map(m => m.id));
     } else {
-      // Utilizador normal sem permissÃµes = nenhum mÃ³dulo (apenas dashboard)
+      // Utilizador normal sem permissÃµes = nenhum módulo (apenas dashboard)
       setPermissionAreas(['dashboard']);
     }
   };
@@ -14960,14 +14960,14 @@ const UsersSettings = () => {
       });
       showToast("PermissÃµes atualizadas com sucesso!");
       
-      // Sinalizar via localStorage para que a sessÃ£o do utilizador alvo detecte a mudanÃ§a e actualize
+      // Sinalizar via localStorage para que a sessão do utilizador alvo detecte a mudança e actualize
       try {
         const key = `agt_perm_updated_${permissionModalUser.id}`;
         localStorage.setItem(key, String(Date.now()));
         window.dispatchEvent(new CustomEvent('agt_permissions_changed', { detail: { userId: permissionModalUser.id } }));
       } catch (_) {}
       
-      // Se as permissÃµes do utilizador atual foram alteradas, actualizar estado de autenticaÃ§Ã£o imediatamente
+      // Se as permissÃµes do utilizador atual foram alteradas, actualizar estado de autenticação imediatamente
       if (permissionModalUser.id === user?.id) {
         await refreshUser();
       }
@@ -14993,7 +14993,7 @@ const UsersSettings = () => {
     const currentEmpresaId = user?.empresa_id || user?.company_id || (user?.company as any)?.id || resetPasswordUser?.empresa_id || '';
     if (!resetPasswordUser || !currentEmpresaId) return;
     if (!newPassword || newPassword !== confirmNewPassword) {
-      showToast("As senhas nÃ£o coincidem ou estÃ£o vazias!", 'error');
+      showToast("As senhas não coincidem ou estão vazias!", 'error');
       return;
     }
     setIsSaving(true);
@@ -15028,15 +15028,15 @@ const UsersSettings = () => {
     console.log("handleSubmit called");
     const currentEmpresaId = user?.empresa_id || user?.company_id || (user?.company as any)?.id || '';
     if (!currentEmpresaId) {
-      showToast("Companhia nÃ£o identificada.", 'error');
+      showToast("Companhia não identificada.", 'error');
       return;
     }
     if (password && password !== confirmPassword) {
-      showToast("As senhas nÃ£o coincidem!", 'error');
+      showToast("As senhas não coincidem!", 'error');
       return;
     }
     if (!isAdminState && permissionAreas.length === 0) {
-      showToast("Selecione pelo menos uma Ã¡rea de permissÃ£o!", 'error');
+      showToast("Selecione pelo menos uma área de permissão!", 'error');
       return;
     }
 
@@ -15096,7 +15096,7 @@ const UsersSettings = () => {
       }
     } catch (error: any) {
       console.error('Error saving user:', error);
-      showToast('Erro ao tentar salvar utilizador: ' + (error.message || 'Erro de rede ou permissÃ£o duplicada. Verifique se o e-mail inserido jÃ¡ existe.'), 'error');
+      showToast('Erro ao tentar salvar utilizador: ' + (error.message || 'Erro de rede ou permissão duplicada. Verifique se o e-mail inserido jÃ¡ existe.'), 'error');
     } finally {
       setIsSaving(false);
     }
@@ -15136,7 +15136,7 @@ const UsersSettings = () => {
             
             <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-1 md:col-span-2 bg-[#003366]/5 p-4 border-l-2 border-[#003366]">
-                <p className="text-xs font-bold text-[#003366] uppercase tracking-wider">IdentificaÃ§Ã£o do Utilizador</p>
+                <p className="text-xs font-bold text-[#003366] uppercase tracking-wider">Identificação do Utilizador</p>
                 <p className="text-[10px] text-zinc-500">Insira as credenciais bÃ¡sicas que dÃ£o acesso e identificam a pessoa no sistema.</p>
               </div>
 
@@ -15198,7 +15198,7 @@ const UsersSettings = () => {
                     onChange={e => setLevelState(Number(e.target.value))} 
                     className="w-full bg-white border border-amber-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-amber-500 text-sm"
                   >
-                    <option value={1}>1 - Operador PadrÃ£o</option>
+                    <option value={1}>1 - Operador Padrão</option>
                     <option value={3}>3 - Supervisor</option>
                     <option value={5}>5 - Administrador</option>
                     <option value={8}>8 - Diretor Geral</option>
@@ -15207,7 +15207,7 @@ const UsersSettings = () => {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-amber-700 uppercase tracking-wider block">Validade / ExpiraÃ§Ã£o</label>
+                  <label className="text-[10px] font-bold text-amber-700 uppercase tracking-wider block">Validade / Expiração</label>
                   <input 
                     type="date" 
                     value={validadeState} 
@@ -15233,20 +15233,20 @@ const UsersSettings = () => {
                   </button>
                   <div className="mt-4">
                     <p className="text-[10px] font-bold text-zinc-600">Cargo de Administrador</p>
-                    <p className="text-[8px] text-zinc-400 font-bold uppercase">Acesso irrestrito a configuraÃ§Ãµes</p>
+                    <p className="text-[8px] text-zinc-400 font-bold uppercase">Acesso irrestrito a configurações</p>
                   </div>
                 </div>
               </div>
 
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Senha {editingUser && '(Deixe em branco para nÃ£o alterar)'}</label>
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Senha {editingUser && '(Deixe em branco para não alterar)'}</label>
                 <input 
                   type="password" 
                   value={password} 
                   onChange={e => setPassword(e.target.value)} 
                   required={!editingUser} 
                   className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" 
-                  placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
+                  placeholder="••••••••"
                 />
               </div>
 
@@ -15258,13 +15258,13 @@ const UsersSettings = () => {
                   onChange={e => setConfirmPassword(e.target.value)} 
                   required={!!password} 
                   className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" 
-                  placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
+                  placeholder="••••••••"
                 />
               </div>
 
               <div className="space-y-1 md:col-span-2">
                 <div className="flex items-center justify-between mb-1">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block">MÃ³dulos e Ãreas de PermissÃ£o (Exatamente conforme Menu Lateral)</label>
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block">Módulos e Ãreas de Permissão (Exatamente conforme Menu Lateral)</label>
                   <div className="flex gap-2">
                     <button 
                       type="button" 
@@ -15313,7 +15313,7 @@ const UsersSettings = () => {
               </div>
 
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Cargo / ProfissÃ£o</label>
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Cargo / Profissão</label>
                 <input type="text" value={profession} onChange={e => setProfession(e.target.value)} className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" placeholder="Ex: Contabilista" />
               </div>
 
@@ -15335,7 +15335,7 @@ const UsersSettings = () => {
                   disabled={isSaving}
                   className="bg-[#003366] text-white hover:bg-[#002244] font-black uppercase text-xs px-6 py-2.5 rounded-none transition-all border border-[#003366] disabled:opacity-50"
                 >
-                  {isSaving ? 'A guardar...' : editingUser ? 'Salvar AlteraÃ§Ãµes' : 'Registar Utilizador'}
+                  {isSaving ? 'A guardar...' : editingUser ? 'Salvar Alterações' : 'Registar Utilizador'}
                 </button>
               </div>
             </form>
@@ -15357,7 +15357,7 @@ const UsersSettings = () => {
             
             <div className="space-y-4">
               <div className="flex justify-between items-center px-1">
-                <span className="text-[10px] font-bold text-zinc-500 uppercase">MÃ³dulos Selecionados ({permissionAreas.length})</span>
+                <span className="text-[10px] font-bold text-zinc-500 uppercase">Módulos Selecionados ({permissionAreas.length})</span>
                 <div className="flex gap-2">
                   <button 
                     type="button" 
@@ -15401,7 +15401,7 @@ const UsersSettings = () => {
               </div>
 
               <p className="text-[9px] text-amber-700 bg-amber-50 border border-amber-200 px-3 py-2 font-medium leading-tight">
-                âš¡ As permissÃµes sÃ£o aplicadas imediatamente. O utilizador verÃ¡ os mÃ³dulos actualizados na prÃ³xima navegaÃ§Ã£o ou ao recarregar a pÃ¡gina.
+                âš¡ As permissÃµes são aplicadas imediatamente. O utilizador verÃ¡ os módulos actualizados na próxima navegação ou ao recarregar a página.
               </p>
               <div className="flex justify-end gap-2 pt-2 border-t border-zinc-100">
                 <button 
@@ -15614,7 +15614,7 @@ const UsersSettings = () => {
                           <Pencil size={11} />
                         </button>
                         
-                        {/* PermissÃ£o Action */}
+                        {/* Permissão Action */}
                         <button 
                           disabled={togglingUserId !== null || isSaving}
                           onClick={() => handleOpenQuickPermissions(u)} 
@@ -15680,7 +15680,7 @@ const FichaPessoal = ({ employee, companyName }: { employee: Employee | null, co
             <h2 className="text-3xl font-black uppercase tracking-widest leading-tight">{employee.name}</h2>
             <div className="flex items-center gap-4 mt-2">
               <span className="bg-[#F27D26] text-white px-3 py-1 text-[10px] font-black uppercase tracking-widest">ID: #{String(employee.id).padStart(4, '0')}</span>
-              <p className="text-xs text-white/60 uppercase tracking-[0.2em] font-bold">{employee.role} â€¢ {employee.department || 'Geral'}</p>
+              <p className="text-xs text-white/60 uppercase tracking-[0.2em] font-bold">{employee.role} • {employee.department || 'Geral'}</p>
             </div>
           </div>
         </div>
@@ -15695,7 +15695,7 @@ const FichaPessoal = ({ employee, companyName }: { employee: Employee | null, co
         <div className="space-y-8 md:col-span-2">
           {/* Main Content */}
           <div className="space-y-6">
-            <h3 className="text-xs font-black uppercase tracking-[0.3em] text-[#003366] border-b-2 border-[#003366]/20 pb-2">InformaÃ§Ã£o BiogrÃ¡fica</h3>
+            <h3 className="text-xs font-black uppercase tracking-[0.3em] text-[#003366] border-b-2 border-[#003366]/20 pb-2">Informação BiogrÃ¡fica</h3>
             <div className="grid grid-cols-2 gap-6">
               {[
                 { label: 'Data de Nascimento', val: employee.birth_date || 'N/A' },
@@ -15717,12 +15717,12 @@ const FichaPessoal = ({ employee, companyName }: { employee: Employee | null, co
             <h3 className="text-xs font-black uppercase tracking-[0.3em] text-[#003366] border-b-2 border-[#003366]/20 pb-2">VÃ­nculo Laboral</h3>
             <div className="grid grid-cols-2 gap-6">
               {[
-                { label: 'Data AdmissÃ£o', val: employee.hired_at || '01/01/2026' },
+                { label: 'Data Admissão', val: employee.hired_at || '01/01/2026' },
                 { label: 'Tipo Contrato', val: employee.contract_type || 'Indeterminado' },
                 { label: 'Vencimento Base', val: formatCurrency(employee.salary) },
                 { label: 'SubsÃ­dio Alim.', val: formatCurrency(employee.subsidy_food || 0) },
                 { label: 'Transporte', val: formatCurrency(employee.subsidy_transport || 0) },
-                { label: 'NÂº SeguranÃ§a Social', val: employee.inss_number || 'PENDENTE' },
+                { label: 'NÂº Segurança Social', val: employee.inss_number || 'PENDENTE' },
               ].map((item, idx) => (
                 <div key={idx}>
                   <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1">{item.label}</p>
@@ -15770,7 +15770,7 @@ const FichaPessoal = ({ employee, companyName }: { employee: Employee | null, co
 
       <div className="bg-zinc-100/50 p-10 border-t border-zinc-200 flex justify-between items-end">
         <div className="max-w-xs space-y-2">
-           <p className="text-[9px] font-black uppercase tracking-widest text-zinc-400">Certifico a veracidade das informaÃ§Ãµes supra citadas.</p>
+           <p className="text-[9px] font-black uppercase tracking-widest text-zinc-400">Certifico a veracidade das informações supra citadas.</p>
            <div className="h-px bg-zinc-300 w-full mt-8"></div>
            <p className="text-[8px] font-bold text-zinc-500 uppercase text-center">Assinatura do ResponsÃ¡vel de RH</p>
         </div>
@@ -15786,23 +15786,23 @@ const FichaPessoal = ({ employee, companyName }: { employee: Employee | null, co
 const DeclaracaoServico = ({ employee, companyName }: { employee: Employee | null, companyName: string }) => {
   if (!employee) return (
     <div className="p-12 text-center text-zinc-400 font-bold uppercase tracking-widest bg-zinc-50 border-2 border-dashed border-zinc-200">
-      Selecione um funcionÃ¡rio no menu de opÃ§Ãµes para gerar a DeclaraÃ§Ã£o de ServiÃ§o.
+      Selecione um funcionÃ¡rio no menu de opÃ§Ãµes para gerar a Declaração de Serviço.
     </div>
   );
 
   return (
     <div className="bg-white border border-zinc-200 shadow-2xl max-w-4xl mx-auto p-20 space-y-16 animate-fade-in printable-area font-serif leading-loose text-zinc-900">
        <div className="text-center space-y-4">
-          <h1 className="text-2xl font-black uppercase tracking-[0.3em] font-sans text-[#003366]">DeclaraÃ§Ã£o de ServiÃ§o</h1>
+          <h1 className="text-2xl font-black uppercase tracking-[0.3em] font-sans text-[#003366]">Declaração de Serviço</h1>
           <div className="w-24 h-1 bg-[#F27D26] mx-auto"></div>
        </div>
 
        <div className="space-y-8 text-lg font-medium">
           <p>
-            A <strong>{companyName}</strong>, com sede em Luanda, neste acto representada pelos seus serviÃ§os de Recursos Humanos, 
+            A <strong>{companyName}</strong>, com sede em Luanda, neste acto representada pelos seus serviços de Recursos Humanos, 
             declara para os devidos efeitos que o <strong>Sr. {employee.name}</strong>, de nacionalidade {employee.nationality || 'Angolana'}, 
-            titular do {employee.document_type || 'BI'} nÂº {employee.bi || '---'}, Ã© funcionÃ¡rio desta instituiÃ§Ã£o 
-            desde o dia {employee.hired_at || '---'}, exercendo as funÃ§Ãµes de <strong>{employee.role}</strong>.
+            titular do {employee.document_type || 'BI'} nÂº {employee.bi || '---'}, é funcionÃ¡rio desta instituiÃ§Ã£o 
+            desde o dia {employee.hired_at || '---'}, exercendo as funções de <strong>{employee.role}</strong>.
           </p>
 
           <p>
@@ -15811,7 +15811,7 @@ const DeclaracaoServico = ({ employee, companyName }: { employee: Employee | nul
           </p>
 
           <p>
-            Por ser verdade e nos ter sido solicitado, mandamos passar a presente declaraÃ§Ã£o que vai por nÃ³s assinada 
+            Por ser verdade e nos ter sido solicitado, mandamos passar a presente declaração que vai por nÃ³s assinada 
             e autenticada com o carimbo a Ã³leo em uso nesta instituiÃ§Ã£o.
           </p>
        </div>
@@ -15819,7 +15819,7 @@ const DeclaracaoServico = ({ employee, companyName }: { employee: Employee | nul
        <div className="pt-24 flex flex-col items-center space-y-2">
           <p className="font-sans text-xs font-black uppercase tracking-widest text-zinc-500 mb-12">Luanda, {new Date().toLocaleDateString('pt-AO', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
           <div className="w-64 h-px bg-zinc-400"></div>
-          <p className="font-sans text-[10px] font-black uppercase tracking-widest text-[#003366]">DirecÃ§Ã£o de Recursos Humanos</p>
+          <p className="font-sans text-[10px] font-black uppercase tracking-widest text-[#003366]">Direção de Recursos Humanos</p>
           <p className="font-sans text-[9px] font-bold text-zinc-400 uppercase tracking-tighter">{companyName.toUpperCase()}</p>
        </div>
        
@@ -15842,30 +15842,30 @@ const AcordoConfidencialidade = ({ employee, companyName }: { employee: Employee
   return (
     <div className="bg-white border border-zinc-200 shadow-2xl max-w-4xl mx-auto p-16 space-y-12 animate-fade-in printable-area leading-relaxed text-sm">
        <div className="text-center space-y-2 border-b-4 border-[#003366] pb-6">
-          <h1 className="text-xl font-black uppercase tracking-widest text-[#003366]">Acordo de Confidencialidade e NÃ£o DivulgaÃ§Ã£o</h1>
+          <h1 className="text-xl font-black uppercase tracking-widest text-[#003366]">Acordo de Confidencialidade e Não Divulgação</h1>
           <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-[0.2em] italic">Termo de Compromisso e Sigilo Profissional</p>
        </div>
 
        <div className="space-y-6 text-zinc-700 text-justify">
           <p>
             Entre a <strong>{companyName}</strong>, doravante designada por "Empresa", e o colaborador 
-            <strong> {employee.name}</strong>, doravante designado por "Colaborador", Ã© celebrado o presente acordo nos seguintes termos:
+            <strong> {employee.name}</strong>, doravante designado por "Colaborador", é celebrado o presente acordo nos seguintes termos:
           </p>
 
           <div className="space-y-4">
              <h4 className="font-black text-[#003366] uppercase text-[11px] tracking-widest border-l-4 border-[#F27D26] pl-3 py-1 bg-zinc-50">1. Objeto do Acordo</h4>
              <p className="text-xs">
-               O Colaborador compromete-se a manter sigilo absoluto sobre toda e qualquer informaÃ§Ã£o tÃ©cnica, financeira, comercial ou estratÃ©gica de que venha a ter conhecimento por forÃ§a do exercÃ­cio das suas funÃ§Ãµes.
+               O Colaborador compromete-se a manter sigilo absoluto sobre toda e qualquer informação técnica, financeira, comercial ou estratégica de que venha a ter conhecimento por força do exercÃ­cio das suas funções.
              </p>
 
-             <h4 className="font-black text-[#003366] uppercase text-[11px] tracking-widest border-l-4 border-[#F27D26] pl-3 py-1 bg-zinc-50">2. InformaÃ§Ã£o Confidencial</h4>
+             <h4 className="font-black text-[#003366] uppercase text-[11px] tracking-widest border-l-4 border-[#F27D26] pl-3 py-1 bg-zinc-50">2. Informação Confidencial</h4>
              <p className="text-xs">
-               Considera-se confidencial toda a informaÃ§Ã£o nÃ£o pÃºblica, incluindo mas nÃ£o se limitando a: segredos de negÃ³cio, bases de dados de clientes, cÃ³digos-fonte, planos de marketing e dados financeiros da Empresa.
+               Considera-se confidencial toda a informação não pÃºblica, incluindo mas não se limitando a: segredos de negÃ³cio, bases de dados de clientes, cÃ³digos-fonte, planos de marketing e dados financeiros da Empresa.
              </p>
 
              <h4 className="font-black text-[#003366] uppercase text-[11px] tracking-widest border-l-4 border-[#F27D26] pl-3 py-1 bg-zinc-50">3. Incumprimento</h4>
              <p className="text-xs">
-               A violaÃ§Ã£o deste acordo constitui justa causa para despedimento imediato e sujeita o infrator a responsabilidade civil e criminal nos termos da Lei Geral do Trabalho de Angola em vigor.
+               A violação deste acordo constitui justa causa para despedimento imediato e sujeita o infrator a responsabilidade civil e criminal nos termos da Lei Geral do Trabalho de Angola em vigor.
              </p>
           </div>
 
@@ -15923,7 +15923,7 @@ const MapaSalarios = ({ localEmployees, selectedMonthForMap, setSelectedMonthFor
                 </div>
                 <div>
                   <h4 className="text-lg font-black text-[#003366] uppercase tracking-tighter">Mapa de ContribuiÃ§Ãµes INSS</h4>
-                  <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">Folha de RemuneraÃ§Ãµes para a SeguranÃ§a Social</p>
+                  <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">Folha de Remunerações para a Segurança Social</p>
                 </div>
               </div>
               <div className="text-right">
@@ -15939,12 +15939,12 @@ const MapaSalarios = ({ localEmployees, selectedMonthForMap, setSelectedMonthFor
                   <th className="px-4 py-4 border-r border-white/10">CÃ³d Prof</th>
                   <th className="px-4 py-4 border-r border-white/10 min-w-[200px]">Segurado (Nome Completo)</th>
                   <th className="px-4 py-4 border-r border-white/10 text-right">Vencimento Base</th>
-                  <th className="px-4 py-4 border-r border-white/10 text-right">Outras RemuneraÃ§Ãµes</th>
+                  <th className="px-4 py-4 border-r border-white/10 text-right">Outras Remunerações</th>
                   <th className="px-4 py-4 border-r border-white/10 text-right">Parcela Contribuinte (8%)</th>
                   <th className="px-4 py-4 border-r border-white/10 text-right">Parcela Segurado (3%)</th>
                   <th className="px-4 py-4 border-r border-white/10 text-center">Taxa Seg</th>
                   <th className="px-4 py-4 border-r border-white/10 text-right">Valor Final</th>
-                  <th className="px-4 py-4 text-right">Total RemuneraÃ§Ã£o</th>
+                  <th className="px-4 py-4 text-right">Total Remuneração</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
@@ -16060,15 +16060,15 @@ const MapaSalarios = ({ localEmployees, selectedMonthForMap, setSelectedMonthFor
                   <FileText className="text-white" size={24} />
                 </div>
                 <div>
-                  <h4 className="text-lg font-black text-[#003366] uppercase tracking-tighter">RelatÃ³rios</h4>
-                  <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">RelatÃ³rios Diversos</p>
+                  <h4 className="text-lg font-black text-[#003366] uppercase tracking-tighter">Relatórios</h4>
+                  <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">Relatórios Diversos</p>
                 </div>
               </div>
             </div>
             <div className="bg-white border border-zinc-200 p-8 text-center text-zinc-500">
               <FileText size={48} className="mx-auto text-zinc-300 mb-4" />
-              <h3 className="text-lg font-bold text-[#003366] mb-2">RelatÃ³rios em Desenvolvimento</h3>
-              <p className="text-sm">Esta secÃ§Ã£o estarÃ¡ disponÃ­vel em breve.</p>
+              <h3 className="text-lg font-bold text-[#003366] mb-2">Relatórios em Desenvolvimento</h3>
+              <p className="text-sm">Esta secÃ§Ã£o estarÃ¡ disponível em breve.</p>
             </div>
           </div>
         );
@@ -16083,7 +16083,7 @@ const MapaSalarios = ({ localEmployees, selectedMonthForMap, setSelectedMonthFor
                 </div>
                 <div className="space-y-1">
                   <h4 className="text-2xl font-black text-[#003366] uppercase tracking-tighter">MAPA GERAL IRT / INSS</h4>
-                  <p className="text-xs font-bold text-zinc-500 uppercase tracking-widest">RelatÃ³rio Consolidado de Encargos Sociais e Impostos</p>
+                  <p className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Relatório Consolidado de Encargos Sociais e Impostos</p>
                   <div className="flex gap-4 mt-2">
                     <div className="text-[10px] font-bold text-zinc-400 uppercase">Empresa: <span className="text-zinc-900">C&V Enterprise</span></div>
                     <div className="text-[10px] font-bold text-zinc-400 uppercase">NIF: <span className="text-zinc-900">5000780316</span></div>
@@ -16107,7 +16107,7 @@ const MapaSalarios = ({ localEmployees, selectedMonthForMap, setSelectedMonthFor
                     <th className="px-2 py-4 border-r border-white/10 text-right">Faltas</th>
                     <th className="px-2 py-4 border-r border-white/10 text-right">H. Extra</th>
                     <th className="px-2 py-4 border-r border-white/10 text-right">Sub. Natal</th>
-                    <th className="px-2 py-4 border-r border-white/10 text-right">Sub. FÃ©rias</th>
+                    <th className="px-2 py-4 border-r border-white/10 text-right">Sub. Férias</th>
                     <th className="px-2 py-4 border-r border-white/10 text-right">Sub. Transp.</th>
                     <th className="px-2 py-4 border-r border-white/10 text-right">Sub. Alim.</th>
                     <th className="px-2 py-4 border-r border-white/10 text-right">Outros Sub.</th>
@@ -16201,8 +16201,8 @@ const MapaSalarios = ({ localEmployees, selectedMonthForMap, setSelectedMonthFor
             <Map size={20} />
           </div>
           <div>
-            <h3 className="font-black text-[#003366] uppercase tracking-widest text-sm">Mapas de SalÃ¡rios e Encargos</h3>
-            <p className="text-[10px] text-zinc-400 uppercase tracking-tighter">RelatÃ³rios Consolidados de RH</p>
+            <h3 className="font-black text-[#003366] uppercase tracking-widest text-sm">Mapas de Salários e Encargos</h3>
+            <p className="text-[10px] text-zinc-400 uppercase tracking-tighter">Relatórios Consolidados de RH</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -16441,7 +16441,7 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
              combined.push({
                id: m.id,
                source: 'media_arquivos',
-               titulo: m.nome_arquivo || 'Arquivo de MÃ©dia',
+               titulo: m.nome_arquivo || 'Arquivo de Média',
                data_inicio: m.created_at || new Date().toISOString(),
                descricao: m.tipo_arquivo || 'Anexo de mÃ­dia',
                anexo_nome: m.nome_arquivo || 'Arquivo',
@@ -16710,7 +16710,7 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
             <th className="px-6 py-4">Assunto</th>
             <th className="px-6 py-4">Data</th>
             <th className="px-6 py-4">Anexo / Imagem</th>
-            <th className="px-6 py-4 text-right">AÃ§Ãµes</th>
+            <th className="px-6 py-4 text-right">Ações</th>
           </tr>
         );
       } else if (activeSection === 'attachments') {
@@ -16718,9 +16718,9 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
           <tr className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest border-b border-zinc-100">
             <th className="px-6 py-4">Nome do Anexo</th>
             <th className="px-6 py-4">Data</th>
-            <th className="px-6 py-4">DescriÃ§Ã£o</th>
+            <th className="px-6 py-4">Descrição</th>
             <th className="px-6 py-4">Origem</th>
-            <th className="px-6 py-4 text-right">AÃ§Ãµes</th>
+            <th className="px-6 py-4 text-right">Ações</th>
           </tr>
         );
       } else {
@@ -16728,9 +16728,9 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
           <tr className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest border-b border-zinc-100">
             <th className="px-6 py-4">TÃ­tulo</th>
             <th className="px-6 py-4">Data</th>
-            <th className="px-6 py-4">DescriÃ§Ã£o</th>
+            <th className="px-6 py-4">Descrição</th>
             <th className="px-6 py-4">Anexo</th>
-            <th className="px-6 py-4 text-right">AÃ§Ãµes</th>
+            <th className="px-6 py-4 text-right">Ações</th>
           </tr>
         );
       }
@@ -17052,7 +17052,7 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
             <div className="bg-white border border-zinc-200 p-8 shadow-sm relative overflow-hidden rounded">
               <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500" />
               <h4 className="font-bold text-[#003366] mb-4 flex items-center gap-2 uppercase tracking-tight">
-                <AlertCircle size={18} className="text-emerald-500" /> InformaÃ§Ãµes Ãšteis
+                <AlertCircle size={18} className="text-emerald-500" /> Informações Ãšteis
               </h4>
               <p className="text-sm text-zinc-500 leading-relaxed">
                 Esta seÃ§Ã£o permite gerir todos os documentos relacionados com <span className="font-bold text-[#003366]">{sections.find(s => s.id === activeSection)?.label}</span>. 
@@ -17081,8 +17081,8 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
             <div className="bg-white rounded-lg shadow-2xl max-w-4xl w-full p-6 space-y-6 max-h-[95vh] overflow-y-auto print:p-0 print:h-full print:shadow-none print:w-full">
               <div className="flex justify-between items-center border-b pb-4 print:hidden">
                 <div>
-                  <h3 className="text-lg font-bold text-[#003366]">VisualizaÃ§Ã£o do Documento em A4</h3>
-                  <p className="text-xs text-zinc-400 mt-0.5">Selecione o formato para impressÃ£o do documento</p>
+                  <h3 className="text-lg font-bold text-[#003366]">Visualização do Documento em A4</h3>
+                  <p className="text-xs text-zinc-400 mt-0.5">Selecione o formato para impressão do documento</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="flex bg-zinc-100 rounded p-1 gap-1">
@@ -17096,7 +17096,7 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
                       onClick={() => setPrintFormat('declaracao')}
                       className={`px-3 py-1 text-xs font-bold rounded transition-all ${printFormat === 'declaracao' ? 'bg-[#003366] text-white shadow' : 'text-zinc-500 hover:text-[#003366]'}`}
                     >
-                      Formato DeclaraÃ§Ã£o
+                      Formato Declaração
                     </button>
                   </div>
                   <button 
@@ -17151,7 +17151,7 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
                       // FORMATO CARTA COMERCIAL
                       <div className="space-y-6">
                         <div className="flex justify-between text-xs text-zinc-500">
-                          <div>Sua RefÂª: <span className="font-semibold text-zinc-700">{printingCarta.referencia || 'GeneraÃ§Ã£o automÃ¡tica'}</span></div>
+                          <div>Sua RefÂª: <span className="font-semibold text-zinc-700">{printingCarta.referencia || 'Generação automÃ¡tica'}</span></div>
                           <div>Data: <span className="font-semibold text-zinc-700">{printingCarta.descricao_data || new Date(printingCarta.data_documento).toLocaleDateString('pt-PT')}</span></div>
                         </div>
 
@@ -17181,7 +17181,7 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
                       <div className="space-y-8 pt-4">
                         <div className="text-center space-y-2 mt-4">
                           <h1 className="text-3xl font-black tracking-widest text-[#003366] border-b-2 border-[#003366] inline-block px-12 pb-2 uppercase text-center mx-auto">DECLARAÃ‡ÃƒO</h1>
-                          <p className="text-[10px] text-zinc-400 font-mono tracking-wider">CÃ³digo de ValidaÃ§Ã£o: {printingCarta.referencia}</p>
+                          <p className="text-[10px] text-zinc-400 font-mono tracking-wider">CÃ³digo de Validação: {printingCarta.referencia}</p>
                         </div>
 
                         <div className="pt-6 text-zinc-700 text-sm space-y-6 text-justify leading-loose min-h-[300px]">
@@ -17199,7 +17199,7 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
                         </div>
 
                         <div className="flex justify-between items-center text-xs text-zinc-400 border-t pt-2">
-                          <div>SÃ©rie: <span className="font-semibold text-zinc-600">{printingCarta.serie}</span></div>
+                          <div>Série: <span className="font-semibold text-zinc-600">{printingCarta.serie}</span></div>
                           <div>{printingCarta.descricao_data || new Date(printingCarta.data_documento).toLocaleDateString('pt-PT')}</div>
                         </div>
                       </div>
@@ -17226,8 +17226,8 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
 
                     <div className="text-center text-[9px] text-zinc-400 leading-normal max-w-lg mx-auto">
                       Emitido eletronicamente pela secretaria da empresa {companySettings?.nome_empresa || 'registada'}. 
-                      Ã‰ proibida a reproduÃ§Ã£o sem autorizaÃ§Ã£o prÃ©via por escrito. 
-                      Os dados contidos sÃ£o confidenciais ao abrigo do regulamento em vigor.
+                      Ã‰ proibida a reprodução sem autorização prévia por escrito. 
+                      Os dados contidos são confidenciais ao abrigo do regulamento em vigor.
                     </div>
                   </div>
 
@@ -17269,18 +17269,18 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">DescriÃ§Ã£o</label>
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Descrição</label>
                     <input 
                       type="text" 
                       value={formData.descricao}
                       onChange={e => setTaskFormData({...formData, descricao: e.target.value})}
                       className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] transition-all rounded" 
-                      placeholder="Breve descriÃ§Ã£o..." 
+                      placeholder="Breve descrição..." 
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data de EmissÃ£o</label>
+                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data de Emissão</label>
                       <input 
                         type="date" 
                         required 
@@ -17329,7 +17329,7 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
                     </div>
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">ObservaÃ§Ãµes / Notas</label>
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Observações / Notas</label>
                     <textarea 
                       value={formData.observacoes}
                       onChange={e => setTaskFormData({...formData, observacoes: e.target.value})}
@@ -17413,7 +17413,7 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
     responsavel: initialData?.responsavel || initialData?.nome_administrador || '',
     email: initialData?.email || '',
     regime: initialData?.regime || 'Regime geral',
-    tipo_empresa: initialData?.tipo_empresa || 'ServiÃ§os',
+    tipo_empresa: initialData?.tipo_empresa || 'Serviços',
     coordenadas_bancarias: initialData?.coordenadas_bancarias || '',
     // License Info (Read-only)
     plano: initialData?.plano || 'trial',
@@ -17452,7 +17452,7 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
             }));
           }
         } catch (err) {
-          console.error("Erro ao carregar configuraÃ§Ãµes da empresa:", err);
+          console.error("Erro ao carregar configurações da empresa:", err);
         } finally {
           setLoading(false);
         }
@@ -17484,7 +17484,7 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
           .single();
           
         const empresaId = profile?.empresa_id;
-        if (!empresaId) throw new Error('Empresa nÃ£o identificada');
+        if (!empresaId) throw new Error('Empresa não identificada');
 
         const fileExt = file.name.split('.').pop();
         const fileName = `${empresaId}/sidebar-${Date.now()}-${file.name.replace(/\s+/g, '_')}`;
@@ -17542,7 +17542,7 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
     e.preventDefault();
     setLoading(true);
     try {
-      if (!user?.empresa_id) throw new Error("SessÃ£o expirada");
+      if (!user?.empresa_id) throw new Error("Sessão expirada");
 
       const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch('/api/config-empresa', {
@@ -17585,7 +17585,7 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
         className="relative w-full max-w-4xl bg-white shadow-2xl rounded-none flex flex-col max-h-[90vh]"
       >
         <div className="p-6 border-b border-zinc-200 bg-[#003366] text-white flex justify-between items-center shrink-0">
-          <h2 className="text-xl font-bold">ConfiguraÃ§Ã£o da Empresa</h2>
+          <h2 className="text-xl font-bold">Configuração da Empresa</h2>
           <button onClick={onClose} className="hover:text-blue-200 transition-colors"><X size={24} /></button>
         </div>
         
@@ -17593,7 +17593,7 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
           <form id="company-settings-form" onSubmit={handleSubmit} className="space-y-8">
             
             <div>
-              <h3 className="text-sm font-bold text-[#003366] uppercase tracking-wider mb-4 border-b border-zinc-200 pb-2">InformaÃ§Ãµes Gerais</h3>
+              <h3 className="text-sm font-bold text-[#003366] uppercase tracking-wider mb-4 border-b border-zinc-200 pb-2">Informações Gerais</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Nome da Empresa (InalterÃ¡vel)</label>
@@ -17604,11 +17604,11 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
                   <input readOnly type="text" name="nif" value={formData.nif || ''} className="w-full bg-zinc-100 border border-zinc-300 px-4 py-2 text-sm focus:outline-none cursor-not-allowed text-zinc-500 font-bold" />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">NÃºmero de MatrÃ­cula</label>
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Número de Matrícula</label>
                   <input type="text" name="matricula" value={formData.matricula} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">NÃºmero de AlvarÃ¡</label>
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Número de AlvarÃ¡</label>
                   <input type="text" name="alvara" value={formData.alvara} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
                 </div>
                 <div className="space-y-1">
@@ -17616,14 +17616,14 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
                   <select name="regime" value={formData.regime || ''} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]">
                     <option value="Regime geral">Regime geral</option>
                     <option value="Regime simplificado">Regime simplificado</option>
-                    <option value="Regime de exclusÃ£o">Regime de exclusÃ£o</option>
+                    <option value="Regime de exclusão">Regime de exclusão</option>
                   </select>
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Tipo de Atividade</label>
                   <select name="tipo_empresa" value={formData.tipo_empresa || ''} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]">
-                    <option value="ServiÃ§os">ServiÃ§os</option>
-                    <option value="ComÃ©rcio">ComÃ©rcio</option>
+                    <option value="Serviços">Serviços</option>
+                    <option value="Comércio">Comércio</option>
                     <option value="IndÃºstria">IndÃºstria</option>
                     <option value="AgropecuÃ¡ria">AgropecuÃ¡ria</option>
                     <option value="Outro">Outro</option>
@@ -17633,7 +17633,7 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
             </div>
 
             <div>
-              <h3 className="text-sm font-bold text-[#003366] uppercase tracking-wider mb-4 border-b border-zinc-200 pb-2">LocalizaÃ§Ã£o e Contacto</h3>
+              <h3 className="text-sm font-bold text-[#003366] uppercase tracking-wider mb-4 border-b border-zinc-200 pb-2">Localização e Contacto</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-1 md:col-span-2">
                   <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Morada da Sede</label>
@@ -17699,11 +17699,11 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
                     <div className="text-sm font-bold text-zinc-700">{formData.pacote_licenca}</div>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase">Valor da LicenÃ§a (Mensal)</label>
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase">Valor da Licença (Mensal)</label>
                     <div className="text-sm font-bold text-zinc-700">{Number(formData.valor_licenca).toLocaleString()} AOA</div>
                   </div>
                   <div className="pt-2">
-                    <button type="button" onClick={() => alert('MÃ³dulo de FaturaÃ§Ã£o de LicenÃ§as em desenvolvimento.')} className="w-full py-1.5 bg-zinc-200 text-zinc-600 text-[10px] font-black uppercase tracking-widest hover:bg-zinc-300 transition-colors">
+                    <button type="button" onClick={() => alert('Módulo de Faturação de Licenças em desenvolvimento.')} className="w-full py-1.5 bg-zinc-200 text-zinc-600 text-[10px] font-black uppercase tracking-widest hover:bg-zinc-300 transition-colors">
                       Upgrade de Plano
                     </button>
                   </div>
@@ -17717,7 +17717,7 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
         <div className="p-6 border-t border-zinc-200 bg-white flex justify-end gap-4 shrink-0">
           <button onClick={onClose} type="button" className="px-6 py-2 border border-zinc-300 text-zinc-700 font-medium hover:bg-zinc-50 text-sm">Cancelar</button>
           <button form="company-settings-form" type="submit" disabled={loading} className="px-8 py-2 bg-[#003366] text-white font-bold hover:bg-[#002244] text-sm flex items-center gap-2">
-            {loading ? 'A Guardar...' : <><RefreshCw size={16} /> Salvar AlteraÃ§Ãµes</>}
+            {loading ? 'A Guardar...' : <><RefreshCw size={16} /> Salvar Alterações</>}
           </button>
         </div>
       </motion.div>
@@ -17799,7 +17799,7 @@ const VisualIdentityModule = ({ companyData, onRefreshData }: { companyData: any
     e.preventDefault();
     setLoading(true);
     try {
-      if (!user?.empresa_id) throw new Error("SessÃ£o expirada. Inicie sessÃ£o novamente.");
+      if (!user?.empresa_id) throw new Error("Sessão expirada. Inicie sessão novamente.");
 
       // Merge with the existing companyData to not overwrite other fields
       const payload = {
@@ -17817,7 +17817,7 @@ const VisualIdentityModule = ({ companyData, onRefreshData }: { companyData: any
         .update(payload)
         .eq('id', user.empresa_id);
 
-      // TambÃ©m sincronizar em config_empresa
+      // Também sincronizar em config_empresa
       await supabase
         .from('config_empresa')
         .upsert({
@@ -17836,14 +17836,14 @@ const VisualIdentityModule = ({ companyData, onRefreshData }: { companyData: any
           localStorage.setItem('companyLogo', formData.logo_url);
           window.dispatchEvent(new CustomEvent('companyLogoUpdated', { detail: formData.logo_url }));
         }
-        alert('ConfiguraÃ§Ãµes grÃ¡ficas atualizadas com sucesso!');
+        alert('Configurações grÃ¡ficas atualizadas com sucesso!');
         onRefreshData();
       } else {
         alert('Erro ao atualizar: ' + error.message);
       }
     } catch (error) {
       console.error('Error saving visual identity:', error);
-      alert('Erro ao guardar alteraÃ§Ãµes.');
+      alert('Erro ao guardar alterações.');
     } finally {
       setLoading(false);
     }
@@ -17854,7 +17854,7 @@ const VisualIdentityModule = ({ companyData, onRefreshData }: { companyData: any
       <div className="flex justify-between items-center mb-6">
         <div>
           <h3 className="text-xl font-bold text-[#003366] uppercase tracking-tight">Identidade Visual</h3>
-          <p className="text-zinc-500 text-xs">Logotipo, Marca d'Ã¡gua e RodapÃ© para documentos oficiais</p>
+          <p className="text-zinc-500 text-xs">Logotipo, Marca d'Ã¡gua e Rodapé para documentos oficiais</p>
         </div>
       </div>
 
@@ -17913,7 +17913,7 @@ const VisualIdentityModule = ({ companyData, onRefreshData }: { companyData: any
               <div className="w-8 h-8 bg-zinc-50 flex items-center justify-center text-[#003366]">
                 <Layout size={18} />
               </div>
-              <label className="text-sm font-bold text-[#003366] uppercase tracking-wider">RodapÃ© Personalizado</label>
+              <label className="text-sm font-bold text-[#003366] uppercase tracking-wider">Rodapé Personalizado</label>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div className="space-y-4">
@@ -17934,7 +17934,7 @@ const VisualIdentityModule = ({ companyData, onRefreshData }: { companyData: any
               
               <div className="space-y-4">
                  <div className="space-y-2">
-                    <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Texto Alternativo do RodapÃ©</p>
+                    <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Texto Alternativo do Rodapé</p>
                     <input 
                       type="text" 
                       name="footer_image_url" 
@@ -17946,7 +17946,7 @@ const VisualIdentityModule = ({ companyData, onRefreshData }: { companyData: any
                  </div>
                  <div className="space-y-2 bg-zinc-50 p-4 border border-zinc-100">
                     <div className="flex justify-between text-[10px] text-zinc-400 font-bold uppercase tracking-widest mb-1">
-                      <span>Ajustar RodapÃ©</span>
+                      <span>Ajustar Rodapé</span>
                       <span className="text-[#003366]">{formData.footer_size}px</span>
                     </div>
                     <input type="range" name="footer_size" min="20" max="200" value={formData.footer_size} onChange={handleChange} className="w-full h-1.5 bg-zinc-200 rounded-lg appearance-none cursor-pointer accent-[#003366]" />
@@ -17958,7 +17958,7 @@ const VisualIdentityModule = ({ companyData, onRefreshData }: { companyData: any
 
         <div className="flex justify-end pt-6">
            <button type="submit" disabled={loading} className="bg-[#003366] text-white px-10 py-3 font-black text-xs uppercase tracking-[0.2em] hover:bg-[#002244] transition-all flex items-center gap-3 shadow-xl shadow-blue-900/10 active:scale-95 disabled:opacity-50">
-             {loading ? 'A Guardar...' : <><Save size={18} /> Guardar ConfiguraÃ§Ãµes GrÃ¡ficas</>}
+             {loading ? 'A Guardar...' : <><Save size={18} /> Guardar Configurações GrÃ¡ficas</>}
            </button>
         </div>
       </form>
@@ -17973,8 +17973,8 @@ const SettingsModule = ({ user, companyData, onRefreshData, alerts, setAlerts, o
   return (
     <div className="space-y-8">
       <header>
-        <Breadcrumbs paths={['Home', 'Ãrea Reservada', 'ConfiguraÃ§Ãµes']} />
-        <h2 className="text-2xl font-bold text-[#003366] tracking-tight">ConfiguraÃ§Ãµes do Sistema</h2>
+        <Breadcrumbs paths={['Home', 'Ãrea Reservada', 'Configurações']} />
+        <h2 className="text-2xl font-bold text-[#003366] tracking-tight">Configurações do Sistema</h2>
       </header>
 
       <div className="flex gap-4 border-b border-zinc-200">
@@ -17988,7 +17988,7 @@ const SettingsModule = ({ user, companyData, onRefreshData, alerts, setAlerts, o
           onClick={() => setActiveTab('graficos')}
           className={`pb-2 text-sm font-bold ${activeTab === 'graficos' ? 'text-[#003366] border-b-2 border-[#003366]' : 'text-zinc-500 hover:text-zinc-800'}`}
         >
-          ConfiguraÃ§Ãµes GrÃ¡ficas
+          Configurações GrÃ¡ficas
         </button>
         <button 
           onClick={() => setActiveTab('media')}
@@ -18000,13 +18000,13 @@ const SettingsModule = ({ user, companyData, onRefreshData, alerts, setAlerts, o
           onClick={() => setActiveTab('alertas')}
           className={`pb-2 text-sm font-bold ${activeTab === 'alertas' ? 'text-[#003366] border-b-2 border-[#003366]' : 'text-zinc-500 hover:text-zinc-800'}`}
         >
-          GestÃ£o de Alertas
+          Gestão de Alertas
         </button>
         <button 
           onClick={() => setActiveTab('metrica')}
           className={`pb-2 text-sm font-bold ${activeTab === 'metrica' ? 'text-[#003366] border-b-2 border-[#003366]' : 'text-zinc-500 hover:text-zinc-800'}`}
         >
-          MÃ©trica
+          Métrica
         </button>
         <button 
           onClick={() => setActiveTab('impostos')}
@@ -18024,13 +18024,13 @@ const SettingsModule = ({ user, companyData, onRefreshData, alerts, setAlerts, o
           onClick={() => setActiveTab('actividades')}
           className={`pb-2 text-sm font-bold ${activeTab === 'actividades' ? 'text-[#003366] border-b-2 border-[#003366]' : 'text-zinc-500 hover:text-zinc-800'}`}
         >
-          GestÃ£o de Atividades
+          Gestão de Atividades
         </button>
         <button 
           onClick={() => setActiveTab('licencas')}
           className={`pb-2 text-sm font-bold ${activeTab === 'licencas' ? 'text-[#003366] border-b-2 border-[#003366]' : 'text-zinc-500 hover:text-zinc-800'}`}
         >
-          LicenÃ§as
+          Licenças
         </button>
         <button 
           onClick={() => setActiveTab('pos')}
@@ -18042,7 +18042,7 @@ const SettingsModule = ({ user, companyData, onRefreshData, alerts, setAlerts, o
           onClick={() => setActiveTab('central_homologacao')}
           className={`pb-2 text-sm font-bold flex items-center gap-1.5 ${activeTab === 'central_homologacao' ? 'text-amber-600 border-b-2 border-amber-500' : 'text-zinc-500 hover:text-zinc-800'}`}
         >
-          ðŸ§ª HomologaÃ§Ã£o
+          ðŸ§ª Homologação
         </button>
       </div>
 
@@ -18051,7 +18051,7 @@ const SettingsModule = ({ user, companyData, onRefreshData, alerts, setAlerts, o
           <div className="flex justify-between items-center mb-6">
             <div>
               <h3 className="text-xl font-bold text-[#003366] uppercase tracking-tight">Dados da Empresa</h3>
-              <p className="text-zinc-500 text-xs">InformaÃ§Ã£o fiscal e de contacto da organizaÃ§Ã£o</p>
+              <p className="text-zinc-500 text-xs">Informação fiscal e de contacto da organização</p>
             </div>
             <div className="no-print">
               <button
@@ -18067,7 +18067,7 @@ const SettingsModule = ({ user, companyData, onRefreshData, alerts, setAlerts, o
              <table className="w-full text-left text-sm">
                 <tbody className="divide-y divide-zinc-200">
                    <tr className="hover:bg-zinc-50">
-                      <th className="px-6 py-4 text-zinc-500 font-medium bg-zinc-50/50 border-r border-zinc-100">DesignaÃ§Ã£o Social</th>
+                      <th className="px-6 py-4 text-zinc-500 font-medium bg-zinc-50/50 border-r border-zinc-100">Designação Social</th>
                       <td className="px-6 py-4 font-bold text-[#003366]">{companyData?.nome_empresa || companyData?.name || 'Sem nome registado'}</td>
                    </tr>
                    <tr className="hover:bg-zinc-50">
@@ -18195,10 +18195,10 @@ const CashierModule = ({ issuedDocuments = [] }: { issuedDocuments?: IssuedDocum
   };
 
   const menuItems = [
-    { id: 'sessions', label: 'SessÃµes de Caixa', icon: History, description: 'GestÃ£o de aberturas e fechos de caixa' },
+    { id: 'sessions', label: 'Sessões de Caixa', icon: History, description: 'Gestão de aberturas e fechos de caixa' },
     { id: 'movements', label: 'Movimento', icon: TrendingUp, description: 'Documentos associados ao caixa selecionado' },
-    { id: 'reports', label: 'RelatÃ³rios de Caixa', icon: BarChart3, description: 'Resumo de todos os movimentos e tipos' },
-    { id: 'reconciliation', label: 'ConciliaÃ§Ã£o de Caixa', icon: Layers, description: 'VerificaÃ§Ã£o e ajuste de saldos' },
+    { id: 'reports', label: 'Relatórios de Caixa', icon: BarChart3, description: 'Resumo de todos os movimentos e tipos' },
+    { id: 'reconciliation', label: 'Conciliação de Caixa', icon: Layers, description: 'Verificação e ajuste de saldos' },
   ];
 
   if (activeSubTab === 'sessions') {
@@ -18206,8 +18206,8 @@ const CashierModule = ({ issuedDocuments = [] }: { issuedDocuments?: IssuedDocum
       <div className="space-y-8">
         <header className="flex justify-between items-center">
           <div>
-            <Breadcrumbs paths={['Home', 'Caixa', 'SessÃµes']} />
-            <h2 className="text-2xl font-bold text-[#003366] tracking-tight">SessÃµes de Caixa</h2>
+            <Breadcrumbs paths={['Home', 'Caixa', 'Sessões']} />
+            <h2 className="text-2xl font-bold text-[#003366] tracking-tight">Sessões de Caixa</h2>
             <p className="text-zinc-500 text-sm">Controlo de abertura e fecho de caixa.</p>
           </div>
           <div className="flex gap-3">
@@ -18224,7 +18224,7 @@ const CashierModule = ({ issuedDocuments = [] }: { issuedDocuments?: IssuedDocum
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             <div className="absolute inset-0 bg-zinc-900/60 backdrop-blur-sm" onClick={() => setShowForm(false)} />
             <div className="relative w-full max-w-lg bg-white p-8 rounded-none shadow-2xl">
-              <h3 className="font-bold text-[#003366] mb-6 text-xl">Abrir Nova SessÃ£o</h3>
+              <h3 className="font-bold text-[#003366] mb-6 text-xl">Abrir Nova Sessão</h3>
               <form onSubmit={handleCreateSession} className="space-y-4">
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Saldo Inicial</label>
@@ -18249,7 +18249,7 @@ const CashierModule = ({ issuedDocuments = [] }: { issuedDocuments?: IssuedDocum
                 <th className="px-6 py-4">Saldo Inicial</th>
                 <th className="px-6 py-4">Saldo Final</th>
                 <th className="px-6 py-4">Estado</th>
-                <th className="px-6 py-4 text-right">AÃ§Ãµes</th>
+                <th className="px-6 py-4 text-right">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
@@ -18292,7 +18292,7 @@ const CashierModule = ({ issuedDocuments = [] }: { issuedDocuments?: IssuedDocum
               ))}
               {sessions.length === 0 && !loading && (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-zinc-400 italic">Nenhuma sessÃ£o de caixa encontrada.</td>
+                  <td colSpan={7} className="px-6 py-12 text-center text-zinc-400 italic">Nenhuma sessão de caixa encontrada.</td>
                 </tr>
               )}
             </tbody>
@@ -18317,14 +18317,14 @@ const CashierModule = ({ issuedDocuments = [] }: { issuedDocuments?: IssuedDocum
             <div>
               <Breadcrumbs paths={['Home', 'Caixa', 'Movimentos']} />
               <h2 className="text-2xl font-bold text-[#003366] tracking-tight">
-                Movimentos {selectedSession ? `(SessÃ£o #${selectedSession.id})` : ''}
+                Movimentos {selectedSession ? `(Sessão #${selectedSession.id})` : ''}
               </h2>
               <p className="text-zinc-500 text-sm">Documentos e valores registados no caixa.</p>
             </div>
           </div>
           <div className="flex gap-2">
             <button onClick={() => setActiveSubTab('reports')} className="text-[#003366] font-bold px-4 py-2 text-sm border border-[#003366]">
-              RelatÃ³rios
+              Relatórios
             </button>
           </div>
         </header>
@@ -18393,8 +18393,8 @@ const CashierModule = ({ issuedDocuments = [] }: { issuedDocuments?: IssuedDocum
             <ChevronLeft size={20} />
           </button>
           <div>
-            <Breadcrumbs paths={['Home', 'Caixa', 'RelatÃ³rios']} />
-            <h2 className="text-2xl font-bold text-[#003366] tracking-tight">RelatÃ³rios de Caixa</h2>
+            <Breadcrumbs paths={['Home', 'Caixa', 'Relatórios']} />
+            <h2 className="text-2xl font-bold text-[#003366] tracking-tight">Relatórios de Caixa</h2>
             <p className="text-zinc-500 text-sm">Resumo detalhado de todos os movimentos.</p>
           </div>
         </header>
@@ -18402,7 +18402,7 @@ const CashierModule = ({ issuedDocuments = [] }: { issuedDocuments?: IssuedDocum
         <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm">
           <div className="flex justify-between items-center mb-8 border-b border-zinc-100 pb-4">
             <h3 className="text-sm font-bold text-[#003366] uppercase tracking-widest flex items-center gap-3">
-              <FileText size={18} /> RelatÃ³rios de Caixa
+              <FileText size={18} /> Relatórios de Caixa
             </h3>
             <button className="bg-zinc-100 text-zinc-600 px-6 py-2 text-xs font-bold hover:bg-zinc-200 transition-all flex items-center gap-2">
               <FileDown size={14} /> Exportar PDF
@@ -18415,7 +18415,7 @@ const CashierModule = ({ issuedDocuments = [] }: { issuedDocuments?: IssuedDocum
               <p className="text-2xl font-black text-emerald-600">{formatCurrency((issuedDocuments ?? []).reduce((acc, doc) => acc + (doc.contravalor || 0), 0))}</p>
             </div>
             <div className="bg-zinc-50 p-6 border border-zinc-200">
-              <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Total SaÃ­das</p>
+              <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Total Saídas</p>
               <p className="text-2xl font-black text-red-600">{formatCurrency(0)}</p>
             </div>
             <div className="bg-zinc-50 p-6 border border-zinc-200">
@@ -18431,7 +18431,7 @@ const CashierModule = ({ issuedDocuments = [] }: { issuedDocuments?: IssuedDocum
                   <th className="px-4 py-3">Data</th>
                   <th className="px-4 py-3">Tipo</th>
                   <th className="px-4 py-3">Documento</th>
-                  <th className="px-4 py-3">DescriÃ§Ã£o</th>
+                  <th className="px-4 py-3">Descrição</th>
                   <th className="px-4 py-3 text-right">Valor</th>
                 </tr>
               </thead>
@@ -18463,8 +18463,8 @@ const CashierModule = ({ issuedDocuments = [] }: { issuedDocuments?: IssuedDocum
             <ChevronLeft size={20} />
           </button>
           <div>
-            <Breadcrumbs paths={['Home', 'Caixa', 'ConciliaÃ§Ã£o']} />
-            <h2 className="text-2xl font-bold text-[#003366] tracking-tight">ConciliaÃ§Ã£o de Caixa</h2>
+            <Breadcrumbs paths={['Home', 'Caixa', 'Conciliação']} />
+            <h2 className="text-2xl font-bold text-[#003366] tracking-tight">Conciliação de Caixa</h2>
             <p className="text-zinc-500 text-sm">Verifique a integridade dos valores em caixa.</p>
           </div>
         </header>
@@ -18472,7 +18472,7 @@ const CashierModule = ({ issuedDocuments = [] }: { issuedDocuments?: IssuedDocum
         <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm">
           <div className="flex justify-between items-center mb-8 border-b border-zinc-100 pb-4">
             <h3 className="text-sm font-bold text-[#003366] uppercase tracking-widest flex items-center gap-3">
-              <ShieldCheck size={18} /> ConciliaÃ§Ã£o de Caixa
+              <ShieldCheck size={18} /> Conciliação de Caixa
             </h3>
           </div>
 
@@ -18493,7 +18493,7 @@ const CashierModule = ({ issuedDocuments = [] }: { issuedDocuments?: IssuedDocum
             </div>
 
             <div className="space-y-2 pt-4 border-t border-zinc-200">
-              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">ObservaÃ§Ãµes da ConciliaÃ§Ã£o</label>
+              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Observações da Conciliação</label>
               <textarea 
                 className="w-full bg-white border border-zinc-200 rounded-none px-4 py-2 text-xs focus:outline-none focus:border-[#003366] min-h-[100px]"
                 placeholder="Descreva qualquer divergÃªncia encontrada..."
@@ -18502,7 +18502,7 @@ const CashierModule = ({ issuedDocuments = [] }: { issuedDocuments?: IssuedDocum
 
             <div className="flex justify-end pt-4">
               <button className="bg-[#003366] text-white px-8 py-3 text-xs font-bold hover:bg-[#002244] transition-all uppercase tracking-widest shadow-sm">
-                Finalizar ConciliaÃ§Ã£o
+                Finalizar Conciliação
               </button>
             </div>
           </div>
@@ -18605,7 +18605,7 @@ const TaxSeriesModule = () => {
                   key={idx}
                   onClick={async () => { 
                     const isIva = taxName.includes('IVA');
-                    const isIsento = taxName.includes('Isento') || taxName.includes('NÃ£o Sujeita');
+                    const isIsento = taxName.includes('Isento') || taxName.includes('Não Sujeita');
                     const rateMatch = taxName.match(/(\d+)%/);
                     const rateNum = rateMatch ? parseFloat(rateMatch[1]) : (isIsento ? 0 : 14);
                     
@@ -18707,7 +18707,7 @@ const WithholdingTaxModule = ({ sales, purchases }: { sales: IssuedDocument[], p
       <header className="flex justify-between items-end">
         <div>
           <h2 className="text-2xl font-black text-[#003366] uppercase tracking-tighter">RetenÃ§Ã£o na Fonte (IRT / Imposto Industrial)</h2>
-          <p className="text-zinc-500 text-sm font-bold uppercase tracking-widest text-[10px]">Movimentos com RetenÃ§Ã£o ObrigatÃ³ria (Ex: ServiÃ§os &gt; 20.000 Kz)</p>
+          <p className="text-zinc-500 text-sm font-bold uppercase tracking-widest text-[10px]">Movimentos com RetenÃ§Ã£o ObrigatÃ³ria (Ex: Serviços &gt; 20.000 Kz)</p>
         </div>
         <div className="flex gap-4">
            <div className="bg-white border-l-4 border-emerald-500 px-6 py-4 shadow-sm">
@@ -18740,7 +18740,7 @@ const WithholdingTaxModule = ({ sales, purchases }: { sales: IssuedDocument[], p
           <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 p-3 text-xs font-bold focus:outline-none" />
         </div>
         <div className="w-full sm:w-40 space-y-1.5">
-          <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">AtÃ©</label>
+          <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Até</label>
           <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 p-3 text-xs font-bold focus:outline-none" />
         </div>
         <button onClick={() => window.print()} className="bg-[#003366] text-white px-8 py-3.5 text-xs font-black uppercase tracking-widest hover:bg-[#002244] shadow-sm flex items-center gap-2 transition-all">
@@ -18779,7 +18779,7 @@ const WithholdingTaxModule = ({ sales, purchases }: { sales: IssuedDocument[], p
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-6 py-20 text-center text-zinc-400 font-bold uppercase tracking-widest">Nenhum registo de retenÃ§Ã£o encontrado com os critÃ©rios aplicados.</td>
+                <td colSpan={6} className="px-6 py-20 text-center text-zinc-400 font-bold uppercase tracking-widest">Nenhum registo de retenÃ§Ã£o encontrado com os critérios aplicados.</td>
               </tr>
             )}
           </tbody>
@@ -18832,17 +18832,17 @@ const ReportsModule = ({
   }
 
   const reportCards = [
-    { id: 'sales', label: 'RelatÃ³rio de Vendas', icon: <FileText size={20} />, color: 'bg-blue-50 text-blue-600', description: 'Todos documentos emitidos (FT, FR, RE, NC) e anulados.' },
-    { id: 'purchases', label: 'RelatÃ³rio de Compras', icon: <ShoppingCart size={20} />, color: 'bg-emerald-50 text-emerald-600', description: 'Resumo de compras por fornecedor e categoria.' },
-    { id: 'inventory', label: 'Resumo de Stock', icon: <Package size={20} />, color: 'bg-amber-50 text-amber-600', description: 'Valor total em stock e movimentos crÃ­ticos.' },
+    { id: 'sales', label: 'Relatório de Vendas', icon: <FileText size={20} />, color: 'bg-blue-50 text-blue-600', description: 'Todos documentos emitidos (FT, FR, RE, NC) e anulados.' },
+    { id: 'purchases', label: 'Relatório de Compras', icon: <ShoppingCart size={20} />, color: 'bg-emerald-50 text-emerald-600', description: 'Resumo de compras por fornecedor e categoria.' },
+    { id: 'inventory', label: 'Resumo de Stock', icon: <Package size={20} />, color: 'bg-amber-50 text-amber-600', description: 'Valor total em stock e movimentos críticos.' },
     { id: 'cash', label: 'Fluxo de Caixa', icon: <Wallet size={20} />, color: 'bg-purple-50 text-purple-600', description: 'Entradas e saÃ­das financeiras por perÃ­odo.' },
   ];
 
   return (
     <div className="space-y-8">
       <header>
-        <h2 className="text-2xl font-black text-[#003366] uppercase tracking-tighter">RelatÃ³rios & AnÃ¡lise</h2>
-        <p className="text-zinc-500 text-sm">Visualize o desempenho do seu negÃ³cio atravÃ©s de dados analÃ­ticos detalhados.</p>
+        <h2 className="text-2xl font-black text-[#003366] uppercase tracking-tighter">Relatórios & Análise</h2>
+        <p className="text-zinc-500 text-sm">Visualize o desempenho do seu negÃ³cio através de dados analÃ­ticos detalhados.</p>
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -18929,8 +18929,8 @@ const DailyMovementsModule = ({ onBack }: { onBack: () => void }) => {
             <ChevronLeft size={24} />
           </button>
           <div>
-            <h2 className="text-xl font-black text-[#003366] uppercase tracking-tighter">GestÃ£o de DIARIOS</h2>
-            <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Movimento DiÃ¡rio ContabilÃ­stico</p>
+            <h2 className="text-xl font-black text-[#003366] uppercase tracking-tighter">Gestão de DIARIOS</h2>
+            <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Movimento DiÃ¡rio Contabilistico</p>
           </div>
         </div>
         <div className="flex items-center gap-4">
@@ -18958,16 +18958,16 @@ const DailyMovementsModule = ({ onBack }: { onBack: () => void }) => {
           <thead>
             <tr className="bg-[#003366] text-white uppercase tracking-wider text-[10px]">
               <th className="px-6 py-4 border-r border-white/20 w-32">NÂº de DiÃ¡rio</th>
-              <th className="px-6 py-4 border-r border-white/20">Nome do DiÃ¡rio / DescriÃ§Ã£o</th>
+              <th className="px-6 py-4 border-r border-white/20">Nome do DiÃ¡rio / Descrição</th>
               <th className="px-6 py-4 border-r border-white/20 text-center w-40">Movimentos Totais</th>
-              <th className="px-6 py-4 border-r border-white/20">ObservaÃ§Ãµes (Obs)</th>
+              <th className="px-6 py-4 border-r border-white/20">Observações (Obs)</th>
               <th className="px-6 py-4 text-center w-32">AcÃ§Ãµes</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-100">
             {loading ? (
               <tr>
-                <td colSpan={5} className="py-24 text-center text-zinc-300 italic uppercase font-black tracking-widest">Aguarde, processando diÃ¡rios contabilÃ­sticos...</td>
+                <td colSpan={5} className="py-24 text-center text-zinc-300 italic uppercase font-black tracking-widest">Aguarde, processando diÃ¡rios contabilisticos...</td>
               </tr>
             ) : filteredJournals.length === 0 ? (
               <tr>
@@ -18981,7 +18981,7 @@ const DailyMovementsModule = ({ onBack }: { onBack: () => void }) => {
                   <td className="px-6 py-4 border-r border-zinc-100 text-center font-black text-[#003366] bg-zinc-50/50">
                     <span className="bg-[#003366] text-white px-2 py-0.5 rounded-sm">{journal.movementsCount || 0}</span>
                   </td>
-                  <td className="px-6 py-4 border-r border-zinc-100 text-zinc-400 italic text-[10px]">{journal.obs || 'Nenhuma observaÃ§Ã£o registada'}</td>
+                  <td className="px-6 py-4 border-r border-zinc-100 text-zinc-400 italic text-[10px]">{journal.obs || 'Nenhuma observação registada'}</td>
                   <td className="px-6 py-4 text-center">
                     <div className="flex justify-center gap-2">
                        <button className="p-2 bg-blue-50 text-blue-600 hover:bg-[#003366] hover:text-white transition-all shadow-sm">
@@ -18998,7 +18998,7 @@ const DailyMovementsModule = ({ onBack }: { onBack: () => void }) => {
           </tbody>
         </table>
         <div className="p-4 bg-zinc-50 border-t border-zinc-200 flex justify-between items-center">
-           <span className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.3em] italic">Contabilidade Geral Angolana â€¢ PGC</span>
+           <span className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.3em] italic">Contabilidade Geral Angolana • PGC</span>
            <div className="flex items-center gap-4 text-[10px] font-bold text-zinc-500 uppercase">
               <span>Total de DiÃ¡rios: {filteredJournals.length}</span>
               <span className="w-px h-3 bg-zinc-300"></span>
@@ -19052,7 +19052,7 @@ const DailyMovementsModule = ({ onBack }: { onBack: () => void }) => {
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">ObservaÃ§Ãµes/Obs</label>
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Observações/Obs</label>
                     <textarea 
                       value={obs}
                       onChange={e => setObs(e.target.value)}
@@ -19094,7 +19094,7 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
   const [comprasData, setComprasData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Modal de ClassificaÃ§Ã£o Manual
+  // Modal de Classificação Manual
   const [classifyModalItem, setClassifyModalItem] = useState<any | null>(null);
   const [classifyDate, setClassifyDate] = useState('');
   const [modalSelectedDiario, setModalSelectedDiario] = useState('0001');
@@ -19126,7 +19126,7 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
           { codigo: '0002', descricao: 'DiÃ¡rio 0002 Compras' },
           { codigo: '0003', descricao: 'DiÃ¡rio 0003 Caixa' },
           { codigo: '0004', descricao: 'DiÃ¡rio 0004 Bancos' },
-          { codigo: '0005', descricao: 'DiÃ¡rio 0005 OperaÃ§Ãµes Diversas' }
+          { codigo: '0005', descricao: 'DiÃ¡rio 0005 Operações Diversas' }
         ];
       }
       setDiarios(fetchedDiarios);
@@ -19153,8 +19153,8 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
           { id: '31.01.02.01.0001', codigo: '31.01.02.01.0001', description: 'Clientes Correntes Nacionais' },
           { id: '31.01.02.01.0008', codigo: '31.01.02.01.0008', description: 'HIPERMÃQUINAS - ANGOLA' },
           { id: '32.01.02.01.0001', codigo: '32.01.02.01.0001', description: 'Fornecedores Nacionais' },
-          { id: '34.05.03.01', codigo: '34.05.03.01', description: 'IVA liquidado OperaÃ§Ãµes Gerais' },
-          { id: '34.05.02.01', codigo: '34.05.02.01', description: 'IVA dedutÃ­vel OperaÃ§Ãµes Gerais' },
+          { id: '34.05.03.01', codigo: '34.05.03.01', description: 'IVA liquidado Operações Gerais' },
+          { id: '34.05.02.01', codigo: '34.05.02.01', description: 'IVA dedutÃ­vel Operações Gerais' },
           { id: '61.01.01', codigo: '61.01.01', description: 'Mercado Nacional' },
           { id: '75.1.01', codigo: '75.1.01', description: 'Compras de Mercadorias Mercado Nacional' },
           { id: '45.2.1.1', codigo: '45.2.1.1', description: 'Caixa Central' },
@@ -19232,7 +19232,7 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
 
   useEffect(() => { loadData(); }, [user?.empresa_id, accountingYear]);
 
-  // Atualiza selectedDiarioCode por padrÃ£o quando a vista muda
+  // Atualiza selectedDiarioCode por padrão quando a vista muda
   useEffect(() => {
     if (activeSubView.includes('vendas')) {
       setSelectedDiarioCode('0001');
@@ -19241,7 +19241,7 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
     }
   }, [activeSubView]);
 
-  // Carregar dados de funcionÃ¡rios/salÃ¡rios
+  // Carregar dados de funcionÃ¡rios/salários
   const loadSalarioData = async () => {
     if (!user?.empresa_id) return;
     try {
@@ -19281,16 +19281,16 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
     setSalarioDiario('0005');
     if (tipo === 'movimento') {
       setSalarioLines([
-        { id: 'desc', descricao: `Processamento de SalÃ¡rio â€” ${item.nome}`, debito: salario, credito: salario, readonly: true },
-        { id: 'salario', descricao: `65.01.01 - SalÃ¡rios e Ordenados â€” ${item.nome}`, debito: salario, credito: 0, conta: '65.01.01' },
+        { id: 'desc', descricao: `Processamento de Salário â€” ${item.nome}`, debito: salario, credito: salario, readonly: true },
+        { id: 'salario', descricao: `65.01.01 - Salários e Ordenados â€” ${item.nome}`, debito: salario, credito: 0, conta: '65.01.01' },
         { id: 'irt', descricao: '34.07.01 - IRT a Reter na Fonte', debito: 0, credito: irt, conta: '34.07.01' },
         { id: 'inss', descricao: '34.06.01 - INSS a Pagar', debito: 0, credito: inss, conta: '34.06.01' },
-        { id: 'liquido', descricao: '27.01.01 - RemuneraÃ§Ãµes a Pagar', debito: 0, credito: liquido, conta: '27.01.01' },
+        { id: 'liquido', descricao: '27.01.01 - Remunerações a Pagar', debito: 0, credito: liquido, conta: '27.01.01' },
       ]);
     } else {
       setSalarioLines([
-        { id: 'desc', descricao: `Pagamento de SalÃ¡rio â€” ${item.nome}`, debito: liquido, credito: liquido, readonly: true },
-        { id: 'remun', descricao: `27.01.01 - RemuneraÃ§Ãµes a Pagar â€” ${item.nome}`, debito: liquido, credito: 0, conta: '27.01.01' },
+        { id: 'desc', descricao: `Pagamento de Salário â€” ${item.nome}`, debito: liquido, credito: liquido, readonly: true },
+        { id: 'remun', descricao: `27.01.01 - Remunerações a Pagar â€” ${item.nome}`, debito: liquido, credito: 0, conta: '27.01.01' },
         { id: 'caixa', descricao: '45.2.1.1 - Caixa Central', debito: 0, credito: liquido, conta: '45.2.1.1' },
       ]);
     }
@@ -19317,10 +19317,10 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
         }));
       const { error } = await supabase.from('lancamentos_contabeis').insert(lancamentos);
       if (error) throw error;
-      alert('âœ… LanÃ§amento de salÃ¡rio registado com sucesso!');
+      alert('âœ… Lançamento de salário registado com sucesso!');
       setSalarioModal(null);
     } catch (err: any) {
-      alert('Erro ao registar lanÃ§amento de salÃ¡rio: ' + (err?.message || 'desconhecido'));
+      alert('Erro ao registar lançamento de salário: ' + (err?.message || 'desconhecido'));
     } finally {
       setSavingSalario(false);
     }
@@ -19385,7 +19385,7 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
             .in('id', selectedIds);
         }
 
-        // 2. Gerar lanÃ§amentos contabilÃ­sticos automÃ¡ticos em lancamentos_contabeis
+        // 2. Gerar lançamentos contabilisticos automÃ¡ticos em lancamentos_contabeis
         const newLancamentos: any[] = [];
         for (const item of listToClassify) {
           const total = Number(item.total || 0);
@@ -19431,7 +19431,7 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
               // FR Venda: Cliente, IVA, Mercado Nacional, Caixa Central
               newLancamentos.push(
                 makeEntry(item.client_pgc || '31.1.2.1.2', `${item.client_pgc || '31.1.2.1.2'} - ${item.client_name || 'Consumidor Final'}`, base, 0, 'VENDA'),
-                makeEntry('34.05.03.01', '34.05.03.01 - IVA liquidado OperaÃ§Ãµes Gerais', 0, iva, 'VENDA'),
+                makeEntry('34.05.03.01', '34.05.03.01 - IVA liquidado Operações Gerais', 0, iva, 'VENDA'),
                 makeEntry(rubrica, `${rubrica} - Mercado Nacional`, 0, base, 'VENDA'),
                 makeEntry('45.2.1.1', '45.2.1.1 - Caixa Central', base, 0, 'VENDA')
               );
@@ -19439,7 +19439,7 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
               // FT Venda: Cliente, IVA, Mercado Nacional
               newLancamentos.push(
                 makeEntry(item.client_pgc || '31.01.02.01.0001', `${item.client_pgc || '31.01.02.01.0001'} - ${item.client_name || 'Cliente'}`, total, 0, 'VENDA'),
-                makeEntry('34.05.03.01', '34.05.03.01 - IVA liquidado OperaÃ§Ãµes Gerais', 0, iva, 'VENDA'),
+                makeEntry('34.05.03.01', '34.05.03.01 - IVA liquidado Operações Gerais', 0, iva, 'VENDA'),
                 makeEntry(rubrica, `${rubrica} - Mercado Nacional`, 0, base, 'VENDA')
               );
             }
@@ -19447,7 +19447,7 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
             // Compras
             newLancamentos.push(
               makeEntry(item.supplier_pgc || '32.01.02.01.0001', `${item.supplier_pgc || '32.01.02.01.0001'} - ${item.supplier_name || 'Fornecedor'}`, 0, total, 'COMPRA'),
-              makeEntry('34.05.02.01', '34.05.02.01 - IVA dedutÃ­vel OperaÃ§Ãµes Gerais', iva, 0, 'COMPRA'),
+              makeEntry('34.05.02.01', '34.05.02.01 - IVA dedutÃ­vel Operações Gerais', iva, 0, 'COMPRA'),
               makeEntry(rubrica, `${rubrica} - Compras de Mercadorias`, base, 0, 'COMPRA')
             );
           }
@@ -19462,10 +19462,10 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
     } catch (err: any) { alert('Erro ao classificar: ' + (err?.message || 'desconhecido')); }
   };
 
-  // Apagar classificaÃ§Ã£o (reverter para pendente)
+  // Apagar classificação (reverter para pendente)
   const handleUnclassifySelected = async () => {
-    if (selectedIds.length === 0) { alert('Seleccione pelo menos um movimento para apagar classificaÃ§Ã£o.'); return; }
-    if (!window.confirm(`Deseja apagar a classificaÃ§Ã£o de ${selectedIds.length} movimento(s)? Eles voltarÃ£o ao estado "pendente".`)) return;
+    if (selectedIds.length === 0) { alert('Seleccione pelo menos um movimento para apagar classificação.'); return; }
+    if (!window.confirm(`Deseja apagar a classificação de ${selectedIds.length} movimento(s)? Eles voltarÃ£o ao estado "pendente".`)) return;
 
     try {
       if (user?.empresa_id) {
@@ -19488,7 +19488,7 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
           .eq('empresa_id', user.empresa_id)
           .in('origem_id', selectedIds.map(String));
       }
-      alert(`âœ… ClassificaÃ§Ã£o de ${selectedIds.length} movimento(s) apagada com sucesso.`);
+      alert(`âœ… Classificação de ${selectedIds.length} movimento(s) apagada com sucesso.`);
       setSelectedIds([]); await loadData();
     } catch (err: any) { alert('Erro: ' + (err?.message || 'desconhecido')); }
   };
@@ -19510,14 +19510,14 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
     } catch (err: any) { alert('Erro: ' + err.message); }
   };
 
-  // Verificar se o item jÃ¡ foi classificado no perÃ­odo corrente (impede re-classificaÃ§Ã£o)
+  // Verificar se o item jÃ¡ foi classificado no perÃ­odo corrente (impede re-classificação)
   const isAlreadyClassifiedThisPeriod = (item: any) => {
     if (!item) return false;
     const itemMonth = item.date ? item.date.split('-')[1] : '';
     return item.status === 'classificado' && itemMonth === selectedMonth;
   };
 
-  // Abrir Modal de ClassificaÃ§Ã£o Manual (Exemplos exactos pedidos pelo utilizador)
+  // Abrir Modal de Classificação Manual (Exemplos exactos pedidos pelo utilizador)
   const openClassifyModal = (item: any) => {
     const isVenda = activeSubView === 'classificar_vendas';
     const total = Number(item.total || 0);
@@ -19536,7 +19536,7 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
     if (isVenda) {
       if (isFR) {
         // Exemplo Factura/Recibo Emitida FR (Total 40.000,00 AOA)
-        // Linhas de DÃ©bito e CrÃ©dito conforme solicitado
+        // Linhas de Débito e Crédito conforme solicitado
         setClassifyLines([
           {
             id: 'desc',
@@ -19554,7 +19554,7 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
           },
           {
             id: 'iva',
-            descricao: '34.05.03.01 - IVA liquidado OperaÃ§Ãµes Gerais',
+            descricao: '34.05.03.01 - IVA liquidado Operações Gerais',
             debito: 0,
             credito: iva,
             conta: '34.05.03.01'
@@ -19593,7 +19593,7 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
           },
           {
             id: 'iva',
-            descricao: '34.05.03.01 - IVA liquidado OperaÃ§Ãµes Gerais',
+            descricao: '34.05.03.01 - IVA liquidado Operações Gerais',
             debito: 0,
             credito: iva,
             conta: '34.05.03.01'
@@ -19608,7 +19608,7 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
         ]);
       }
     } else {
-      // ClassificaÃ§Ã£o para Compras Fornecedor
+      // Classificação para Compras Fornecedor
       setClassifyLines([
         {
           id: 'desc',
@@ -19626,7 +19626,7 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
         },
         {
           id: 'iva',
-          descricao: '34.05.02.01 - IVA dedutÃ­vel OperaÃ§Ãµes Gerais',
+          descricao: '34.05.02.01 - IVA dedutÃ­vel Operações Gerais',
           debito: iva,
           credito: 0,
           conta: '34.05.02.01'
@@ -19655,7 +19655,7 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
       const anoVal = isNaN(dObj.getTime()) ? new Date().getFullYear() : dObj.getFullYear();
       const mesVal = isNaN(dObj.getTime()) ? (new Date().getMonth() + 1) : (dObj.getMonth() + 1);
 
-      // 1. Inserir todos os lanÃ§amentos de dÃ©bito/crÃ©dito na tabela lancamentos_contabeis
+      // 1. Inserir todos os lançamentos de débito/crédito na tabela lancamentos_contabeis
       const lancamentos = classifyLines
         .filter(l => !l.readonly)
         .map(l => {
@@ -19702,11 +19702,11 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
           .eq('empresa_id', user.empresa_id);
       }
 
-      alert('âœ… LanÃ§amento contabilÃ­stico registado com sucesso! Os movimentos foram enviados para APAGAR MOVIMENTOS.');
+      alert('âœ… Lançamento contabilistico registado com sucesso! Os movimentos foram enviados para APAGAR MOVIMENTOS.');
       setClassifyModalItem(null);
       await loadData();
     } catch (err: any) {
-      alert('Erro ao registar lanÃ§amento: ' + (err?.message || 'desconhecido'));
+      alert('Erro ao registar lançamento: ' + (err?.message || 'desconhecido'));
     } finally {
       setSavingClassify(false);
     }
@@ -19731,7 +19731,7 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
     }
   };
 
-  // CÃ¡lculos para rodapÃ© das pÃ¡ginas Classificar
+  // Cálculos para rodapé das páginas Classificar
   const totalDebito = filteredData.reduce((s, i) => {
     const isNC = (i.document_type || '').toUpperCase().includes('NC');
     return s + (isNC ? 0 : (i.total || 0));
@@ -19923,7 +19923,7 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
             <Edit size={16} />
           </button>
 
-          {/* Menu Escolher com Funcionalidade: Classificar | Apagar ClassificaÃ§Ã£o */}
+          {/* Menu Escolher com Funcionalidade: Classificar | Apagar Classificação */}
           <div className="flex items-center bg-zinc-50 border border-zinc-300 px-3 py-1.5 gap-2">
             <span className="text-[10px] font-black text-zinc-500 uppercase tracking-tighter">Com os Seleccionados</span>
             <select
@@ -19938,7 +19938,7 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
             >
               <option value="">Escolha...</option>
               <option value="classificar">âœ¨ Classificar AutomÃ¡tico</option>
-              <option value="apagar_classificacao">â†©ï¸ Apagar ClassificaÃ§Ã£o</option>
+              <option value="apagar_classificacao">â†©ï¸ Apagar Classificação</option>
               <option value="apagar">ðŸ—‘ï¸ Apagar Movimento</option>
             </select>
           </div>
@@ -19974,9 +19974,9 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
       {/* TÃ­tulo central */}
       <div className="text-center mb-6 space-y-0.5">
         <h2 className="text-sm font-black text-zinc-700 uppercase tracking-widest">
-          {type === 'classificar_vendas' ? 'Mapa de GestÃ£o de 31 - Clientes' : 'Mapa de GestÃ£o de 32 - Fornecedores'}
+          {type === 'classificar_vendas' ? 'Mapa de Gestão de 31 - Clientes' : 'Mapa de Gestão de 32 - Fornecedores'}
         </h2>
-        <p className="text-[10px] font-bold text-zinc-400 uppercase">PerÃ­odo ContabilÃ­stico</p>
+        <p className="text-[10px] font-bold text-zinc-400 uppercase">PerÃ­odo Contabilistico</p>
         <p className="text-[11px] font-black text-zinc-600 uppercase">de {currentMonthLabel} a Fim â€” 2026</p>
         <div className="flex justify-between text-[8px] font-bold text-zinc-400 pt-1 px-2">
           <span>OPERADOR: {user?.nome?.toUpperCase() || 'OPERADOR'}</span>
@@ -20002,8 +20002,8 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
               <th className="p-2 border-r border-zinc-200">Status</th>
               <th className="p-2 border-r border-zinc-200">AccountID</th>
               <th className="p-2 border-r border-zinc-200 text-left">{type === 'classificar_vendas' ? 'Cliente' : 'Fornecedor'}</th>
-              <th className="p-2 border-r border-zinc-200 text-right">DÃ©bito</th>
-              <th className="p-2 border-r border-zinc-200 text-right">CrÃ©dito</th>
+              <th className="p-2 border-r border-zinc-200 text-right">Débito</th>
+              <th className="p-2 border-r border-zinc-200 text-right">Crédito</th>
               <th className="p-2 border-r border-zinc-200 text-right">IVA</th>
               <th className="p-2 text-center w-8">
                 <input type="checkbox" checked={isAllSelected} onChange={toggleSelectAll} className="cursor-pointer" />
@@ -20012,7 +20012,7 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
           </thead>
           <tbody className="divide-y divide-zinc-200 text-center">
             {loading ? (
-              <tr><td colSpan={17} className="py-14 text-zinc-400 italic">A carregar dados contabilÃ­sticos...</td></tr>
+              <tr><td colSpan={17} className="py-14 text-zinc-400 italic">A carregar dados contabilisticos...</td></tr>
             ) : filteredData.length === 0 ? (
               <tr><td colSpan={17} className="py-14 text-zinc-300 font-black italic uppercase tracking-widest">Nenhum movimento encontrado para este perÃ­odo</td></tr>
             ) : filteredData.map((item, idx) => {
@@ -20027,7 +20027,7 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
                   <td className="p-2 border-r border-zinc-200 font-mono text-zinc-500">{item.date}</td>
                   <td className="p-2 border-r border-zinc-200 font-mono text-zinc-500">{item.date}</td>
                   <td className="p-2 border-r border-zinc-200 font-black text-blue-600 font-mono">{item.invoice_number || item.purchase_number}</td>
-                  {/* CLASS â€” abre modal de classificaÃ§Ã£o */}
+                  {/* CLASS â€” abre modal de classificação */}
                   <td className="p-2 border-r border-zinc-200">
                     {isClassified ? (
                       <span className="text-emerald-600 font-black text-[8px] flex flex-col items-center gap-0.5">
@@ -20078,7 +20078,7 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
         </table>
       </div>
 
-      {/* Bloco de CÃ¡lculos */}
+      {/* Bloco de Cálculos */}
       <div className="flex justify-end mt-6">
         <div className="w-80 space-y-1.5 text-[10px] font-black text-zinc-600 uppercase tracking-tighter">
           <div className="flex justify-between border-b border-zinc-200 pb-1">
@@ -20090,7 +20090,7 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
             <span className="font-mono text-zinc-400">0,00</span>
           </div>
           <div className="flex justify-between border-b border-zinc-200 pb-1">
-            <span>Ajustamentos ContabilÃ­sticos</span>
+            <span>Ajustamentos Contabilisticos</span>
             <span className="font-mono text-zinc-500">{formatCurrency(ajustamentosContabilisticos).replace('AOA','').replace('Kz','').trim()}</span>
           </div>
           <div className="flex justify-between border-b border-zinc-200 pb-1">
@@ -20098,7 +20098,7 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
             <span className="font-mono text-zinc-500">{formatCurrency(devolucoes).replace('AOA','').replace('Kz','').trim()}</span>
           </div>
           <div className="flex justify-between text-xs font-black text-[#003366] pt-1">
-            <span>Valor de GestÃ£o LÃ­quido c/ imposto</span>
+            <span>Valor de Gestão LÃ­quido c/ imposto</span>
             <span className="font-mono">{formatCurrency(valorGestaoLiquido).replace('AOA','').replace('Kz','').trim()}</span>
           </div>
         </div>
@@ -20154,14 +20154,14 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
             </div>
           </div>
 
-          {/* Tabela de LanÃ§amentos */}
+          {/* Tabela de Lançamentos */}
           <div className="p-3">
             <table className="w-full text-[10px] border-collapse">
               <thead>
                 <tr className="bg-[#b8dcb8] text-zinc-700 font-black">
-                  <th className="p-2 border border-[#6db36d] text-left">DescriÃ§Ã£o / Conta PGC do Movimento</th>
-                  <th className="p-2 border border-[#6db36d] text-right w-32">DÃ©bito</th>
-                  <th className="p-2 border border-[#6db36d] text-right w-32">CrÃ©dito</th>
+                  <th className="p-2 border border-[#6db36d] text-left">Descrição / Conta PGC do Movimento</th>
+                  <th className="p-2 border border-[#6db36d] text-right w-32">Débito</th>
+                  <th className="p-2 border border-[#6db36d] text-right w-32">Crédito</th>
                 </tr>
               </thead>
               <tbody>
@@ -20178,7 +20178,7 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
                             onChange={e => { const nl = [...classifyLines]; nl[idx].descricao = e.target.value; setClassifyLines(nl); }}
                             className="w-full bg-transparent focus:outline-none font-bold text-zinc-700 text-[10px]"
                           />
-                          {/* Selector de Contas PGC da PÃ¡gina PGC */}
+                          {/* Selector de Contas PGC da Página PGC */}
                           <div className="flex items-center gap-1 bg-zinc-50 border border-zinc-200 px-1 py-0.5">
                             <span className="text-[8px] font-black text-zinc-400 uppercase">Conta:</span>
                             <select
@@ -20246,19 +20246,19 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
             {/* Aviso de Balanceamento */}
             {!balanced && (
               <div className="mt-2 text-[10px] font-black text-red-500 uppercase">
-                âš  DÃ©bito ({totalDebLancamentos.toLocaleString('pt-PT',{minimumFractionDigits:2})}) â‰  CrÃ©dito ({totalCredLancamentos.toLocaleString('pt-PT',{minimumFractionDigits:2})}) â€” O lanÃ§amento deve estar balanceado.
+                âš  Débito ({totalDebLancamentos.toLocaleString('pt-PT',{minimumFractionDigits:2})}) â‰  Crédito ({totalCredLancamentos.toLocaleString('pt-PT',{minimumFractionDigits:2})}) â€” O lançamento deve estar balanceado.
               </div>
             )}
           </div>
 
-          {/* RodapÃ©: Registar LanÃ§amento */}
+          {/* Rodapé: Registar Lançamento */}
           <div className="p-3 border-t border-[#6db36d] flex items-center justify-between bg-[#d4ead4]">
             <button
               onClick={handleSaveClassify}
               disabled={savingClassify}
               className="flex items-center gap-2 text-red-500 hover:text-red-600 font-black text-base tracking-tight disabled:opacity-50 transition-colors cursor-pointer"
             >
-              <span>Registar LanÃ§amento</span>
+              <span>Registar Lançamento</span>
               <CheckSquare size={22} className="text-green-600" />
             </button>
             <button
@@ -20278,7 +20278,7 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
   // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   return (
     <div className="space-y-6">
-      {/* Modal de ClassificaÃ§Ã£o */}
+      {/* Modal de Classificação */}
       {renderClassifyModal()}
 
       {/* BotÃµes do Topo â€” Linha 1 */}
@@ -20302,11 +20302,11 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
         })}
       </div>
 
-      {/* BotÃµes do Topo â€” Linha 2 (SalÃ¡rio e Impostos) */}
+      {/* BotÃµes do Topo â€” Linha 2 (Salário e Impostos) */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {[
-          { label: 'Classificar Movimento SalÃ¡rio', view: 'classificar_salario' as const, icon: <Users size={20} />, color: 'from-violet-600 to-purple-500' },
-          { label: 'Classificar Pagamento SalÃ¡rio', view: 'classificar_pag_salario' as const, icon: <CreditCard size={20} />, color: 'from-indigo-600 to-blue-500' },
+          { label: 'Classificar Movimento Salário', view: 'classificar_salario' as const, icon: <Users size={20} />, color: 'from-violet-600 to-purple-500' },
+          { label: 'Classificar Pagamento Salário', view: 'classificar_pag_salario' as const, icon: <CreditCard size={20} />, color: 'from-indigo-600 to-blue-500' },
           { label: 'Classificar Pagamento Impostos', view: 'classificar_pag_impostos' as const, icon: <Receipt size={20} />, color: 'from-rose-600 to-pink-500' },
         ].map((btn, i) => {
           const isActive = activeSubView === btn.view;
@@ -20322,7 +20322,7 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
         })}
       </div>
 
-      {/* ConteÃºdo dinÃ¢mico conforme a vista activa */}
+      {/* ConteÃºdo dinâmico conforme a vista activa */}
       {activeSubView === 'vendas' && renderAjustarView('vendas')}
       {activeSubView === 'compras' && renderAjustarView('compras')}
       {activeSubView === 'classificar_vendas' && renderClassificarView('classificar_vendas')}
@@ -20331,13 +20331,13 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
       {/* CLASSIFICAR MOVIMENTO SALÃRIO */}
       {(activeSubView === 'classificar_salario' || activeSubView === 'classificar_pag_salario') && (
         <div className="bg-white border border-zinc-300 p-6 shadow-sm animate-in fade-in duration-300">
-          {/* Modal de lanÃ§amento salÃ¡rio */}
+          {/* Modal de lançamento salário */}
           {salarioModal && (
             <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
               <div className="bg-[#e8f0ff] border-2 border-[#5577cc] shadow-2xl w-full max-w-2xl rounded-none relative animate-in fade-in zoom-in-95 duration-200">
                 <div className="bg-[#ccdaf5] border-b-2 border-[#5577cc] p-3 text-center">
                   <h2 className="text-base font-black text-zinc-700 tracking-tight">
-                    {salarioModal._tipo === 'movimento' ? 'Classificar Movimento SalÃ¡rio' : 'Classificar Pagamento SalÃ¡rio'} â€” {salarioModal.nome}
+                    {salarioModal._tipo === 'movimento' ? 'Classificar Movimento Salário' : 'Classificar Pagamento Salário'} â€” {salarioModal.nome}
                   </h2>
                 </div>
                 <div className="grid grid-cols-2 border-b border-[#5577cc] bg-[#b8ccee]">
@@ -20356,9 +20356,9 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
                   <table className="w-full text-[10px] border-collapse">
                     <thead>
                       <tr className="bg-[#a0b8e0] text-zinc-700 font-black">
-                        <th className="p-2 border border-[#5577cc] text-left">DescriÃ§Ã£o / Conta PGC</th>
-                        <th className="p-2 border border-[#5577cc] text-right w-32">DÃ©bito (AOA)</th>
-                        <th className="p-2 border border-[#5577cc] text-right w-32">CrÃ©dito (AOA)</th>
+                        <th className="p-2 border border-[#5577cc] text-left">Descrição / Conta PGC</th>
+                        <th className="p-2 border border-[#5577cc] text-right w-32">Débito (AOA)</th>
+                        <th className="p-2 border border-[#5577cc] text-right w-32">Crédito (AOA)</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -20399,7 +20399,7 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
                 </div>
                 <div className="p-3 border-t border-[#5577cc] flex items-center justify-between bg-[#ccdaf5]">
                   <button onClick={handleSaveSalario} disabled={savingSalario} className="flex items-center gap-2 text-red-500 hover:text-red-600 font-black text-base tracking-tight disabled:opacity-50">
-                    <span>Registar LanÃ§amento</span>
+                    <span>Registar Lançamento</span>
                     <CheckSquare size={22} className="text-green-600" />
                   </button>
                   <button onClick={() => setSalarioModal(null)} className="px-4 py-1.5 bg-zinc-200 hover:bg-zinc-300 text-zinc-700 text-xs font-black uppercase tracking-wider border border-zinc-300">Cancelar</button>
@@ -20412,7 +20412,7 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
             <div>
               <h3 className="text-xs font-black text-zinc-500 uppercase tracking-[0.2em] italic">Contabilidade Geral Angolana</h3>
               <h2 className="text-lg font-black text-[#003366] uppercase">
-                {activeSubView === 'classificar_salario' ? 'Classificar Movimento de SalÃ¡rio' : 'Classificar Pagamento de SalÃ¡rio'}
+                {activeSubView === 'classificar_salario' ? 'Classificar Movimento de Salário' : 'Classificar Pagamento de Salário'}
               </h2>
             </div>
             <div className="flex items-center gap-3">
@@ -20437,7 +20437,7 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
                   <th className="p-2 border-r border-zinc-200 text-left">NÂº</th>
                   <th className="p-2 border-r border-zinc-200 text-left">FuncionÃ¡rio</th>
                   <th className="p-2 border-r border-zinc-200">Cargo</th>
-                  <th className="p-2 border-r border-zinc-200 text-right">SalÃ¡rio Base</th>
+                  <th className="p-2 border-r border-zinc-200 text-right">Salário Base</th>
                   <th className="p-2 border-r border-zinc-200 text-right">IRT (12%)</th>
                   <th className="p-2 border-r border-zinc-200 text-right">INSS (3%)</th>
                   <th className="p-2 border-r border-zinc-200 text-right">LÃ­quido</th>
@@ -20493,7 +20493,7 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
             <div>
               <h3 className="text-xs font-black text-zinc-500 uppercase tracking-[0.2em] italic">Contabilidade Geral Angolana</h3>
               <h2 className="text-lg font-black text-[#003366] uppercase">Classificar Pagamento de Impostos</h2>
-              <p className="text-[10px] font-bold text-zinc-400 uppercase">LanÃ§amento da liquidaÃ§Ã£o e pagamento de impostos ao Estado</p>
+              <p className="text-[10px] font-bold text-zinc-400 uppercase">Lançamento da liquidação e pagamento de impostos ao Estado</p>
             </div>
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2 bg-zinc-50 border border-zinc-300 px-3 py-1.5">
@@ -20519,8 +20519,8 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
               <thead>
                 <tr className="bg-zinc-100 text-zinc-600 border-b-2 border-zinc-300 italic">
                   <th className="p-3 border-r border-zinc-200 text-left">Imposto</th>
-                  <th className="p-3 border-r border-zinc-200">Conta DÃ©bito</th>
-                  <th className="p-3 border-r border-zinc-200">Conta CrÃ©dito</th>
+                  <th className="p-3 border-r border-zinc-200">Conta Débito</th>
+                  <th className="p-3 border-r border-zinc-200">Conta Crédito</th>
                   <th className="p-3 border-r border-zinc-200">MÃªs</th>
                   <th className="p-3 border-r border-zinc-200">Ano</th>
                   <th className="p-3 text-right">Valor (AOA)</th>
@@ -20735,7 +20735,7 @@ const IncomeTaxAdvanceModule = ({ invoices, onBack, companyData }: { invoices: I
           <button onClick={onBack} className="p-2 hover:bg-zinc-100 text-zinc-400 font-bold"><ChevronLeft size={24} /></button>
           <div className="flex flex-col">
             <h2 className="text-2xl font-black text-[#003366] uppercase tracking-tighter">Imposto por Conta</h2>
-            <p className="text-xs font-bold text-zinc-400 uppercase">Auto-liquidaÃ§Ã£o ProvisÃ³ria</p>
+            <p className="text-xs font-bold text-zinc-400 uppercase">Auto-liquidação ProvisÃ³ria</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -20753,10 +20753,10 @@ const IncomeTaxAdvanceModule = ({ invoices, onBack, companyData }: { invoices: I
           <div className="flex items-start gap-4">
             <AlertCircle className="text-yellow-500 shrink-0" size={22} />
             <div className="space-y-2">
-              <p className="font-black text-zinc-800 uppercase underline text-xs">Lei n.Âº 26/20 de 20 de Julho - ARTIGO 66.Âº (LiquidaÃ§Ã£o e pagamento provisÃ³rios sobre vendas)</p>
-              <p className="text-xs leading-relaxed">O Imposto Industrial relativo aos contribuintes do regime geral Ã© objecto de autoliquidaÃ§Ã£o provisÃ³ria e pagamento devido, atÃ© ao Ãºltimo dia Ãºtil do mÃªs de Agosto, por referÃªncia ao prÃ³prio exercÃ­cio em que a actividade tenha lugar.</p>
-              <p className="text-xs leading-relaxed">O imposto a pagar Ã© calculado sobre o volume total de vendas realizadas no 1Âº semestre do exercÃ­cio fiscal. A liquidaÃ§Ã£o a que se refere o n.Âº 1 do presente artigo pode incidir, a tÃ­tulo facultativo, sobre o valor efectivamente recebido das vendas nÃ£o sujeitas Ã  retenÃ§Ã£o na fonte, nos primeiros seis meses do exercÃ­cio fiscal, mediante a aplicaÃ§Ã£o de uma taxa de 2% sobre o respectivo valor...</p>
-              <p className="text-red-600 font-black uppercase text-xs">Os contribuintes que tenham apresentado prejuÃ­zo no exercÃ­cio anterior estÃ£o dispensados da liquidaÃ§Ã£o provisÃ³ria.</p>
+              <p className="font-black text-zinc-800 uppercase underline text-xs">Lei n.Âº 26/20 de 20 de Julho - ARTIGO 66.Âº (Liquidação e pagamento provisórios sobre vendas)</p>
+              <p className="text-xs leading-relaxed">O Imposto Industrial relativo aos contribuintes do regime geral é objecto de autoliquidação provisÃ³ria e pagamento devido, até ao Ãºltimo dia Ãºtil do mÃªs de Agosto, por referÃªncia ao prÃ³prio exercÃ­cio em que a actividade tenha lugar.</p>
+              <p className="text-xs leading-relaxed">O imposto a pagar é calculado sobre o volume total de vendas realizadas no 1Âº semestre do exercÃ­cio fiscal. A liquidação a que se refere o n.Âº 1 do presente artigo pode incidir, a tÃ­tulo facultativo, sobre o valor efectivamente recebido das vendas não sujeitas Ã  retenÃ§Ã£o na fonte, nos primeiros seis meses do exercÃ­cio fiscal, mediante a aplicação de uma taxa de 2% sobre o respectivo valor...</p>
+              <p className="text-red-600 font-black uppercase text-xs">Os contribuintes que tenham apresentado prejuÃ­zo no exercÃ­cio anterior estão dispensados da liquidação provisÃ³ria.</p>
             </div>
           </div>
       </div>
@@ -20794,7 +20794,7 @@ const IncomeTaxAdvanceModule = ({ invoices, onBack, companyData }: { invoices: I
                <div className="h-px bg-zinc-200 my-4"></div>
                <div className="grid grid-cols-12 gap-4 items-center">
                   <div className="col-span-8 text-[#003366] text-xs leading-relaxed opacity-50 font-bold">
-                    (b) PrestaÃ§Ãµes de serviÃ§os realizadas no 1Âº semestre do exercÃ­cio (NÂº4 do artigo 66 e NÂº13 do artigo 67Âº ambos do CII)
+                    (b) Prestações de serviços realizadas no 1Âº semestre do exercÃ­cio (NÂº4 do artigo 66 e NÂº13 do artigo 67Âº ambos do CII)
                   </div>
                   <div className="col-span-4 text-right opacity-50">
                     <p className="text-2xl font-black text-zinc-400">0,00</p>
@@ -20924,7 +20924,7 @@ const AccountingMapsModule = ({ onBack, companyData, fiscalYear }: { onBack: () 
         });
         setBalanceteData({ accounts: accs, totais: { totalDebitoP: tDebP, totalCreditoP: tCredP, totalDebitoS: tDebS, totalCreditoS: tCredS } });
       } else {
-        // Balancete sintÃ©tico com faturas e compras do ano (apenas quando nÃ£o hÃ¡ lanÃ§amentos)
+        // Balancete sintético com faturas e compras do ano (apenas quando não hÃ¡ lançamentos)
         const [docsRes, comprasRes] = await Promise.all([
           supabase.from('documentos_emitidos').select('total, imposto').eq('empresa_id', user.empresa_id).eq('ano', yNum),
           supabase.from('compras').select('total, valor_iva, imposto').eq('empresa_id', user.empresa_id).eq('ano', yNum)
@@ -20997,7 +20997,7 @@ const AccountingMapsModule = ({ onBack, companyData, fiscalYear }: { onBack: () 
             </button>
             <div>
               <h2 className="text-2xl font-black text-[#003366] uppercase tracking-tighter">Balancete AnalÃ­tico</h2>
-              <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mt-1">Mapas ContabilÃ­sticos Oficiais</p>
+              <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mt-1">Mapas Contabilisticos Oficiais</p>
             </div>
           </div>
           
@@ -21053,7 +21053,7 @@ const AccountingMapsModule = ({ onBack, companyData, fiscalYear }: { onBack: () 
                  <div className="bg-[#003366] p-2 inline-block mb-2">
                     <div className="w-12 h-12 bg-white flex items-center justify-center font-bold text-red-600 border-2 border-red-600">RC</div>
                  </div>
-                 <div className="text-xs font-bold text-[#003366] uppercase">Royal Cars - Comercio e PrestaÃ§Ã£o de ServiÃ§os, LDA</div>
+                 <div className="text-xs font-bold text-[#003366] uppercase">Royal Cars - Comercio e Prestação de Serviços, LDA</div>
                  <div className="text-[10px] text-zinc-500 font-medium uppercase tracking-widest">NIF: 5000922200</div>
               </div>
               <div className="text-right space-y-1">
@@ -21066,7 +21066,7 @@ const AccountingMapsModule = ({ onBack, companyData, fiscalYear }: { onBack: () 
            <div className="h-0.5 bg-zinc-100 w-full my-6"></div>
            
            <div className="grid grid-cols-2 text-[10px] items-center text-left text-zinc-500 font-bold uppercase tracking-widest">
-              <div>Balancete ContabilÃ­stico Emitido em AOA</div>
+              <div>Balancete Contabilistico Emitido em AOA</div>
               <div className="text-right">ExchangeRate : 1</div>
            </div>
            <div className="text-[9px] text-zinc-400 text-left uppercase font-bold mt-1 italic">Emitido em: {new Date().toLocaleDateString('pt-PT')} {new Date().toLocaleTimeString('pt-PT')}</div>
@@ -21076,15 +21076,15 @@ const AccountingMapsModule = ({ onBack, companyData, fiscalYear }: { onBack: () 
           <thead>
             <tr className="border-t-2 border-b-2 border-[#003366]">
               <th rowSpan={2} className="px-2 py-3 w-28 text-[#003366]">Conta</th>
-              <th rowSpan={2} className="px-2 py-3 text-[#003366]">DescriÃ§Ã£o</th>
+              <th rowSpan={2} className="px-2 py-3 text-[#003366]">Descrição</th>
               <th colSpan={2} className="px-2 py-1 text-center border-b border-zinc-200 text-[#003366]">Movimentos do PerÃ­odo</th>
               <th colSpan={2} className="px-2 py-1 text-center border-b border-zinc-200 text-[#003366]">Saldo</th>
             </tr>
             <tr className="border-b-2 border-zinc-100">
-              <th className="px-2 py-2 text-right text-zinc-600 w-32">DÃ©bito</th>
-              <th className="px-2 py-2 text-right text-zinc-600 w-32">CrÃ©dito</th>
-              <th className="px-2 py-2 text-right text-zinc-600 w-32">DÃ©bito</th>
-              <th className="px-2 py-2 text-right text-zinc-600 w-32">CrÃ©dito</th>
+              <th className="px-2 py-2 text-right text-zinc-600 w-32">Débito</th>
+              <th className="px-2 py-2 text-right text-zinc-600 w-32">Crédito</th>
+              <th className="px-2 py-2 text-right text-zinc-600 w-32">Débito</th>
+              <th className="px-2 py-2 text-right text-zinc-600 w-32">Crédito</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-50">
@@ -21092,7 +21092,7 @@ const AccountingMapsModule = ({ onBack, companyData, fiscalYear }: { onBack: () 
               <tr><td colSpan={6} className="py-20 text-center text-zinc-300 italic">A carregar balancete...</td></tr>
             ) : accountsData.length === 0 ? (
               <tr><td colSpan={6} className="py-20 text-center text-zinc-300 italic">
-                Sem movimentos contabilÃ­sticos registados. Clique em <strong>Sincronizar</strong> para gerar a partir dos documentos existentes.
+                Sem movimentos contabilisticos registados. Clique em <strong>Sincronizar</strong> para gerar a partir dos documentos existentes.
               </td></tr>
             ) : accountsData.map((acc: any, i: number) => {
               const isGR = acc.tipo === 'GR';
@@ -21247,7 +21247,7 @@ const AccountMovementsPage = ({ account, onBack, companyData }: { account: any, 
                     </div>
                  </div>
                  <div className="text-[11px] font-black text-[#003366] uppercase">{companyData?.name || companyData?.nome_empresa || companyData?.nome || "Empresa"}</div>
-                 <p className="text-[9px] text-zinc-400 font-bold uppercase tracking-widest">NIF: {companyData?.nif || "â€”"} â€¢ Controlo de Movimentos AnalÃ­ticos â€¢ Software ERP</p>
+                 <p className="text-[9px] text-zinc-400 font-bold uppercase tracking-widest">NIF: {companyData?.nif || "â€”"} • Controlo de Movimentos AnalÃ­ticos • Software ERP</p>
               </div>
               <div className="text-right">
                  <h2 className="text-2xl font-black text-[#003366] tracking-tighter uppercase italic leading-none">Extrato de Conta</h2>
@@ -21263,18 +21263,18 @@ const AccountMovementsPage = ({ account, onBack, companyData }: { account: any, 
               <p className="text-sm font-black text-[#003366] text-center">{account.code || account.conta || account.id}</p>
            </div>
            <div className="bg-zinc-50 p-4 border border-zinc-100">
-              <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1 text-center">DesignaÃ§Ã£o</p>
+              <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1 text-center">Designação</p>
               <p className="text-xs font-bold text-zinc-600 text-center uppercase tracking-tight truncate">{account.desc || account.description || account.descricao}</p>
            </div>
            <div className="bg-zinc-50 p-4 border border-zinc-100 col-span-2">
              <div className="flex items-center justify-around h-full">
                 <div className="text-center">
-                   <p className="text-[9px] font-black text-emerald-500 uppercase mb-1">Total DÃ©bitos</p>
+                   <p className="text-[9px] font-black text-emerald-500 uppercase mb-1">Total Débitos</p>
                    <p className="text-sm font-black text-zinc-800">{formatCurrency(totalDebitos).replace('AOA', '').trim()}</p>
                 </div>
                 <div className="w-px h-8 bg-zinc-200"></div>
                 <div className="text-center">
-                   <p className="text-[9px] font-black text-red-500 uppercase mb-1">Total CrÃ©ditos</p>
+                   <p className="text-[9px] font-black text-red-500 uppercase mb-1">Total Créditos</p>
                    <p className="text-sm font-black text-zinc-800">{formatCurrency(totalCreditos).replace('AOA', '').trim()}</p>
                 </div>
                 <div className="w-px h-8 bg-zinc-200"></div>
@@ -21301,8 +21301,8 @@ const AccountMovementsPage = ({ account, onBack, companyData }: { account: any, 
                 <th className="px-2 py-2 w-20">Data Valor</th>
                 <th className="px-2 py-2 w-20">Data Doc.</th>
                 <th className="px-2 py-2 w-20">Conta</th>
-                <th className="px-2 py-2">DesignaÃ§Ã£o</th>
-                <th className="px-2 py-2">DescriÃ§Ã£o</th>
+                <th className="px-2 py-2">Designação</th>
+                <th className="px-2 py-2">Descrição</th>
                 <th className="px-2 py-2 text-right">Debito</th>
                 <th className="px-2 py-2 text-right">Credito</th>
                 <th className="px-2 py-2 text-right">Saldo</th>
@@ -21367,7 +21367,7 @@ const PREDEFINED_PGC_STATIC = [
   { id: '11.02.01.03', conta: '11.02.01.03', type: 'GM', tipo: 'GM', description: 'Outros conjuntos industriais', descricao: 'Outros conjuntos industriais', justification: '-', layout: '-', is_system: true },
   { id: '11.02.01.04', conta: '11.02.01.04', type: 'GM', tipo: 'GM', description: 'Implantados em propriedade alheia', descricao: 'Implantados em propriedade alheia', justification: '-', layout: '-', is_system: true },
   { id: '11.02.02', conta: '11.02.02', type: 'GM', tipo: 'GM', description: 'Outras construÃ§Ãµes', descricao: 'Outras construÃ§Ãµes', justification: '-', layout: '-', is_system: true },
-  { id: '11.02.03', conta: '11.02.03', type: 'GM', tipo: 'GM', description: 'InstalaÃ§Ãµes', descricao: 'InstalaÃ§Ãµes', justification: '-', layout: '-', is_system: true },
+  { id: '11.02.03', conta: '11.02.03', type: 'GM', tipo: 'GM', description: 'Instalações', descricao: 'Instalações', justification: '-', layout: '-', is_system: true },
   { id: '11.03', conta: '11.03', type: 'GA', tipo: 'GA', description: 'Equipamento basico', descricao: 'Equipamento basico', justification: '-', layout: '-', is_system: true },
   { id: '11.03.01', conta: '11.03.01', type: 'GM', tipo: 'GM', description: 'Material Industrial', descricao: 'Material Industrial', justification: '-', layout: '-', is_system: true },
   { id: '11.03.02', conta: '11.03.02', type: 'GM', tipo: 'GM', description: 'Ferramentas industriais', descricao: 'Ferramentas industriais', justification: '-', layout: '-', is_system: true },
@@ -21375,28 +21375,28 @@ const PREDEFINED_PGC_STATIC = [
   { id: '11.04', conta: '11.04', type: 'GM', tipo: 'GM', description: 'Equipamento de carga e transporte', descricao: 'Equipamento de carga e transporte', justification: '-', layout: '-', is_system: true },
   { id: '11.05', conta: '11.05', type: 'GM', tipo: 'GM', description: 'Equipamento administrativo', descricao: 'Equipamento administrativo', justification: '-', layout: '-', is_system: true },
   { id: '11.06', conta: '11.06', type: 'GM', tipo: 'GM', description: 'Taras e vasilhame', descricao: 'Taras e vasilhame', justification: '-', layout: '-', is_system: true },
-  { id: '11.09', conta: '11.09', type: 'GM', tipo: 'GM', description: 'Outras imobilizaÃ§Ãµes corpÃ³reas', descricao: 'Outras imobilizaÃ§Ãµes corpÃ³reas', justification: '-', layout: '-', is_system: true },
+  { id: '11.09', conta: '11.09', type: 'GM', tipo: 'GM', description: 'Outras imobilizações corpÃ³reas', descricao: 'Outras imobilizações corpÃ³reas', justification: '-', layout: '-', is_system: true },
   { id: '12', conta: '12', type: 'GA', tipo: 'GA', description: 'IMOBILIZAÃ‡Ã•ES INCORPOREAS', descricao: 'IMOBILIZAÃ‡Ã•ES INCORPOREAS', justification: '-', layout: '-', is_system: true },
   { id: '12.01', conta: '12.01', type: 'GA', tipo: 'GA', description: 'Trespasses', descricao: 'Trespasses', justification: '-', layout: '-', is_system: true },
-  { id: '12.02', conta: '12.02', type: 'GA', tipo: 'GA', description: 'Despesas de investigaÃ§Ã£o e desenvolvimento', descricao: 'Despesas de investigaÃ§Ã£o e desenvolvimento', justification: '-', layout: '-', is_system: true },
+  { id: '12.02', conta: '12.02', type: 'GA', tipo: 'GA', description: 'Despesas de investigação e desenvolvimento', descricao: 'Despesas de investigação e desenvolvimento', justification: '-', layout: '-', is_system: true },
   { id: '12.03', conta: '12.03', type: 'GA', tipo: 'GA', description: 'Propriedade industrial e outros direitos e contratos', descricao: 'Propriedade industrial e outros direitos e contratos', justification: '-', layout: '-', is_system: true },
   { id: '12.04', conta: '12.04', type: 'GA', tipo: 'GA', description: 'Despesas de constituiÃ§Ã£o', descricao: 'Despesas de constituiÃ§Ã£o', justification: '-', layout: '-', is_system: true },
-  { id: '12.09', conta: '12.09', type: 'GA', tipo: 'GA', description: 'Outras imobilizaÃ§Ãµes incorpÃ³reas', descricao: 'Outras imobilizaÃ§Ãµes incorpÃ³reas', justification: '-', layout: '-', is_system: true },
+  { id: '12.09', conta: '12.09', type: 'GA', tipo: 'GA', description: 'Outras imobilizações incorpÃ³reas', descricao: 'Outras imobilizações incorpÃ³reas', justification: '-', layout: '-', is_system: true },
   { id: '12.122', conta: '12.122', type: 'GM', tipo: 'GM', description: 'LAISA', descricao: 'LAISA', justification: '-', layout: '-', is_system: true },
   { id: '13', conta: '13', type: 'GA', tipo: 'GA', description: 'INVESTIMENTOS FINANCEIROS', descricao: 'INVESTIMENTOS FINANCEIROS', justification: '-', layout: '-', is_system: true },
   { id: '13.01', conta: '13.01', type: 'GA', tipo: 'GA', description: 'Empresas SubsidiÃ¡rias', descricao: 'Empresas SubsidiÃ¡rias', justification: '-', layout: '-', is_system: true },
   { id: '13.01.01', conta: '13.01.01', type: 'GM', tipo: 'GM', description: 'Partes de Capital', descricao: 'Partes de Capital', justification: '-', layout: '-', is_system: true },
-  { id: '13.01.02', conta: '13.01.02', type: 'GM', tipo: 'GM', description: 'ObrigaÃ§Ãµes e tÃ­tulos de participaÃ§Ã£o', descricao: 'ObrigaÃ§Ãµes e tÃ­tulos de participaÃ§Ã£o', justification: '-', layout: '-', is_system: true },
-  { id: '13.01.03', conta: '13.01.03', type: 'GM', tipo: 'GM', description: 'EmprÃ©stimos', descricao: 'EmprÃ©stimos', justification: '-', layout: '-', is_system: true },
+  { id: '13.01.02', conta: '13.01.02', type: 'GM', tipo: 'GM', description: 'Obrigações e tÃ­tulos de participação', descricao: 'Obrigações e tÃ­tulos de participação', justification: '-', layout: '-', is_system: true },
+  { id: '13.01.03', conta: '13.01.03', type: 'GM', tipo: 'GM', description: 'Empréstimos', descricao: 'Empréstimos', justification: '-', layout: '-', is_system: true },
   { id: '13.02', conta: '13.02', type: 'GA', tipo: 'GA', description: 'Empresas associadas', descricao: 'Empresas associadas', justification: '-', layout: '-', is_system: true },
   { id: '13.02.01', conta: '13.02.01', type: 'GM', tipo: 'GM', description: 'Partes de Capital', descricao: 'Partes de Capital', justification: '-', layout: '-', is_system: true },
-  { id: '13.02.02', conta: '13.02.02', type: 'GM', tipo: 'GM', description: 'ObrigaÃ§Ãµes e tÃ­tulos de participaÃ§Ã£o', descricao: 'ObrigaÃ§Ãµes e tÃ­tulos de participaÃ§Ã£o', justification: '-', layout: '-', is_system: true },
-  { id: '13.02.03', conta: '13.02.03', type: 'GM', tipo: 'GM', description: 'EmprÃ©stimos', descricao: 'EmprÃ©stimos', justification: '-', layout: '-', is_system: true },
+  { id: '13.02.02', conta: '13.02.02', type: 'GM', tipo: 'GM', description: 'Obrigações e tÃ­tulos de participação', descricao: 'Obrigações e tÃ­tulos de participação', justification: '-', layout: '-', is_system: true },
+  { id: '13.02.03', conta: '13.02.03', type: 'GM', tipo: 'GM', description: 'Empréstimos', descricao: 'Empréstimos', justification: '-', layout: '-', is_system: true },
   { id: '13.03', conta: '13.03', type: 'GA', tipo: 'GA', description: 'Outras Empresas', descricao: 'Outras Empresas', justification: '-', layout: '-', is_system: true },
   { id: '13.03.01', conta: '13.03.01', type: 'GM', tipo: 'GM', description: 'Partes de Capital', descricao: 'Partes de Capital', justification: '-', layout: '-', is_system: true },
-  { id: '13.03.02', conta: '13.03.02', type: 'GM', tipo: 'GM', description: 'ObrigaÃ§Ãµes e tÃ­tulos de participaÃ§Ã£o', descricao: 'ObrigaÃ§Ãµes e tÃ­tulos de participaÃ§Ã£o', justification: '-', layout: '-', is_system: true },
-  { id: '13.03.03', conta: '13.03.03', type: 'GM', tipo: 'GM', description: 'EmprÃ©stimos', descricao: 'EmprÃ©stimos', justification: '-', layout: '-', is_system: true },
-  { id: '13.04', conta: '13.04', type: 'GA', tipo: 'GA', description: 'Investimentos em ImÃ³veis', descricao: 'Investimentos em ImÃ³veis', justification: '-', layout: '-', is_system: true },
+  { id: '13.03.02', conta: '13.03.02', type: 'GM', tipo: 'GM', description: 'Obrigações e tÃ­tulos de participação', descricao: 'Obrigações e tÃ­tulos de participação', justification: '-', layout: '-', is_system: true },
+  { id: '13.03.03', conta: '13.03.03', type: 'GM', tipo: 'GM', description: 'Empréstimos', descricao: 'Empréstimos', justification: '-', layout: '-', is_system: true },
+  { id: '13.04', conta: '13.04', type: 'GA', tipo: 'GA', description: 'Investimentos em Imóveis', descricao: 'Investimentos em Imóveis', justification: '-', layout: '-', is_system: true },
   { id: '13.05', conta: '13.05', type: 'GA', tipo: 'GA', description: 'Fundos', descricao: 'Fundos', justification: '-', layout: '-', is_system: true },
   { id: '13.09', conta: '13.09', type: 'GA', tipo: 'GA', description: 'Outros investimentos financeiros', descricao: 'Outros investimentos financeiros', justification: '-', layout: '-', is_system: true },
   { id: '13.09.01', conta: '13.09.01', type: 'GM', tipo: 'GM', description: 'Diamantes', descricao: 'Diamantes', justification: '-', layout: '-', is_system: true },
@@ -21409,36 +21409,36 @@ const PREDEFINED_PGC_STATIC = [
   { id: '14.08', conta: '14.08', type: 'GA', tipo: 'GA', description: 'Adiantamentos por conta de imobilizado incorpÃ³reo', descricao: 'Adiantamentos por conta de imobilizado incorpÃ³reo', justification: '-', layout: '-', is_system: true },
   { id: '14.09', conta: '14.09', type: 'GA', tipo: 'GA', description: 'Adiantamento por conta de investimentos financeiros', descricao: 'Adiantamento por conta de investimentos financeiros', justification: '-', layout: '-', is_system: true },
   { id: '18', conta: '18', type: 'GA', tipo: 'GA', description: 'AMORTIZAÃ‡Ã•ES ACUMULADAS', descricao: 'AMORTIZAÃ‡Ã•ES ACUMULADAS', justification: '-', layout: '-', is_system: true },
-  { id: '18.01', conta: '18.01', type: 'GA', tipo: 'GA', description: 'ImobilizaÃ§Ãµes CorpÃ³reas', descricao: 'ImobilizaÃ§Ãµes CorpÃ³reas', justification: '-', layout: '-', is_system: true },
+  { id: '18.01', conta: '18.01', type: 'GA', tipo: 'GA', description: 'Imobilizações CorpÃ³reas', descricao: 'Imobilizações CorpÃ³reas', justification: '-', layout: '-', is_system: true },
   { id: '18.01.01', conta: '18.01.01', type: 'GA', tipo: 'GA', description: 'Terrenos e recursos naturais', descricao: 'Terrenos e recursos naturais', justification: '-', layout: '-', is_system: true },
   { id: '18.01.02', conta: '18.01.02', type: 'GA', tipo: 'GA', description: 'EdifÃ­cios e outras construÃ§Ãµes', descricao: 'EdifÃ­cios e outras construÃ§Ãµes', justification: '-', layout: '-', is_system: true },
-  { id: '18.01.03', conta: '18.01.03', type: 'GA', tipo: 'GA', description: 'Equipamento bÃ¡sico', descricao: 'Equipamento bÃ¡sico', justification: '-', layout: '-', is_system: true },
+  { id: '18.01.03', conta: '18.01.03', type: 'GA', tipo: 'GA', description: 'Equipamento básico', descricao: 'Equipamento básico', justification: '-', layout: '-', is_system: true },
   { id: '18.01.04', conta: '18.01.04', type: 'GA', tipo: 'GA', description: 'Equipamento de carga e transporte', descricao: 'Equipamento de carga e transporte', justification: '-', layout: '-', is_system: true },
   { id: '18.01.05', conta: '18.01.05', type: 'GA', tipo: 'GA', description: 'Equipamentos Administrativos', descricao: 'Equipamentos Administrativos', justification: '-', layout: '-', is_system: true },
   { id: '18.01.06', conta: '18.01.06', type: 'GA', tipo: 'GA', description: 'Taras e vasilhame', descricao: 'Taras e vasilhame', justification: '-', layout: '-', is_system: true },
-  { id: '18.01.09', conta: '18.01.09', type: 'GA', tipo: 'GA', description: 'Outras ImobilizaÃ§Ãµes corpÃ³reas', descricao: 'Outras ImobilizaÃ§Ãµes corpÃ³reas', justification: '-', layout: '-', is_system: true },
-  { id: '18.02', conta: '18.02', type: 'GA', tipo: 'GA', description: 'ImobilizaÃ§Ãµes incorpÃ³reas', descricao: 'ImobilizaÃ§Ãµes incorpÃ³reas', justification: '-', layout: '-', is_system: true },
+  { id: '18.01.09', conta: '18.01.09', type: 'GA', tipo: 'GA', description: 'Outras Imobilizações corpÃ³reas', descricao: 'Outras Imobilizações corpÃ³reas', justification: '-', layout: '-', is_system: true },
+  { id: '18.02', conta: '18.02', type: 'GA', tipo: 'GA', description: 'Imobilizações incorpÃ³reas', descricao: 'Imobilizações incorpÃ³reas', justification: '-', layout: '-', is_system: true },
   { id: '18.02.01', conta: '18.02.01', type: 'GM', tipo: 'GM', description: 'Trespasses', descricao: 'Trespasses', justification: '-', layout: '-', is_system: true },
-  { id: '18.02.02', conta: '18.02.02', type: 'GM', tipo: 'GM', description: 'Despesas de investigaÃ§Ã£o e desenvolvimento', descricao: 'Despesas de investigaÃ§Ã£o e desenvolvimento', justification: '-', layout: '-', is_system: true },
+  { id: '18.02.02', conta: '18.02.02', type: 'GM', tipo: 'GM', description: 'Despesas de investigação e desenvolvimento', descricao: 'Despesas de investigação e desenvolvimento', justification: '-', layout: '-', is_system: true },
   { id: '18.02.03', conta: '18.02.03', type: 'GM', tipo: 'GM', description: 'Propriedade industrial e outros direitos e contratos', descricao: 'Propriedade industrial e outros direitos e contratos', justification: '-', layout: '-', is_system: true },
   { id: '18.02.04', conta: '18.02.04', type: 'GM', tipo: 'GM', description: 'Despesas de constituiÃ§Ã£o', descricao: 'Despesas de constituiÃ§Ã£o', justification: '-', layout: '-', is_system: true },
-  { id: '18.02.09', conta: '18.02.09', type: 'GM', tipo: 'GM', description: 'Outras ImobilizaÃ§Ãµes incorpÃ³reas', descricao: 'Outras ImobilizaÃ§Ãµes incorpÃ³reas', justification: '-', layout: '-', is_system: true },
-  { id: '18.03', conta: '18.03', type: 'GA', tipo: 'GA', description: 'Investimentos financeiros em imÃ³veis', descricao: 'Investimentos financeiros em imÃ³veis', justification: '-', layout: '-', is_system: true },
+  { id: '18.02.09', conta: '18.02.09', type: 'GM', tipo: 'GM', description: 'Outras Imobilizações incorpÃ³reas', descricao: 'Outras Imobilizações incorpÃ³reas', justification: '-', layout: '-', is_system: true },
+  { id: '18.03', conta: '18.03', type: 'GA', tipo: 'GA', description: 'Investimentos financeiros em imóveis', descricao: 'Investimentos financeiros em imóveis', justification: '-', layout: '-', is_system: true },
   { id: '18.03.01', conta: '18.03.01', type: 'GM', tipo: 'GM', description: 'Terrenos e recursos naturais', descricao: 'Terrenos e recursos naturais', justification: '-', layout: '-', is_system: true },
   { id: '18.03.02', conta: '18.03.02', type: 'GM', tipo: 'GM', description: 'EdifÃ­cios e outras construÃ§Ãµes', descricao: 'EdifÃ­cios e outras construÃ§Ãµes', justification: '-', layout: '-', is_system: true },
   { id: '19', conta: '19', type: 'GA', tipo: 'GA', description: 'PROVISÃ•ES PARA INVESTIMENTOS FINANCEIROS', descricao: 'PROVISÃ•ES PARA INVESTIMENTOS FINANCEIROS', justification: '-', layout: '-', is_system: true },
   { id: '19.01', conta: '19.01', type: 'GA', tipo: 'GA', description: 'Empresas SubsidiÃ¡rias', descricao: 'Empresas SubsidiÃ¡rias', justification: '-', layout: '-', is_system: true },
   { id: '19.01.01', conta: '19.01.01', type: 'GM', tipo: 'GM', description: 'Partes de capital', descricao: 'Partes de capital', justification: '-', layout: '-', is_system: true },
-  { id: '19.01.02', conta: '19.01.02', type: 'GM', tipo: 'GM', description: 'ObrigaÃ§Ãµes e tÃ­tulos de participaÃ§Ã£o', descricao: 'ObrigaÃ§Ãµes e tÃ­tulos de participaÃ§Ã£o', justification: '-', layout: '-', is_system: true },
-  { id: '19.01.03', conta: '19.01.03', type: 'GM', tipo: 'GM', description: 'EmprÃ©stimos', descricao: 'EmprÃ©stimos', justification: '-', layout: '-', is_system: true },
+  { id: '19.01.02', conta: '19.01.02', type: 'GM', tipo: 'GM', description: 'Obrigações e tÃ­tulos de participação', descricao: 'Obrigações e tÃ­tulos de participação', justification: '-', layout: '-', is_system: true },
+  { id: '19.01.03', conta: '19.01.03', type: 'GM', tipo: 'GM', description: 'Empréstimos', descricao: 'Empréstimos', justification: '-', layout: '-', is_system: true },
   { id: '19.02', conta: '19.02', type: 'GA', tipo: 'GA', description: 'Empresas associadas', descricao: 'Empresas associadas', justification: '-', layout: '-', is_system: true },
   { id: '19.02.01', conta: '19.02.01', type: 'GM', tipo: 'GM', description: 'Partes de capital', descricao: 'Partes de capital', justification: '-', layout: '-', is_system: true },
-  { id: '19.02.02', conta: '19.02.02', type: 'GM', tipo: 'GM', description: 'ObrigaÃ§Ãµes e tÃ­tulos de participaÃ§Ã£o', descricao: 'ObrigaÃ§Ãµes e tÃ­tulos de participaÃ§Ã£o', justification: '-', layout: '-', is_system: true },
-  { id: '19.02.03', conta: '19.02.03', type: 'GM', tipo: 'GM', description: 'EmprÃ©stimos', descricao: 'EmprÃ©stimos', justification: '-', layout: '-', is_system: true },
+  { id: '19.02.02', conta: '19.02.02', type: 'GM', tipo: 'GM', description: 'Obrigações e tÃ­tulos de participação', descricao: 'Obrigações e tÃ­tulos de participação', justification: '-', layout: '-', is_system: true },
+  { id: '19.02.03', conta: '19.02.03', type: 'GM', tipo: 'GM', description: 'Empréstimos', descricao: 'Empréstimos', justification: '-', layout: '-', is_system: true },
   { id: '19.03', conta: '19.03', type: 'GA', tipo: 'GA', description: 'Outras empresas', descricao: 'Outras empresas', justification: '-', layout: '-', is_system: true },
   { id: '19.03.01', conta: '19.03.01', type: 'GM', tipo: 'GM', description: 'Partes de capital', descricao: 'Partes de capital', justification: '-', layout: '-', is_system: true },
-  { id: '19.03.02', conta: '19.03.02', type: 'GM', tipo: 'GM', description: 'ObrigaÃ§Ãµes e tÃ­tulos de participaÃ§Ã£o', descricao: 'ObrigaÃ§Ãµes e tÃ­tulos de participaÃ§Ã£o', justification: '-', layout: '-', is_system: true },
-  { id: '19.03.03', conta: '19.03.03', type: 'GM', tipo: 'GM', description: 'EmprÃ©stimos', descricao: 'EmprÃ©stimos', justification: '-', layout: '-', is_system: true },
+  { id: '19.03.02', conta: '19.03.02', type: 'GM', tipo: 'GM', description: 'Obrigações e tÃ­tulos de participação', descricao: 'Obrigações e tÃ­tulos de participação', justification: '-', layout: '-', is_system: true },
+  { id: '19.03.03', conta: '19.03.03', type: 'GM', tipo: 'GM', description: 'Empréstimos', descricao: 'Empréstimos', justification: '-', layout: '-', is_system: true },
   { id: '19.04', conta: '19.04', type: 'GA', tipo: 'GA', description: 'Fundos', descricao: 'Fundos', justification: '-', layout: '-', is_system: true },
   { id: '19.04.01', conta: '19.04.01', type: 'GM', tipo: 'GM', description: 'Partes de capital', descricao: 'Partes de capital', justification: '-', layout: '-', is_system: true },
   { id: '19.09', conta: '19.09', type: 'GA', tipo: 'GA', description: 'Outros investimentos financeiros', descricao: 'Outros investimentos financeiros', justification: '-', layout: '-', is_system: true },
@@ -21446,21 +21446,21 @@ const PREDEFINED_PGC_STATIC = [
   { id: '19.09.02', conta: '19.09.02', type: 'GM', tipo: 'GM', description: 'Ouro', descricao: 'Ouro', justification: '-', layout: '-', is_system: true },
   { id: '19.09.03', conta: '19.09.03', type: 'GM', tipo: 'GM', description: 'DepÃ³sitos bancÃ¡rios', descricao: 'DepÃ³sitos bancÃ¡rios', justification: '-', layout: '-', is_system: true },
   { id: '21', conta: '21', type: 'GR', tipo: 'GR', description: 'COMPRAS', descricao: 'COMPRAS', justification: '-', layout: '-', is_system: true },
-  { id: '21.01', conta: '21.01', type: 'GM', tipo: 'GM', description: 'MatÃ©rias-primas, subsidiÃ¡rias e de consumo', descricao: 'MatÃ©rias-primas, subsidiÃ¡rias e de consumo', justification: '-', layout: '-', is_system: true },
+  { id: '21.01', conta: '21.01', type: 'GM', tipo: 'GM', description: 'Matérias-primas, subsidiÃ¡rias e de consumo', descricao: 'Matérias-primas, subsidiÃ¡rias e de consumo', justification: '-', layout: '-', is_system: true },
   { id: '21.01.01', conta: '21.01.01', type: 'GM', tipo: 'GM', description: 'Compras e gastos', descricao: 'Compras e gastos', justification: '-', layout: '-', is_system: true },
   { id: '21.02', conta: '21.02', type: 'GM', tipo: 'GM', description: 'Mercadorias', descricao: 'Mercadorias', justification: '-', layout: '-', is_system: true },
   { id: '21.07', conta: '21.07', type: 'GM', tipo: 'GM', description: 'DevoluÃ§Ãµes de compras', descricao: 'DevoluÃ§Ãµes de compras', justification: '-', layout: '-', is_system: true },
   { id: '21.08', conta: '21.08', type: 'GM', tipo: 'GM', description: 'Descontos e abatimentos em compras', descricao: 'Descontos e abatimentos em compras', justification: '-', layout: '-', is_system: true },
   { id: '22', conta: '22', type: 'GA', tipo: 'GA', description: 'MATÃ‰RIAS-PRIMAS, SUBSIDIÃRIAS E DE CONSUMO', descricao: 'MATÃ‰RIAS-PRIMAS, SUBSIDIÃRIAS E DE CONSUMO', justification: '-', layout: '-', is_system: true },
-  { id: '22.01', conta: '22.01', type: 'GM', tipo: 'GM', description: 'MatÃ©rias-primas', descricao: 'MatÃ©rias-primas', justification: '-', layout: '-', is_system: true },
-  { id: '22.02', conta: '22.02', type: 'GM', tipo: 'GM', description: 'MatÃ©rias subsidiÃ¡rias', descricao: 'MatÃ©rias subsidiÃ¡rias', justification: '-', layout: '-', is_system: true },
+  { id: '22.01', conta: '22.01', type: 'GM', tipo: 'GM', description: 'Matérias-primas', descricao: 'Matérias-primas', justification: '-', layout: '-', is_system: true },
+  { id: '22.02', conta: '22.02', type: 'GM', tipo: 'GM', description: 'Matérias subsidiÃ¡rias', descricao: 'Matérias subsidiÃ¡rias', justification: '-', layout: '-', is_system: true },
   { id: '22.03', conta: '22.03', type: 'GM', tipo: 'GM', description: 'Materiais diversos', descricao: 'Materiais diversos', justification: '-', layout: '-', is_system: true },
   { id: '22.04', conta: '22.04', type: 'GM', tipo: 'GM', description: 'Embalagens de consumo', descricao: 'Embalagens de consumo', justification: '-', layout: '-', is_system: true },
   { id: '22.05', conta: '22.05', type: 'GM', tipo: 'GM', description: 'Outros materiais', descricao: 'Outros materiais', justification: '-', layout: '-', is_system: true },
   { id: '23', conta: '23', type: 'GA', tipo: 'GA', description: 'PRODUTOS E TRABALHOS EM CURSO', descricao: 'PRODUTOS E TRABALHOS EM CURSO', justification: '-', layout: '-', is_system: true },
   { id: '24', conta: '24', type: 'GA', tipo: 'GA', description: 'PRODUTOS ACABADOS E INTERMÃ‰DIOS', descricao: 'PRODUTOS ACABADOS E INTERMÃ‰DIOS', justification: '-', layout: '-', is_system: true },
   { id: '24.01', conta: '24.01', type: 'GM', tipo: 'GM', description: 'Produtos acabados', descricao: 'Produtos acabados', justification: '-', layout: '-', is_system: true },
-  { id: '24.02', conta: '24.02', type: 'GM', tipo: 'GM', description: 'Produtos intermÃ©dios', descricao: 'Produtos intermÃ©dios', justification: '-', layout: '-', is_system: true },
+  { id: '24.02', conta: '24.02', type: 'GM', tipo: 'GM', description: 'Produtos intermédios', descricao: 'Produtos intermédios', justification: '-', layout: '-', is_system: true },
   { id: '24.09', conta: '24.09', type: 'GM', tipo: 'GM', description: 'Em poder de terceiros', descricao: 'Em poder de terceiros', justification: '-', layout: '-', is_system: true },
   { id: '25', conta: '25', type: 'GA', tipo: 'GA', description: 'SUBPRODUTOS, DESPERDÃCIOS, RESÃDUOS E REFUGOS', descricao: 'SUBPRODUTOS, DESPERDÃCIOS, RESÃDUOS E REFUGOS', justification: '-', layout: '-', is_system: true },
   { id: '25.01', conta: '25.01', type: 'GM', tipo: 'GM', description: 'Subprodutos', descricao: 'Subprodutos', justification: '-', layout: '-', is_system: true },
@@ -21469,16 +21469,16 @@ const PREDEFINED_PGC_STATIC = [
   { id: '26.01', conta: '26.01', type: 'GM', tipo: 'GM', description: 'Mercadorias Diversas', descricao: 'Mercadorias Diversas', justification: '-', layout: '-', is_system: true },
   { id: '26.09', conta: '26.09', type: 'GM', tipo: 'GM', description: 'Em poder de terceiros', descricao: 'Em poder de terceiros', justification: '-', layout: '-', is_system: true },
   { id: '27', conta: '27', type: 'GA', tipo: 'GA', description: 'MATÃ‰RIAS-PRIMAS, MERCADORIAS E OUTROS MATERIAIS EM TRÃ‚NSITO', descricao: 'MATÃ‰RIAS-PRIMAS, MERCADORIAS E OUTROS MATERIAIS EM TRÃ‚NSITO', justification: '-', layout: '-', is_system: true },
-  { id: '27.01', conta: '27.01', type: 'GM', tipo: 'GM', description: 'MatÃ©rias-primas', descricao: 'MatÃ©rias-primas', justification: '-', layout: '-', is_system: true },
+  { id: '27.01', conta: '27.01', type: 'GM', tipo: 'GM', description: 'Matérias-primas', descricao: 'Matérias-primas', justification: '-', layout: '-', is_system: true },
   { id: '27.02', conta: '27.02', type: 'GM', tipo: 'GM', description: 'Outros materiais', descricao: 'Outros materiais', justification: '-', layout: '-', is_system: true },
   { id: '27.03', conta: '27.03', type: 'GM', tipo: 'GM', description: 'Marcadorias', descricao: 'Marcadorias', justification: '-', layout: '-', is_system: true },
   { id: '28', conta: '28', type: 'GA', tipo: 'GA', description: 'ADIANTAMENTO POR CONTA DE COMPRAS', descricao: 'ADIANTAMENTO POR CONTA DE COMPRAS', justification: '-', layout: '-', is_system: true },
-  { id: '28.01', conta: '28.01', type: 'GM', tipo: 'GM', description: 'MatÃ©rias-primas e outros materiais', descricao: 'MatÃ©rias-primas e outros materiais', justification: '-', layout: '-', is_system: true },
+  { id: '28.01', conta: '28.01', type: 'GM', tipo: 'GM', description: 'Matérias-primas e outros materiais', descricao: 'Matérias-primas e outros materiais', justification: '-', layout: '-', is_system: true },
   { id: '28.02', conta: '28.02', type: 'GM', tipo: 'GM', description: 'Mercadorias', descricao: 'Mercadorias', justification: '-', layout: '-', is_system: true },
   { id: '29', conta: '29', type: 'GA', tipo: 'GA', description: 'PROVISÃ•ES PARA DEPRECIAÃ‡ÃƒO DE EXISTÃŠNCIAS', descricao: 'PROVISÃ•ES PARA DEPRECIAÃ‡ÃƒO DE EXISTÃŠNCIAS', justification: '-', layout: '-', is_system: true },
-  { id: '29.02', conta: '29.02', type: 'GM', tipo: 'GM', description: 'MatÃ©rias-primas, subsidiÃ¡rias e de consumo', descricao: 'MatÃ©rias-primas, subsidiÃ¡rias e de consumo', justification: '-', layout: '-', is_system: true },
+  { id: '29.02', conta: '29.02', type: 'GM', tipo: 'GM', description: 'Matérias-primas, subsidiÃ¡rias e de consumo', descricao: 'Matérias-primas, subsidiÃ¡rias e de consumo', justification: '-', layout: '-', is_system: true },
   { id: '29.03', conta: '29.03', type: 'GM', tipo: 'GM', description: 'Produtos e trabalhos em curso', descricao: 'Produtos e trabalhos em curso', justification: '-', layout: '-', is_system: true },
-  { id: '29.04', conta: '29.04', type: 'GM', tipo: 'GM', description: 'Produtos acabados e intermÃ©dios', descricao: 'Produtos acabados e intermÃ©dios', justification: '-', layout: '-', is_system: true },
+  { id: '29.04', conta: '29.04', type: 'GM', tipo: 'GM', description: 'Produtos acabados e intermédios', descricao: 'Produtos acabados e intermédios', justification: '-', layout: '-', is_system: true },
   { id: '29.05', conta: '29.05', type: 'GM', tipo: 'GM', description: 'Subprodutos, desperdÃ­cios, resÃ­duos e refugos', descricao: 'Subprodutos, desperdÃ­cios, resÃ­duos e refugos', justification: '-', layout: '-', is_system: true },
   { id: '29.06', conta: '29.06', type: 'GM', tipo: 'GM', description: 'Mercadorias', descricao: 'Mercadorias', justification: '-', layout: '-', is_system: true },
   { id: '31', conta: '31', type: 'GR', tipo: 'GR', description: 'CLIENTES', descricao: 'CLIENTES', justification: '-', layout: '-', is_system: true },
@@ -21486,16 +21486,16 @@ const PREDEFINED_PGC_STATIC = [
   { id: '31.01.01', conta: '31.01.01', type: 'GA', tipo: 'GA', description: 'Grupo', descricao: 'Grupo', justification: '-', layout: '-', is_system: true },
   { id: '31.01.01.01', conta: '31.01.01.01', type: 'GM', tipo: 'GM', description: 'SubsidiÃ¡rias', descricao: 'SubsidiÃ¡rias', justification: '-', layout: '-', is_system: true },
   { id: '31.01.01.02', conta: '31.01.01.02', type: 'GM', tipo: 'GM', description: 'Associadas', descricao: 'Associadas', justification: '-', layout: '-', is_system: true },
-  { id: '31.01.02', conta: '31.01.02', type: 'GA', tipo: 'GA', description: 'NÃ£o grupo', descricao: 'NÃ£o grupo', justification: '-', layout: '-', is_system: true },
+  { id: '31.01.02', conta: '31.01.02', type: 'GA', tipo: 'GA', description: 'Não grupo', descricao: 'Não grupo', justification: '-', layout: '-', is_system: true },
   { id: '32', conta: '32', type: 'GR', tipo: 'GR', description: 'FORNECEDORES', descricao: 'FORNECEDORES', justification: '-', layout: '-', is_system: true },
   { id: '32.01', conta: '32.01', type: 'GA', tipo: 'GA', description: 'Fornecedores - correntes', descricao: 'Fornecedores - correntes', justification: '-', layout: '-', is_system: true },
   { id: '33', conta: '33', type: 'GA', tipo: 'GA', description: 'EMPRÃ‰STIMOS', descricao: 'EMPRÃ‰STIMOS', justification: '-', layout: '-', is_system: true },
   { id: '34', conta: '34', type: 'GR', tipo: 'GR', description: 'ESTADO', descricao: 'ESTADO', justification: '-', layout: '-', is_system: true },
   { id: '34.01', conta: '34.01', type: 'GA', tipo: 'GA', description: 'Imposto sobre lucros', descricao: 'Imposto sobre lucros', justification: '-', layout: '-', is_system: true },
-  { id: '34.02', conta: '34.02', type: 'GA', tipo: 'GA', description: 'Imposto de produÃ§Ã£o e consumo', descricao: 'Imposto de produÃ§Ã£o e consumo', justification: '-', layout: '-', is_system: true },
+  { id: '34.02', conta: '34.02', type: 'GA', tipo: 'GA', description: 'Imposto de produção e consumo', descricao: 'Imposto de produção e consumo', justification: '-', layout: '-', is_system: true },
   { id: '34.03', conta: '34.03', type: 'GA', tipo: 'GA', description: 'IRT Imposto de rendimento de trabalho', descricao: 'IRT Imposto de rendimento de trabalho', justification: '-', layout: '-', is_system: true },
   { id: '34.05', conta: '34.05', type: 'GA', tipo: 'GA', description: 'IVA', descricao: 'IVA', justification: '-', layout: '-', is_system: true },
-  { id: '34.07', conta: '34.07', type: 'GA', tipo: 'GA', description: 'ContribuiÃ§Ãµes para a SeguranÃ§a Social', descricao: 'ContribuiÃ§Ãµes para a SeguranÃ§a Social', justification: '-', layout: '-', is_system: true },
+  { id: '34.07', conta: '34.07', type: 'GA', tipo: 'GA', description: 'ContribuiÃ§Ãµes para a Segurança Social', descricao: 'ContribuiÃ§Ãµes para a Segurança Social', justification: '-', layout: '-', is_system: true },
   { id: '35', conta: '35', type: 'GA', tipo: 'GA', description: 'ENTIDADES PARTICIPANTES E PARTICIPADAS', descricao: 'ENTIDADES PARTICIPANTES E PARTICIPADAS', justification: '-', layout: '-', is_system: true },
   { id: '36', conta: '36', type: 'GR', tipo: 'GR', description: 'PESSOAL', descricao: 'PESSOAL', justification: '-', layout: '-', is_system: true },
   { id: '37', conta: '37', type: 'GA', tipo: 'GA', description: 'OUTROS VALORES A RECEBER E A PAGAR', descricao: 'OUTROS VALORES A RECEBER E A PAGAR', justification: '-', layout: '-', is_system: true },
@@ -21515,7 +21515,7 @@ const PREDEFINED_PGC_STATIC = [
   { id: '57', conta: '57', type: 'GA', tipo: 'GA', description: 'RESERVAS COM FINS ESPECIAIS', descricao: 'RESERVAS COM FINS ESPECIAIS', justification: '-', layout: '-', is_system: true },
   { id: '58', conta: '58', type: 'GA', tipo: 'GA', description: 'RESERVAS LIVRES', descricao: 'RESERVAS LIVRES', justification: '-', layout: '-', is_system: true },
   { id: '61', conta: '61', type: 'GR', tipo: 'GR', description: 'VENDAS', descricao: 'VENDAS', justification: '-', layout: 'Mercadoria MN', is_system: true },
-  { id: '62', conta: '62', type: 'GA', tipo: 'GA', description: 'PRESTAÃ‡Ã•ES DE SERVIÃ‡OS', descricao: 'PRESTAÃ‡Ã•ES DE SERVIÃ‡OS', justification: '-', layout: 'ServiÃ§o Nacional', is_system: true },
+  { id: '62', conta: '62', type: 'GA', tipo: 'GA', description: 'PRESTAÃ‡Ã•ES DE SERVIÃ‡OS', descricao: 'PRESTAÃ‡Ã•ES DE SERVIÃ‡OS', justification: '-', layout: 'Serviço Nacional', is_system: true },
   { id: '63', conta: '63', type: 'GA', tipo: 'GA', description: 'OUTROS PROVEITOS OPERACIONAIS', descricao: 'OUTROS PROVEITOS OPERACIONAIS', justification: '-', layout: '-', is_system: true },
   { id: '64', conta: '64', type: 'GA', tipo: 'GA', description: 'VARIAÃ‡ÃƒO NOS INVENTARIOS DE PRODUTOS ACABADOS E DE PRODUÃ‡ÃƒO EM CURSO', descricao: 'VARIAÃ‡ÃƒO NOS INVENTARIOS DE PRODUTOS ACABADOS E DE PRODUÃ‡ÃƒO EM CURSO', justification: '-', layout: '-', is_system: true },
   { id: '65', conta: '65', type: 'GA', tipo: 'GA', description: 'TRABALHOS PARA A PRÃ“PRIA EMPRESA', descricao: 'TRABALHOS PARA A PRÃ“PRIA EMPRESA', justification: '-', layout: '-', is_system: true },
@@ -21523,7 +21523,7 @@ const PREDEFINED_PGC_STATIC = [
   { id: '67', conta: '67', type: 'GA', tipo: 'GA', description: 'PROVEITOS E GANHOS FINANCEIROS EM SUBSIDIARIAS E ASSOCIADAS', descricao: 'PROVEITOS E GANHOS FINANCEIROS EM SUBSIDIARIAS E ASSOCIADAS', justification: '-', layout: '-', is_system: true },
   { id: '68', conta: '68', type: 'GA', tipo: 'GA', description: 'OUTROS PROVEITOS E GANHOS NÃƒO OPERACIONAIS', descricao: 'OUTROS PROVEITOS E GANHOS NÃƒO OPERACIONAIS', justification: '-', layout: '-', is_system: true },
   { id: '69', conta: '69', type: 'GA', tipo: 'GA', description: 'PROVEITOS E GANHOS EXTRAORDINARIOS', descricao: 'PROVEITOS E GANHOS EXTRAORDINARIOS', justification: '-', layout: '-', is_system: true },
-  { id: '71', conta: '71', type: 'GR', tipo: 'GR', description: 'CUSTO DAS EXISTÃŠNCIAS VENDIDAS', descricao: 'CUSTO DAS EXISTÃŠNCIAS VENDIDAS', justification: '-', layout: 'MatÃ©ria Prima', is_system: true },
+  { id: '71', conta: '71', type: 'GR', tipo: 'GR', description: 'CUSTO DAS EXISTÃŠNCIAS VENDIDAS', descricao: 'CUSTO DAS EXISTÃŠNCIAS VENDIDAS', justification: '-', layout: 'Matéria Prima', is_system: true },
   { id: '72', conta: '72', type: 'GR', tipo: 'GR', description: 'CUSTOS COM PESSOAL', descricao: 'CUSTOS COM PESSOAL', justification: '-', layout: '-', is_system: true },
   { id: '73', conta: '73', type: 'GR', tipo: 'GR', description: 'AMORTIZAÃ‡Ã•ES DO EXERCICIO', descricao: 'AMORTIZAÃ‡Ã•ES DO EXERCICIO', justification: '-', layout: '-', is_system: true },
   { id: '75', conta: '75', type: 'GR', tipo: 'GR', description: 'OUTROS CUSTOS E PERDAS OPERACIONAIS', descricao: 'OUTROS CUSTOS E PERDAS OPERACIONAIS', justification: '-', layout: '-', is_system: true },
@@ -21619,7 +21619,7 @@ const PGCModule = ({ onBack }: { onBack: () => void }) => {
 
   // Export helpers
   const exportToCSV = () => {
-    const rows = [['Conta', 'Tipo', 'DescriÃ§Ã£o', 'JustificaÃ§Ã£o', 'Layout']];
+    const rows = [['Conta', 'Tipo', 'Descrição', 'Justificação', 'Layout']];
     filteredAccounts.forEach(acc => rows.push([acc.id || acc.conta || '', acc.type || acc.tipo || '', acc.description || acc.descricao || '', acc.justification || '', acc.layout || '']));
     const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
@@ -21634,7 +21634,7 @@ const PGCModule = ({ onBack }: { onBack: () => void }) => {
       <style>body{font-family:Arial,sans-serif;font-size:10px} table{width:100%;border-collapse:collapse} th{background:#003366;color:white;padding:6px 8px;text-align:left} td{padding:5px 8px;border-bottom:1px solid #eee} tr:nth-child(even){background:#f8f8f8} h1{color:#003366;font-size:14px;margin-bottom:4px}</style>
       </head><body>
       <h1>PGC - Plano Geral de Contas</h1><p style="font-size:9px;color:#666">Emitido em: ${new Date().toLocaleString('pt-PT')}</p>
-      <table><thead><tr><th>Conta</th><th>Tipo</th><th>DescriÃ§Ã£o</th><th>JustificaÃ§Ã£o</th><th>Layout</th></tr></thead>
+      <table><thead><tr><th>Conta</th><th>Tipo</th><th>Descrição</th><th>Justificação</th><th>Layout</th></tr></thead>
       <tbody>${filteredAccounts.map(acc => `<tr><td>${acc.id||acc.conta||''}</td><td>${acc.type||acc.tipo||''}</td><td>${acc.description||acc.descricao||''}</td><td>${acc.justification||''}</td><td>${acc.layout||''}</td></tr>`).join('')}</tbody>
       </table></body></html>`;
     const w = window.open('', '_blank'); if (!w) return;
@@ -21715,7 +21715,7 @@ const PGCModule = ({ onBack }: { onBack: () => void }) => {
               <th className="px-6 py-4 w-32">Conta</th>
               <th className="px-6 py-4 w-24">Tipo</th>
               <th className="px-6 py-4">Descricao</th>
-              <th className="px-6 py-4 w-48">JustificaÃ§Ã£o</th>
+              <th className="px-6 py-4 w-48">Justificação</th>
               <th className="px-6 py-4 w-32">Layout</th>
               <th className="px-6 py-4 text-center w-24">OpÃ§Ãµes</th>
             </tr>
@@ -21873,7 +21873,7 @@ const PGCModule = ({ onBack }: { onBack: () => void }) => {
 
                   {formData.type.startsWith('analitica') && (
                     <div className="space-y-2">
-                       <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">ConfiguraÃ§Ã£o Contabilidade AnalÃ­tica</label>
+                       <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Configuração Contabilidade AnalÃ­tica</label>
                        <input 
                          type="text" 
                          className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm focus:border-[#003366] outline-none" 
@@ -21885,7 +21885,7 @@ const PGCModule = ({ onBack }: { onBack: () => void }) => {
                   )}
 
                   <div className="space-y-2 md:col-span-2">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">DescriÃ§Ã£o PGC da Conta</label>
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Descrição PGC da Conta</label>
                     <input 
                       type="text" 
                       className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm"
@@ -21895,7 +21895,7 @@ const PGCModule = ({ onBack }: { onBack: () => void }) => {
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">JustificaÃ§Ã£o da Conta</label>
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Justificação da Conta</label>
                     <input 
                       type="text" 
                       className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm"
@@ -21926,59 +21926,59 @@ const PGCModule = ({ onBack }: { onBack: () => void }) => {
 
 // Lista de Impostos Predefinidos Angolanos (Imagens do Utilizador)
 const PREDEFINED_TAXES_ANGOLA = [
-  "01A-01A - Imposto sobre AplicaÃ§Ã£o de Capitais - SecÃ§Ã£o A",
-  "01B-01B - Imposto sobre Rendimento do Trabalho do Grupo A - Conta de OutrÃ©m",
+  "01A-01A - Imposto sobre Aplicação de Capitais - SecÃ§Ã£o A",
+  "01B-01B - Imposto sobre Rendimento do Trabalho do Grupo A - Conta de Outrém",
   "01C-01C - Imposto Industrial - Regime Geral",
   "01D-01D - Imposto Especial de Jogo - Receita Bruta - Casino",
   "01E-01E - Imposto sobre Rendimento do PetrÃ³leo",
   "01F-01F - Imposto Perdial sobre a DetenÃ§Ã£o",
-  "01G-01G - Imposto sobre Veiculos Motorizados - AutomÃ³veis Ligeiros",
-  "01H-01H - Imposto sobre a ProduÃ§Ã£o de PetrÃ³leo",
+  "01G-01G - Imposto sobre Veiculos Motorizados - Automóveis Ligeiros",
+  "01H-01H - Imposto sobre a Produção de PetrÃ³leo",
   "01I-01I - Imposto sobre o Valor Acrescentado - Cativo",
-  "01J-01J - Imposto Especial de Consumo â€“ Aeronaves e EmbarcaÃ§Ãµes de Recreio",
-  "01K-01K - Imposto sobre a ExportaÃ§Ã£o",
+  "01J-01J - Imposto Especial de Consumo â€“ Aeronaves e Embarcações de Recreio",
+  "01K-01K - Imposto sobre a Exportação",
   "01L-01L - Imposto de Selo - contrato de Arrendamento",
   "01M-01M - Taxa do GÃ¡s (LNG)",
   "01N-01N - Custas de ExecuÃ§Ãµes Fisicais",
   "01O-01O - Emolumentos",
-  "01P-01P - Multas Fiscais pela nÃ£o Entrega da DeclaraÃ§Ã£o",
+  "01P-01P - Multas Fiscais pela não Entrega da Declaração",
   "01Q-01Q -ContribuiÃ§Ãµes para o Fundo de Desenvolvimento Mineiro",
   "01R-01R - Rendas de Casa",
-  "01S-01S - Receitas de ServiÃ§os Comerciais, Registos e Notariado",
-  "01T-01T - DoaÃ§Ãµes e Ajudas Internacionais Diversas",
-  "01U-01U - AlienaÃ§Ã£o de ParticipaÃ§Ã£o",
-  "01Y-01Y - ReversÃ£o de Saldo Anteriores Apurados",
-  "02A-02A - Imposto sobre AplicaÃ§Ã£o de Capitais - SecÃ§Ã£o B - TÃ­tulos do Banco Central",
+  "01S-01S - Receitas de Serviços Comerciais, Registos e Notariado",
+  "01T-01T - Doações e Ajudas Internacionais Diversas",
+  "01U-01U - Alienação de Participação",
+  "01Y-01Y - Reversão de Saldo Anteriores Apurados",
+  "02A-02A - Imposto sobre Aplicação de Capitais - SecÃ§Ã£o B - TÃ­tulos do Banco Central",
   "02B-02B - Imposto sobre Rendimento do Trabalho do Grupo B - Conta PrÃ³pria",
   "02C-02C - Imposto Industrial - Regime Simplificado",
   "02D-02D - Imposto Especial de Jogo - Apostas mÃºtuas Desportivas - Totobola",
-  "02E-02E - Imposto sobre TransaÃ§Ãµes de PetrÃ³leo",
+  "02E-02E - Imposto sobre Transações de PetrÃ³leo",
   "02F-02F - Imposto Perdial sobre TransmissÃµes Onerosas",
-  "02G-02G - Imposto sobre Veiculos Motoziados - AutomÃ³veis Pesados",
-  "02H-02H - Imposto sobre a ProduÃ§Ã£o de PetrÃ³leo de Diamantes - Royalty",
-  "02I-02I - Imposto sobre o Valor Acrescentado - ImportaÃ§Ã£o",
+  "02G-02G - Imposto sobre Veiculos Motoziados - Automóveis Pesados",
+  "02H-02H - Imposto sobre a Produção de PetrÃ³leo de Diamantes - Royalty",
+  "02I-02I - Imposto sobre o Valor Acrescentado - Importação",
   "02J-02J - Imposto Especial de Consumo â€“ Ãlcool de Outras Bebidas Ãlcoolicas",
-  "02K-02K - Imposto sobre a ImportaÃ§Ã£o",
-  "02L-02L - Imposto de Selo - OperaÃ§Ãµes BancÃ¡rias",
+  "02K-02K - Imposto sobre a Importação",
+  "02L-02L - Imposto de Selo - Operações BancÃ¡rias",
   "02M-02M - Taxa de Superficie de Diamantes",
   "02N-02N - Custas Judiciais",
   "02O-02O - LeilÃµes",
-  "02P-02P - Multas Fiscais pelo nÃ£o Pagamento da PrestaÃ§Ã£o da Divida TributÃ¡ria",
-  "02Q-02Q - ContribuiÃ§Ãµes para FormaÃ§Ã£o de Quadros Angolanos",
+  "02P-02P - Multas Fiscais pelo não Pagamento da Prestação da Divida TributÃ¡ria",
+  "02Q-02Q - ContribuiÃ§Ãµes para Formação de Quadros Angolanos",
   "02R-02R - Rendas de Superficie de PetrÃ³leo",
-  "02S-02S - Receitas de ServiÃ§os Consulares",
-  "02T-02T - IndemnizaÃ§Ãµes e RestituiÃ§Ãµes",
-  "02U-02U - AlienaÃ§Ã£o de HabitaÃ§Ã£o",
-  "03A-03A - Imposto sobre AplicaÃ§Ã£o de Capitais - SecÃ§Ã£o B - Bilhetes e ObrigaÃ§Ãµes do Tesouro",
+  "02S-02S - Receitas de Serviços Consulares",
+  "02T-02T - Indemnizações e RestituiÃ§Ãµes",
+  "02U-02U - Alienação de Habitação",
+  "03A-03A - Imposto sobre Aplicação de Capitais - SecÃ§Ã£o B - Bilhetes e Obrigações do Tesouro",
   "03B-03B - Imposto sobre Rendimento do Trabalho do Grupo C - Industriais e Comerciais",
   "03C-03C - Imposto industrial - RetenÃ§Ã£o na Fonte - Residentes",
   "03D-03D - Imposto Especial de Jogo - Apostas MÃºtuas Desportivas - Totoloto",
   "03F-03F - Imposto Perdial sobre TransmissÃµes Gratuitas",
   "03G-03G - Imposto sobre Veiculos Motoziados - Motociclos, Clitomotores, Triciclos e Quadriciclos",
-  "03H-03H - Imposto sobre a ProduÃ§Ã£o de PetrÃ³leo de Ouro - Royalty",
+  "03H-03H - Imposto sobre a Produção de PetrÃ³leo de Ouro - Royalty",
   "03I-03I - Imposto sobre o Valor Acrescentado - Regime Geral",
   "03J-03J - Imposto Especial de Consumo - Armas de Fogo",
-  "03L-03L - Imposto de Selo - Recibo de QuitaÃ§Ã£o",
+  "03L-03L - Imposto de Selo - Recibo de Quitação",
   "03M-03M - Taxa Estatistica"
 ];
 
@@ -22039,7 +22039,7 @@ const ContasPagImpostosModule = ({ onBack }: { onBack: () => void }) => {
     fetchPgcAccounts();
   }, [user?.empresa_id]);
 
-  // Ao selecionar um imposto prÃ©-definido, adiciona DIRETAMENTE na tabela/Supabase sem abrir formulÃ¡rio
+  // Ao selecionar um imposto pré-definido, adiciona DIRETAMENTE na tabela/Supabase sem abrir formulÃ¡rio
   const handleImportPredefined = async (taxDesc: string) => {
     if (!taxDesc || !user?.empresa_id) return;
     setSelectedImportTax(taxDesc);
@@ -22054,7 +22054,7 @@ const ContasPagImpostosModule = ({ onBack }: { onBack: () => void }) => {
     else if (taxDesc.toLowerCase().includes('irt') || taxDesc.toLowerCase().includes('trabalho')) pgcAccount = '34.3';
     else if (taxDesc.toLowerCase().includes('selo')) pgcAccount = '34.02.04';
     else if (taxDesc.toLowerCase().includes('iva') || taxDesc.toLowerCase().includes('acrescentado')) pgcAccount = '34.5.3';
-    else if (taxDesc.toLowerCase().includes('seguranÃ§a social') || taxDesc.toLowerCase().includes('inss')) pgcAccount = '34.9';
+    else if (taxDesc.toLowerCase().includes('segurança social') || taxDesc.toLowerCase().includes('inss')) pgcAccount = '34.9';
 
     try {
       const { error } = await supabase.from('contas_pag_impostos').insert([{
@@ -22077,7 +22077,7 @@ const ContasPagImpostosModule = ({ onBack }: { onBack: () => void }) => {
       }
       fetchTaxAccounts();
     } catch (e) {
-      console.error('Erro ao importar imposto prÃ©-definido:', e);
+      console.error('Erro ao importar imposto pré-definido:', e);
     } finally {
       setSelectedImportTax('');
     }
@@ -22178,15 +22178,15 @@ const ContasPagImpostosModule = ({ onBack }: { onBack: () => void }) => {
         </div>
       </div>
 
-      {/* Select: Importar Imposto PrÃ©-Definido (Adiciona diretamente Ã  lista na pÃ¡gina) */}
+      {/* Select: Importar Imposto Pré-Definido (Adiciona diretamente Ã  lista na página) */}
       <div className="space-y-1">
-        <label className="block text-zinc-600 font-bold text-[11px]">Importar Imposto PrÃ©-Definido</label>
+        <label className="block text-zinc-600 font-bold text-[11px]">Importar Imposto Pré-Definido</label>
         <select
           value={selectedImportTax}
           onChange={e => handleImportPredefined(e.target.value)}
           className="w-full border border-zinc-300 p-2 rounded-none bg-white text-zinc-800 font-medium focus:border-[#003366] outline-none cursor-pointer"
         >
-          <option value="">Importar Imposto PrÃ©-Definido</option>
+          <option value="">Importar Imposto Pré-Definido</option>
           {PREDEFINED_TAXES_ANGOLA.map((t, idx) => (
             <option key={idx} value={t}>{t}</option>
           ))}
@@ -22199,9 +22199,9 @@ const ContasPagImpostosModule = ({ onBack }: { onBack: () => void }) => {
           <thead>
             <tr className="border-b border-zinc-300 text-zinc-700 font-bold bg-zinc-50">
               <th className="px-4 py-2 border-r border-zinc-200 w-24">Cod</th>
-              <th className="px-4 py-2 border-r border-zinc-200">DescriÃ§Ã£o do Imposto</th>
+              <th className="px-4 py-2 border-r border-zinc-200">Descrição do Imposto</th>
               <th className="px-4 py-2 border-r border-zinc-200 w-48">Conta PGC</th>
-              <th className="px-4 py-2 text-center w-24">AÃ§Ãµes</th>
+              <th className="px-4 py-2 text-center w-24">Ações</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-200 font-medium">
@@ -22265,7 +22265,7 @@ const ContasPagImpostosModule = ({ onBack }: { onBack: () => void }) => {
                 </div>
 
                 <div>
-                  <label className="block text-zinc-600 mb-1 uppercase text-[10px]">DescriÃ§Ã£o do Imposto</label>
+                  <label className="block text-zinc-600 mb-1 uppercase text-[10px]">Descrição do Imposto</label>
                   <input
                     type="text"
                     className="w-full border border-zinc-300 p-2 focus:border-[#003366] outline-none"
@@ -22297,7 +22297,7 @@ const ContasPagImpostosModule = ({ onBack }: { onBack: () => void }) => {
                         <option value="34.3">34.3 - IRT por conta de outrem</option>
                         <option value="34.02.04">34.02.04 - Imposto de Selo - Outros</option>
                         <option value="34.5.3">34.5.3 - IVA Liquidado</option>
-                        <option value="34.9">34.9 - SeguranÃ§a Social (INSS)</option>
+                        <option value="34.9">34.9 - Segurança Social (INSS)</option>
                       </>
                     )}
                   </select>
@@ -22401,7 +22401,7 @@ const TaxPaymentsModule = ({ onBack, companyData }: { onBack: () => void; compan
     else if (taxDesc.toLowerCase().includes('irt') || taxDesc.toLowerCase().includes('trabalho')) pgcAccount = '34.3';
     else if (taxDesc.toLowerCase().includes('selo')) pgcAccount = '34.02.04';
     else if (taxDesc.toLowerCase().includes('iva') || taxDesc.toLowerCase().includes('acrescentado')) pgcAccount = '34.5.3';
-    else if (taxDesc.toLowerCase().includes('seguranÃ§a social') || taxDesc.toLowerCase().includes('inss')) pgcAccount = '34.9';
+    else if (taxDesc.toLowerCase().includes('segurança social') || taxDesc.toLowerCase().includes('inss')) pgcAccount = '34.9';
 
     try {
       const { data, error } = await supabase.from('contas_pag_impostos').insert([{
@@ -22429,7 +22429,7 @@ const TaxPaymentsModule = ({ onBack, companyData }: { onBack: () => void; compan
         return fallback?.id || null;
       }
     } catch (e) {
-      console.error('Erro ao auto-importar imposto prÃ©-definido:', e);
+      console.error('Erro ao auto-importar imposto pré-definido:', e);
       return null;
     }
   };
@@ -22439,7 +22439,7 @@ const TaxPaymentsModule = ({ onBack, companyData }: { onBack: () => void; compan
     fetchTaxAccounts();
   }, [user?.empresa_id]);
 
-  // Quando o utilizador escolhe o Tipo de Imposto no dropdown, preenche automaticamente o campo DescriÃ§Ã£o
+  // Quando o utilizador escolhe o Tipo de Imposto no dropdown, preenche automaticamente o campo Descrição
   const handleSelectTaxType = (taxId: string) => {
     setSelectedTaxId(taxId);
     const found = taxAccounts.find((t: any) => String(t.id) === String(taxId) || t.cod === taxId);
@@ -22450,7 +22450,7 @@ const TaxPaymentsModule = ({ onBack, companyData }: { onBack: () => void; compan
         descricao: found.descricao || prev.descricao
       }));
     } else if (taxId) {
-      // Ã‰ uma string de imposto prÃ©-definido (nÃ£o importada ainda)
+      // Ã‰ uma string de imposto pré-definido (não importada ainda)
       const codeMatch = taxId.match(/^([A-Z0-9]+)/i);
       const extractedCod = codeMatch ? codeMatch[1] : 'IMP';
       setFormData(prev => ({
@@ -22463,11 +22463,11 @@ const TaxPaymentsModule = ({ onBack, companyData }: { onBack: () => void; compan
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user?.empresa_id) { alert('SessÃ£o invÃ¡lida. FaÃ§a login novamente.'); return; }
+    if (!user?.empresa_id) { alert('Sessão invÃ¡lida. Faça login novamente.'); return; }
     if (!formData.descricao) { alert('Selecione o tipo de imposto.'); return; }
     if (!formData.valor || parseFloat(formData.valor) <= 0) { alert('Insira um valor vÃ¡lido.'); return; }
     try {
-      // 1. Se for imposto prÃ©-definido, garantir a importaÃ§Ã£o antes de criar o pagamento
+      // 1. Se for imposto pré-definido, garantir a importação antes de criar o pagamento
       let finalTaxId = selectedTaxId;
       const isPredefinedString = PREDEFINED_TAXES_ANGOLA.includes(selectedTaxId);
       if (isPredefinedString) {
@@ -22537,7 +22537,7 @@ const TaxPaymentsModule = ({ onBack, companyData }: { onBack: () => void; compan
     }
   };
 
-  // â”€â”€ gestÃ£o de ficheiros por pagamento (Supabase media_arquivos) â”€â”€
+  // â”€â”€ gestão de ficheiros por pagamento (Supabase media_arquivos) â”€â”€
   const [docFiles, setDocFiles] = React.useState<Record<string, { url: string; name: string; type: string; mediaId?: string; storagePath?: string }>>({});
   const [docPreview, setDocPreview] = React.useState<{ url: string; name: string; type: string; paymentId: string } | null>(null);
   const docInputRefs = React.useRef<Record<string, HTMLInputElement | null>>({});
@@ -22576,7 +22576,7 @@ const TaxPaymentsModule = ({ onBack, companyData }: { onBack: () => void; compan
   }, [user?.empresa_id]);
 
   const handleDocUpload = async (pid: string, file: File) => {
-    if (!user?.empresa_id) { alert('SessÃ£o invÃ¡lida.'); return; }
+    if (!user?.empresa_id) { alert('Sessão invÃ¡lida.'); return; }
     try {
       const fileExt = file.name.split('.').pop();
       const safeName = file.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9._-]/g, '_');
@@ -22667,7 +22667,7 @@ const TaxPaymentsModule = ({ onBack, companyData }: { onBack: () => void; compan
             </button>
             <div>
               <span className="font-black text-[#003366] text-sm uppercase tracking-tight">Pagamento de Impostos</span>
-              <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest leading-none mt-0.5">HistÃ³rico de Pagamentos de Impostos</p>
+              <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest leading-none mt-0.5">Histórico de Pagamentos de Impostos</p>
             </div>
           </div>
           <button onClick={() => setSubTab('contas')} className="bg-[#003366] hover:bg-[#002244] text-white px-4 py-2 flex items-center gap-2 font-bold text-xs transition-all cursor-pointer">
@@ -22695,7 +22695,7 @@ const TaxPaymentsModule = ({ onBack, companyData }: { onBack: () => void; compan
               <th className="px-3 py-2.5 border-r border-zinc-200 w-16">Cod</th>
               <th className="px-3 py-2.5 border-r border-zinc-200 w-24">Data</th>
               <th className="px-3 py-2.5 border-r border-zinc-200 w-24">Data Valor</th>
-              <th className="px-3 py-2.5 border-r border-zinc-200" style={{ minWidth: 300 }}>DescriÃ§Ã£o</th>
+              <th className="px-3 py-2.5 border-r border-zinc-200" style={{ minWidth: 300 }}>Descrição</th>
               <th className="px-3 py-2.5 border-r border-zinc-200 w-36">Caixa</th>
               <th className="px-3 py-2.5 border-r border-zinc-200 w-36">Doc Suporte</th>
               <th className="px-3 py-2.5 border-r border-zinc-200 w-16 text-center">Moeda</th>
@@ -22804,7 +22804,7 @@ const TaxPaymentsModule = ({ onBack, companyData }: { onBack: () => void; compan
                     onChange={e => handleSelectTaxType(e.target.value)}
                     className="w-full border border-zinc-300 p-2 font-bold text-zinc-800 focus:border-[#003366] outline-none bg-white cursor-pointer"
                   >
-                    <option value="">-- Selecionar Imposto Registado ou PrÃ©-Definido --</option>
+                    <option value="">-- Selecionar Imposto Registado ou Pré-Definido --</option>
                     {taxAccounts.length > 0 && (
                       <optgroup label="Impostos Registados / Importados">
                         {taxAccounts.map((t: any) => (
@@ -22814,7 +22814,7 @@ const TaxPaymentsModule = ({ onBack, companyData }: { onBack: () => void; compan
                         ))}
                       </optgroup>
                     )}
-                    <optgroup label="Impostos PrÃ©-Definidos (Importar Automaticamente)">
+                    <optgroup label="Impostos Pré-Definidos (Importar Automaticamente)">
                       {PREDEFINED_TAXES_ANGOLA.map((t: string, idx: number) => {
                         const codeMatch = t.match(/^([A-Z0-9]+)/i);
                         const extractedCod = codeMatch ? codeMatch[1] : '';
@@ -22831,9 +22831,9 @@ const TaxPaymentsModule = ({ onBack, companyData }: { onBack: () => void; compan
                   </select>
                 </div>
 
-                {/* DescriÃ§Ã£o â€” campo largo com texto maior */}
+                {/* Descrição â€” campo largo com texto maior */}
                 <div>
-                  <label className="block font-bold text-zinc-600 mb-1 uppercase text-[10px]">DescriÃ§Ã£o do Imposto <span className="text-red-500">*</span></label>
+                  <label className="block font-bold text-zinc-600 mb-1 uppercase text-[10px]">Descrição do Imposto <span className="text-red-500">*</span></label>
                   <input type="text"
                     className="w-full border-2 border-zinc-300 p-2.5 focus:border-[#003366] outline-none text-[13px] font-semibold text-zinc-800 bg-zinc-50"
                     value={formData.descricao}
@@ -22858,9 +22858,9 @@ const TaxPaymentsModule = ({ onBack, companyData }: { onBack: () => void; compan
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                  {/* Caixa / Banco de SaÃ­da */}
+                  {/* Caixa / Banco de Saída */}
                   <div>
-                    <label className="block font-bold text-zinc-600 mb-1 uppercase text-[10px]">Caixa / Banco de SaÃ­da</label>
+                    <label className="block font-bold text-zinc-600 mb-1 uppercase text-[10px]">Caixa / Banco de Saída</label>
                     <select
                       value={formData.caixa_nome}
                       onChange={e => setFormData({ ...formData, caixa_nome: e.target.value })}
@@ -22891,7 +22891,7 @@ const TaxPaymentsModule = ({ onBack, companyData }: { onBack: () => void; compan
                 </div>
 
                 <div>
-                  <label className="block font-bold text-zinc-600 mb-1 uppercase text-[10px]">NÂº Doc Suporte / Recibo QuitaÃ§Ã£o</label>
+                  <label className="block font-bold text-zinc-600 mb-1 uppercase text-[10px]">NÂº Doc Suporte / Recibo Quitação</label>
                   <input type="text" className="w-full border border-zinc-300 p-2.5 focus:border-[#003366] outline-none" value={formData.doc_suporte} onChange={e => setFormData({ ...formData, doc_suporte: e.target.value })} placeholder="Ex: 250106290179232" />
                 </div>
 
@@ -23047,7 +23047,7 @@ const DeleteMovementsModule = ({ onBack }: { onBack: () => void }) => {
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1 border border-zinc-300 px-2 py-1 bg-zinc-50 shadow-2xs">
             <FileCheck size={18} className="text-emerald-600" />
-            <span className="text-[10px] font-bold text-zinc-600 uppercase">ValidaÃ§Ã£o</span>
+            <span className="text-[10px] font-bold text-zinc-600 uppercase">Validação</span>
           </div>
           <div className="flex items-center gap-1 border border-zinc-300 px-2 py-1 bg-zinc-50 shadow-2xs">
             <Calendar size={18} className="text-emerald-600" />
@@ -23111,7 +23111,7 @@ const DeleteMovementsModule = ({ onBack }: { onBack: () => void }) => {
           </div>
 
           <div className="text-right">
-            <span className="font-bold text-zinc-600 block text-[11px]">Total DÃ©bitos</span>
+            <span className="font-bold text-zinc-600 block text-[11px]">Total Débitos</span>
             <span className="font-mono font-bold text-zinc-900 text-xs">{formatCurrency(totalDebitos).replace('AOA', '').trim()}</span>
           </div>
 
@@ -23168,7 +23168,7 @@ const DeleteMovementsModule = ({ onBack }: { onBack: () => void }) => {
               <th className="px-3 py-2 border-r border-zinc-200 w-24">Mov NÂº / Conta</th>
               <th className="px-3 py-2 border-r border-zinc-200 w-20">Data Valor</th>
               <th className="px-3 py-2 border-r border-zinc-200 w-24">Data Documento</th>
-              <th className="px-3 py-2 border-r border-zinc-200">DescriÃ§Ã£o do Movimento / Nomenclatura Conta</th>
+              <th className="px-3 py-2 border-r border-zinc-200">Descrição do Movimento / Nomenclatura Conta</th>
               <th className="px-3 py-2 border-r border-zinc-200 text-right w-28">Debito</th>
               <th className="px-3 py-2 border-r border-zinc-200 text-right w-28">Credito</th>
               <th className="px-3 py-2 text-right w-28">Saldo</th>
@@ -23197,7 +23197,7 @@ const DeleteMovementsModule = ({ onBack }: { onBack: () => void }) => {
                       <td className="px-3 py-2 border-r border-zinc-200 font-bold text-[#003366] text-xs">{m.origem_id || String(m.id).slice(0, 8)}</td>
                       <td className="px-3 py-2 border-r border-zinc-200 font-mono text-zinc-700 text-xs">{m.data_lancamento || '---'}</td>
                       <td className="px-3 py-2 border-r border-zinc-200 font-mono text-zinc-700 text-xs">{m.data_lancamento || '---'}</td>
-                      <td className="px-3 py-2 border-r border-zinc-200 font-bold text-zinc-900 text-xs">{m.descricao || m.descricao_lancamento || 'Movimento ContabilÃ­stico'}</td>
+                      <td className="px-3 py-2 border-r border-zinc-200 font-bold text-zinc-900 text-xs">{m.descricao || m.descricao_lancamento || 'Movimento Contabilistico'}</td>
                       <td className="px-3 py-2 border-r border-zinc-200 text-right font-mono font-bold text-zinc-900 text-xs">
                         {formatCurrency(m.debito || 0).replace('AOA', '').trim()}
                       </td>
@@ -23377,19 +23377,19 @@ const VatSettlementModule = ({ onBack, companyData, invoices = [], purchases = [
   const computedDifference = computedLiquidated - computedDeductible;
 
   const saldosPeriodoList = (data.saldosPeriodo && data.saldosPeriodo.length > 0) ? data.saldosPeriodo : [
-    { conta: '34.5.1.1', descricao: 'IVA Suportado - ExistÃªncias / Imobilizado / ServiÃ§os', debito: computedDeductible, credito: 0, saldoDebito: computedDeductible, saldoCredito: 0 },
-    { conta: '34.5.2.1', descricao: 'IVA DedutÃ­vel - ExistÃªncias / Imobilizado / ServiÃ§os', debito: computedDeductible, credito: 0, saldoDebito: computedDeductible, saldoCredito: 0 },
-    { conta: '34.5.3.1', descricao: 'IVA Liquidado - OperaÃ§Ãµes Gerais (Taxa 14%)', debito: 0, credito: computedLiquidated, saldoDebito: 0, saldoCredito: 0 },
-    { conta: '34.5.4.1', descricao: 'IVA RegularizaÃ§Ãµes (A Favor do Estado / A Favor do Sujeito Passivo)', debito: 0, credito: 0, saldoDebito: 0, saldoCredito: 0 },
+    { conta: '34.5.1.1', descricao: 'IVA Suportado - ExistÃªncias / Imobilizado / Serviços', debito: computedDeductible, credito: 0, saldoDebito: computedDeductible, saldoCredito: 0 },
+    { conta: '34.5.2.1', descricao: 'IVA DedutÃ­vel - ExistÃªncias / Imobilizado / Serviços', debito: computedDeductible, credito: 0, saldoDebito: computedDeductible, saldoCredito: 0 },
+    { conta: '34.5.3.1', descricao: 'IVA Liquidado - Operações Gerais (Taxa 14%)', debito: 0, credito: computedLiquidated, saldoDebito: 0, saldoCredito: 0 },
+    { conta: '34.5.4.1', descricao: 'IVA Regularizações (A Favor do Estado / A Favor do Sujeito Passivo)', debito: 0, credito: 0, saldoDebito: 0, saldoCredito: 0 },
     { conta: '34.5.5.1', descricao: 'Apuramento do IVA do PerÃ­odo', debito: computedDeductible, credito: computedLiquidated, saldoDebito: computedDifference < 0 ? Math.abs(computedDifference) : 0, saldoCredito: computedDifference > 0 ? computedDifference : 0 },
-    { conta: '34.5.6.1', descricao: computedDifference > 0 ? 'IVA a Pagar ao Estado' : 'CrÃ©dito de Imposto a Transportar / Recuperar', debito: computedDifference < 0 ? Math.abs(computedDifference) : 0, credito: computedDifference > 0 ? computedDifference : 0, saldoDebito: computedDifference < 0 ? Math.abs(computedDifference) : 0, saldoCredito: computedDifference > 0 ? computedDifference : 0 }
+    { conta: '34.5.6.1', descricao: computedDifference > 0 ? 'IVA a Pagar ao Estado' : 'Crédito de Imposto a Transportar / Recuperar', debito: computedDifference < 0 ? Math.abs(computedDifference) : 0, credito: computedDifference > 0 ? computedDifference : 0, saldoDebito: computedDifference < 0 ? Math.abs(computedDifference) : 0, saldoCredito: computedDifference > 0 ? computedDifference : 0 }
   ];
 
   const apuramentoMovimentosList = (data.apuramentoMovimentos && data.apuramentoMovimentos.length > 0) ? data.apuramentoMovimentos : [
     { conta: '34.5.3.1', descricao: 'IVA Liquidado (TransferÃªncia para Apuramento)', debito: computedLiquidated, credito: 0 },
     { conta: '34.5.2.1', descricao: 'IVA DedutÃ­vel (TransferÃªncia para Apuramento)', debito: 0, credito: computedDeductible },
     { conta: '34.5.5.1', descricao: 'Apuramento do IVA (Saldo do PerÃ­odo)', debito: computedDifference > 0 ? computedDifference : 0, credito: computedDifference < 0 ? Math.abs(computedDifference) : 0 },
-    { conta: computedDifference > 0 ? '34.5.6.1' : '34.5.7.1', descricao: computedDifference > 0 ? 'TransferÃªncia para IVA a Pagar' : 'TransferÃªncia para CrÃ©dito de Imposto', debito: 0, credito: Math.abs(computedDifference) }
+    { conta: computedDifference > 0 ? '34.5.6.1' : '34.5.7.1', descricao: computedDifference > 0 ? 'TransferÃªncia para IVA a Pagar' : 'TransferÃªncia para Crédito de Imposto', debito: 0, credito: Math.abs(computedDifference) }
   ];
 
   const totaisDebito = apuramentoMovimentosList.reduce((acc: number, row: any) => acc + (row.debito || 0), 0);
@@ -23419,7 +23419,7 @@ const VatSettlementModule = ({ onBack, companyData, invoices = [], purchases = [
           <button onClick={() => window.print()} className="p-1.5 border border-zinc-300 text-zinc-600 hover:bg-zinc-100" title="Imprimir">
             <Printer size={14} /> Imprimir
           </button>
-          <button onClick={handleExportCSV} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] uppercase flex items-center gap-1.5 rounded-xs shadow-xs" title="Baixar relatÃ³rio em Excel">
+          <button onClick={handleExportCSV} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] uppercase flex items-center gap-1.5 rounded-xs shadow-xs" title="Baixar relatório em Excel">
             <FileSpreadsheet size={14} /> Baixar Excel
           </button>
           <button onClick={() => window.print()} className="px-3 py-1.5 bg-blue-900 hover:bg-blue-950 text-white font-bold text-[10px] uppercase flex items-center gap-1.5 rounded-xs shadow-xs" title="Baixar PDF">
@@ -23449,9 +23449,9 @@ const VatSettlementModule = ({ onBack, companyData, invoices = [], purchases = [
         BApuramento de IVAEmitido em {new Date().toLocaleDateString('pt-PT')} {new Date().toLocaleTimeString('pt-PT')}
       </div>
 
-      {/* SecÃ§Ã£o 1: CÃ¡lculo de Saldos do PerÃ­odo (Imagem 2) */}
+      {/* SecÃ§Ã£o 1: Cálculo de Saldos do PerÃ­odo (Imagem 2) */}
       <div className="space-y-2">
-        <h4 className="text-xs font-bold text-blue-600 uppercase border-b border-blue-600 pb-1">CÃ¡lculo de Saldos do PerÃ­odo</h4>
+        <h4 className="text-xs font-bold text-blue-600 uppercase border-b border-blue-600 pb-1">Cálculo de Saldos do PerÃ­odo</h4>
         <table className="w-full text-left text-[11px] border-collapse">
           <thead>
             <tr className="border-b border-zinc-400 text-zinc-700 font-bold">
@@ -23463,8 +23463,8 @@ const VatSettlementModule = ({ onBack, companyData, invoices = [], purchases = [
             </tr>
             <tr className="text-zinc-500 text-[10px] border-b border-zinc-200">
               <th colSpan={4}></th>
-              <th className="py-1 text-right w-28">DÃ©bito</th>
-              <th className="py-1 text-right w-28">CrÃ©dito</th>
+              <th className="py-1 text-right w-28">Débito</th>
+              <th className="py-1 text-right w-28">Crédito</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-100 font-medium">
@@ -23587,9 +23587,9 @@ const DiariosManagementModule = ({ onBack }: { onBack: () => void }) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user?.empresa_id) { showToast('SessÃ£o invÃ¡lida. FaÃ§a login novamente.', 'error'); return; }
-    if (!formData.codigo.trim()) { showToast('O cÃ³digo do diÃ¡rio Ã© obrigatÃ³rio.', 'error'); return; }
-    if (!formData.descricao.trim()) { showToast('A descriÃ§Ã£o Ã© obrigatÃ³ria.', 'error'); return; }
+    if (!user?.empresa_id) { showToast('Sessão invÃ¡lida. Faça login novamente.', 'error'); return; }
+    if (!formData.codigo.trim()) { showToast('O cÃ³digo do diÃ¡rio é obrigatório.', 'error'); return; }
+    if (!formData.descricao.trim()) { showToast('A descrição é obrigatÃ³ria.', 'error'); return; }
 
     setSubmitting(true);
     try {
@@ -23690,8 +23690,8 @@ const DiariosManagementModule = ({ onBack }: { onBack: () => void }) => {
             <ChevronLeft size={24} />
           </button>
           <div>
-            <h2 className="text-xl font-black text-[#003366] uppercase tracking-tighter">GestÃ£o de DiÃ¡rios ContabilÃ­sticos</h2>
-            <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">Base de Dados Supabase â€¢ Multi-Tenant</p>
+            <h2 className="text-xl font-black text-[#003366] uppercase tracking-tighter">Gestão de DiÃ¡rios Contabilisticos</h2>
+            <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">Base de Dados Supabase • Multi-Tenant</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -23721,7 +23721,7 @@ const DiariosManagementModule = ({ onBack }: { onBack: () => void }) => {
           <thead>
             <tr className="text-zinc-500 border-b border-zinc-200 bg-zinc-50">
               <th className="px-6 py-3 w-28">CÃ³digo</th>
-              <th className="px-6 py-3">DescriÃ§Ã£o do DiÃ¡rio</th>
+              <th className="px-6 py-3">Descrição do DiÃ¡rio</th>
               <th className="px-6 py-3 w-40">Tipo</th>
               <th className="px-6 py-3 w-28 text-center">Estado</th>
               <th className="px-6 py-3 text-center w-28">OpÃ§Ãµes</th>
@@ -23729,9 +23729,9 @@ const DiariosManagementModule = ({ onBack }: { onBack: () => void }) => {
           </thead>
           <tbody className="divide-y divide-zinc-100">
             {loading ? (
-              <tr><td colSpan={5} className="py-12 text-center text-zinc-400 italic">A carregar diÃ¡rios contabilÃ­sticos...</td></tr>
+              <tr><td colSpan={5} className="py-12 text-center text-zinc-400 italic">A carregar diÃ¡rios contabilisticos...</td></tr>
             ) : diarios.length === 0 ? (
-              <tr><td colSpan={5} className="py-12 text-center text-zinc-400 italic">Nenhum diÃ¡rio registado. Clique em "Novo DiÃ¡rio" para comeÃ§ar.</td></tr>
+              <tr><td colSpan={5} className="py-12 text-center text-zinc-400 italic">Nenhum diÃ¡rio registado. Clique em "Novo DiÃ¡rio" para começar.</td></tr>
             ) : diarios.map((d: any) => (
               <tr key={d.id} className="hover:bg-zinc-50 transition-colors">
                 <td className="px-6 py-3 text-[#003366] font-mono font-black">{d.codigo}</td>
@@ -23780,7 +23780,7 @@ const DiariosManagementModule = ({ onBack }: { onBack: () => void }) => {
                   />
                 </div>
                 <div>
-                  <label className="block text-zinc-500 mb-1 uppercase text-[10px]">DescriÃ§Ã£o <span className="text-red-500">*</span></label>
+                  <label className="block text-zinc-500 mb-1 uppercase text-[10px]">Descrição <span className="text-red-500">*</span></label>
                   <input
                     type="text"
                     className="w-full border border-zinc-200 p-2.5 focus:border-[#003366] outline-none"
@@ -23797,8 +23797,8 @@ const DiariosManagementModule = ({ onBack }: { onBack: () => void }) => {
                     <option value="Compras">Compras</option>
                     <option value="Caixa">Caixa</option>
                     <option value="Bancos">Bancos</option>
-                    <option value="SalÃ¡rios">SalÃ¡rios</option>
-                    <option value="Geral">Geral / OperaÃ§Ãµes Diversas</option>
+                    <option value="Salários">Salários</option>
+                    <option value="Geral">Geral / Operações Diversas</option>
                     <option value="Apuramentos">Apuramentos / Abertura</option>
                   </select>
                 </div>
@@ -23847,7 +23847,7 @@ const BalanceteRazaoModule = ({ onBack, companyData, fiscalYear }: { onBack: () 
         .order('conta_pgc', { ascending: true });
       setLancamentos(data || []);
     } catch (e) {
-      console.error('Erro ao carregar lanÃ§amentos:', e);
+      console.error('Erro ao carregar lançamentos:', e);
     } finally {
       setLoading(false);
     }
@@ -23910,7 +23910,7 @@ const BalanceteRazaoModule = ({ onBack, companyData, fiscalYear }: { onBack: () 
           <button onClick={() => window.print()} className="w-10 h-10 rounded-full bg-gradient-to-tr from-green-600 to-lime-400 text-white shadow flex items-center justify-center border-2 border-white hover:brightness-110">
             <Printer size={16} />
           </button>
-          <button onClick={() => { try { const wb = (window as any).XLSX?.utils?.book_new?.(); if (!wb) throw new Error('XLSX not available'); alert('Exportar XLSX â€” funcionalidade disponÃ­vel com XLSX.js'); } catch(e) { window.print(); } }} className="px-3 py-2 bg-[#1D6F42] text-white text-[10px] font-black uppercase tracking-wider hover:bg-[#155232] flex items-center gap-1">
+          <button onClick={() => { try { const wb = (window as any).XLSX?.utils?.book_new?.(); if (!wb) throw new Error('XLSX not available'); alert('Exportar XLSX â€” funcionalidade disponível com XLSX.js'); } catch(e) { window.print(); } }} className="px-3 py-2 bg-[#1D6F42] text-white text-[10px] font-black uppercase tracking-wider hover:bg-[#155232] flex items-center gap-1">
             XLSX
           </button>
         </div>
@@ -23922,7 +23922,7 @@ const BalanceteRazaoModule = ({ onBack, companyData, fiscalYear }: { onBack: () 
         <div className="grid grid-cols-2 mb-2 text-sm">
           <div>
             <div className="font-black text-zinc-800 underline">Balancete RazÃ£o da Firma:</div>
-            <div className="font-black text-zinc-700 underline">PerÃ­odo ContabilÃ­stico</div>
+            <div className="font-black text-zinc-700 underline">PerÃ­odo Contabilistico</div>
             <div className="text-zinc-600">de Janeiro a Dezembro â€” {year}</div>
           </div>
           <div className="text-right">
@@ -23939,24 +23939,24 @@ const BalanceteRazaoModule = ({ onBack, companyData, fiscalYear }: { onBack: () 
             <thead>
               <tr className="bg-zinc-50 border-b border-zinc-200">
                 <th className="p-2 text-left border-r border-zinc-200 w-16">Conta</th>
-                <th className="p-2 text-left border-r border-zinc-200">DescriÃ§Ã£o</th>
+                <th className="p-2 text-left border-r border-zinc-200">Descrição</th>
                 <th colSpan={2} className="p-2 text-center border-r border-zinc-200 bg-zinc-100">Movimentos do PerÃ­odo</th>
                 <th colSpan={2} className="p-2 text-center bg-zinc-100">Saldo</th>
               </tr>
               <tr className="bg-zinc-50 border-b-2 border-zinc-300 text-zinc-500 uppercase text-[9px]">
                 <th className="p-2 border-r border-zinc-200"></th>
                 <th className="p-2 border-r border-zinc-200"></th>
-                <th className="p-2 text-right border-r border-zinc-200">DÃ©bito</th>
-                <th className="p-2 text-right border-r border-zinc-200">CrÃ©dito</th>
-                <th className="p-2 text-right border-r border-zinc-200">DÃ©bito</th>
-                <th className="p-2 text-right">CrÃ©dito</th>
+                <th className="p-2 text-right border-r border-zinc-200">Débito</th>
+                <th className="p-2 text-right border-r border-zinc-200">Crédito</th>
+                <th className="p-2 text-right border-r border-zinc-200">Débito</th>
+                <th className="p-2 text-right">Crédito</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr><td colSpan={6} className="py-16 text-center text-zinc-300 italic">A carregar balancete razÃ£o...</td></tr>
               ) : groups.length === 0 ? (
-                <tr><td colSpan={6} className="py-16 text-center text-zinc-300 italic uppercase font-black">Sem lanÃ§amentos contabilÃ­sticos registados</td></tr>
+                <tr><td colSpan={6} className="py-16 text-center text-zinc-300 italic uppercase font-black">Sem lançamentos contabilisticos registados</td></tr>
               ) : groups.map((g: any) => {
                 const totalDeb = g.linhas.reduce((s: number, l: any) => {
                   const v = Number(l.valor || 0);
@@ -24154,12 +24154,12 @@ const BalancoModule = ({ onBack, companyData, invoices, purchases, fiscalYear }:
 
   const rows: BalRow[] = [
     { label: 'ACTIVO', isSectionHeader: true, curr: 0, prev: 0 },
-    { label: 'Activos nÃ£o correntes', isGroup: true, curr: 0, prev: 0 },
-    { label: 'ImobilizaÃ§Ãµes corpÃ³reas', nota: 4, curr: imobCorporeas, prev: imobCorporeasP },
-    { label: 'ImobilizaÃ§Ãµes incorpÃ³reas', nota: 5, curr: imobIncorporeas, prev: 0 },
+    { label: 'Activos não correntes', isGroup: true, curr: 0, prev: 0 },
+    { label: 'Imobilizações corpÃ³reas', nota: 4, curr: imobCorporeas, prev: imobCorporeasP },
+    { label: 'Imobilizações incorpÃ³reas', nota: 5, curr: imobIncorporeas, prev: 0 },
     { label: 'Investimentos em subsidiÃ¡rias e associadas', nota: 6, curr: investSubsid, prev: 0 },
     { label: 'Outros activos financeiros', nota: 7, curr: outrosActivosFin, prev: 0 },
-    { label: 'Outros activos nÃ£o correntes', nota: 9, curr: outrosActivosNCorr, prev: 0 },
+    { label: 'Outros activos não correntes', nota: 9, curr: outrosActivosNCorr, prev: 0 },
     { label: '', isBlank: true, curr: totalActivoNCorr, prev: imobCorporeasP },
     { label: 'Activos Correntes', isGroup: true, curr: 0, prev: 0 },
     { label: 'ExistÃªncias', nota: 8, curr: existencias, prev: existenciasP },
@@ -24175,17 +24175,17 @@ const BalancoModule = ({ onBack, companyData, invoices, purchases, fiscalYear }:
     { label: 'Resultados transitados', nota: 14, curr: resultTransitados, prev: 0 },
     { label: 'Resultados do exercÃ­cio', curr: resultadoExercicio, prev: resultadoP },
     { label: '', isBlank: true, curr: totalCapProprio, prev: totalCapProprioP },
-    { label: 'Passivo nÃ£o corrente', isGroup: true, curr: 0, prev: 0 },
-    { label: 'EmprÃ©stimos de mÃ©dio e longo prazos', nota: 15, curr: emprestimosMLPrazo, prev: 0 },
+    { label: 'Passivo não corrente', isGroup: true, curr: 0, prev: 0 },
+    { label: 'Empréstimos de médio e longo prazos', nota: 15, curr: emprestimosMLPrazo, prev: 0 },
     { label: 'Impostos diferidos', nota: 16, curr: impostosDiferidos, prev: 0 },
     { label: 'ProvisÃµes para pensÃµes', nota: 17, curr: provisoesPensoes, prev: 0 },
     { label: 'ProvisÃµes para outros riscos e encargos', nota: 18, curr: 0, prev: 0 },
-    { label: 'Outros passivos nÃ£o correntes', nota: 19, curr: outrosPassNCorr, prev: 0 },
+    { label: 'Outros passivos não correntes', nota: 19, curr: outrosPassNCorr, prev: 0 },
     { label: '', isBlank: true, curr: totalPassivoNCorr, prev: 0 },
     { label: 'Passivo corrente', isGroup: true, curr: 0, prev: 0 },
     { label: 'Contas a pagar', nota: 19, curr: contasPagar, prev: contasPagarP },
-    { label: 'EmprÃ©stimos de curto prazo', nota: 20, curr: emprestCurtoPrazo, prev: 0 },
-    { label: 'Parte corrente dos emprÃ©stimos a mÃ©dio e longo prazos', nota: 15, curr: partCorrenteLPrazo, prev: 0 },
+    { label: 'Empréstimos de curto prazo', nota: 20, curr: emprestCurtoPrazo, prev: 0 },
+    { label: 'Parte corrente dos empréstimos a médio e longo prazos', nota: 15, curr: partCorrenteLPrazo, prev: 0 },
     { label: 'Outros passivos correntes', nota: 21, curr: outrosPassCorr, prev: 0 },
     { label: '', isBlank: true, curr: totalPassivoCorr, prev: 0 },
     { label: 'Total do capital prÃ³prio e passivo', isTotal: true, curr: totalCapPassivo, prev: totalCapPassivoP },
@@ -24248,7 +24248,7 @@ const BalancoModule = ({ onBack, companyData, invoices, purchases, fiscalYear }:
           <table className="w-full text-[10px] border-collapse">
             <thead>
               <tr className="border-b-2 border-zinc-300">
-                <th className="p-3 text-left font-black text-zinc-700 uppercase tracking-wide w-[55%]">DesignaÃ§Ã£o</th>
+                <th className="p-3 text-left font-black text-zinc-700 uppercase tracking-wide w-[55%]">Designação</th>
                 <th className="p-3 text-center font-black text-zinc-600 w-16">Notas</th>
                 <th colSpan={2} className="p-3 text-center font-black text-zinc-700 uppercase tracking-wide border-l border-zinc-200">EXERCICIOS</th>
               </tr>
@@ -24346,7 +24346,7 @@ const RegimeGeralModule = ({
           </button>
           <div>
             <h2 className="text-2xl font-black text-[#003366] uppercase tracking-tighter">Regime Geral</h2>
-            <p className="text-sm font-bold text-zinc-400 uppercase">DeclaraÃ§Ã£o de IVA, Modelo 7, Anexo de Fornecedores e Clientes</p>
+            <p className="text-sm font-bold text-zinc-400 uppercase">Declaração de IVA, Modelo 7, Anexo de Fornecedores e Clientes</p>
           </div>
         </div>
       </div>
@@ -24381,7 +24381,7 @@ const RegimeGeralModule = ({
               : 'text-zinc-400 border-transparent hover:text-zinc-600'
           }`}
         >
-          <Users size={16} /> RegularizaÃ§Ã£o Clientes
+          <Users size={16} /> Regularização Clientes
         </button>
       </div>
 
@@ -24503,37 +24503,37 @@ const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employee
   const vatToPay = vatLiquidated - vatDeductible;
 
   const sections = [
-    { id: 'migrar-movimento', label: 'Migrar Movimento', icon: <ArrowRightLeft size={24} />, description: 'MigraÃ§Ã£o e reclassificaÃ§Ã£o de movimentos diÃ¡rios para contas do PGC (Clientes, Compras, etc).' },
-    { id: 'apuramento-resultados', label: 'Apuramento de Resultados', icon: <Calculator size={24} />, description: 'Apuramento oficial dos resultados (Operacional, Financeiro, Filiais, ExtraordinÃ¡rio, LÃ­quido) com gestÃ£o de lanÃ§amentos.' },
-    { id: 'calculos-imposto-module', label: 'CÃ¡lculos de Imposto (IVA/IRT/IS)', icon: <Calculator size={24} />, description: 'Apuramento fiscal detalhado: IVA, IRT e IS por perÃ­odo, com registo de lanÃ§amentos e relatÃ³rio de contas PGC.' },
-    { id: 'ivm', label: 'IVM - VeÃ­culos Motorizados', icon: <Car size={24} />, description: 'Imposto sobre VeÃ­culos Motorizados (Lei n.Âº 24/20). Cadastro, cÃ¡lculo e DUC.' },
-    { id: 'ip', label: 'IP - Imposto Predial', icon: <Home size={24} className="text-[#006b82]" />, description: 'Imposto Predial Urbano e RÃºstico (Lei n.Âº 20/20). InscriÃ§Ã£o na matriz predial, avaliaÃ§Ã£o, liquidaÃ§Ã£o e DUC.' },
-    { id: 'calculos-impostos-detalhado', label: 'CÃ¡lculos de Imposto (IVA)', icon: <Receipt size={24} />, description: 'RelatÃ³rio detalhado de IVA liquidado por documento com exportaÃ§Ã£o XLS.' },
-    { id: 'fluxo-caixa', label: 'Fluxo de Caixa (MÃ©todo Directo)', icon: <TrendingUp size={24} />, description: 'DemonstraÃ§Ã£o de Fluxos de Caixa pelo MÃ©todo Directo (PGC Angola) com comparativo anual.' },
+    { id: 'migrar-movimento', label: 'Migrar Movimento', icon: <ArrowRightLeft size={24} />, description: 'Migração e reclassificação de movimentos diÃ¡rios para contas do PGC (Clientes, Compras, etc).' },
+    { id: 'apuramento-resultados', label: 'Apuramento de Resultados', icon: <Calculator size={24} />, description: 'Apuramento oficial dos resultados (Operacional, Financeiro, Filiais, ExtraordinÃ¡rio, LÃ­quido) com gestão de lançamentos.' },
+    { id: 'calculos-imposto-module', label: 'Cálculos de Imposto (IVA/IRT/IS)', icon: <Calculator size={24} />, description: 'Apuramento fiscal detalhado: IVA, IRT e IS por perÃ­odo, com registo de lançamentos e relatório de contas PGC.' },
+    { id: 'ivm', label: 'IVM - VeÃ­culos Motorizados', icon: <Car size={24} />, description: 'Imposto sobre VeÃ­culos Motorizados (Lei n.Âº 24/20). Cadastro, cálculo e DUC.' },
+    { id: 'ip', label: 'IP - Imposto Predial', icon: <Home size={24} className="text-[#006b82]" />, description: 'Imposto Predial Urbano e RÃºstico (Lei n.Âº 20/20). InscriÃ§Ã£o na matriz predial, avaliação, liquidação e DUC.' },
+    { id: 'calculos-impostos-detalhado', label: 'Cálculos de Imposto (IVA)', icon: <Receipt size={24} />, description: 'Relatório detalhado de IVA liquidado por documento com exportação XLS.' },
+    { id: 'fluxo-caixa', label: 'Fluxo de Caixa (Método Directo)', icon: <TrendingUp size={24} />, description: 'Demonstração de Fluxos de Caixa pelo Método Directo (PGC Angola) com comparativo anual.' },
     { id: 'tax-payments', label: 'Pagamento de Impostos', icon: <Receipt size={24} />, description: 'Registo e consulta dos comprovativos e guias de pagamento de impostos.' },
-    { id: 'contas-pag-impostos', label: 'Contas Pag Impostos', icon: <Receipt size={24} />, description: 'GestÃ£o das contas de pagamento de impostos associadas ao Plano Geral de Contas.' },
-    { id: 'delete-movements', label: 'Apagar Movimentos', icon: <Trash2 size={24} />, description: 'Apagar movimentos contabilÃ­sticos em lote por diÃ¡rio e perÃ­odo, com exportaÃ§Ã£o PDF/Excel.' },
-    { id: 'vat-settlement', label: 'Apuramento de IVA', icon: <Calculator size={24} />, description: 'Apuramento periÃ³dico do IVA (suportado vs liquidado) com apuramento automÃ¡tico.' },
-    { id: 'diarios-management', label: 'GestÃ£o de DiÃ¡rios', icon: <FolderKanban size={24} />, description: 'GestÃ£o de DiÃ¡rios ContabilÃ­sticos no Supabase com isolamento de dados.' },
-    { id: 'pgc', label: 'PGC Plano de Contas', icon: <Book size={24} />, description: 'Consulta e gestÃ£o do Plano Geral de Contas angolano.' },
-    { id: 'mapa-amortizacao', label: 'Mapa de AmortizaÃ§Ã£o', icon: <Layers size={24} />, description: 'Quadro Oficial de AmortizaÃ§Ãµes e ReintegraÃ§Ãµes por exercÃ­cio, taxas, valor de aquisiÃ§Ã£o e amortizaÃ§Ãµes acumuladas.' },
-    { id: 'demonstracao-resultados', label: 'DemonstraÃ§Ã£o de Resultados', icon: <FileText size={24} />, description: 'DemonstraÃ§Ã£o de Resultados por Natureza oficial com comparativo anual e ligaÃ§Ã£o ao Caderno de Notas e Contas.' },
-    { id: 'notas-contas', label: 'Notas e Contas', icon: <FileCheck size={24} />, description: 'Caderno completo de Notas Ã  DemonstraÃ§Ã£o de Resultados (Notas 22 a 35) com reconciliaÃ§Ã£o fiscal.' },
-    { id: 'accounting-maps', label: 'Balancete AnalÃ­tico', icon: <BarChart3 size={24} />, description: 'EmissÃ£o de balancetes, balanÃ§os e demonstraÃ§Ãµes de resultados.' },
-    { id: 'balancete-razao', label: 'Balancete RazÃ£o', icon: <BarChart3 size={24} />, description: 'Balancete RazÃ£o da firma por perÃ­odo contabilÃ­stico com movimentos de dÃ©bito/crÃ©dito e saldos por conta PGC.' },
+    { id: 'contas-pag-impostos', label: 'Contas Pag Impostos', icon: <Receipt size={24} />, description: 'Gestão das contas de pagamento de impostos associadas ao Plano Geral de Contas.' },
+    { id: 'delete-movements', label: 'Apagar Movimentos', icon: <Trash2 size={24} />, description: 'Apagar movimentos contabilisticos em lote por diÃ¡rio e perÃ­odo, com exportação PDF/Excel.' },
+    { id: 'vat-settlement', label: 'Apuramento de IVA', icon: <Calculator size={24} />, description: 'Apuramento periódico do IVA (suportado vs liquidado) com apuramento automÃ¡tico.' },
+    { id: 'diarios-management', label: 'Gestão de DiÃ¡rios', icon: <FolderKanban size={24} />, description: 'Gestão de DiÃ¡rios Contabilisticos no Supabase com isolamento de dados.' },
+    { id: 'pgc', label: 'PGC Plano de Contas', icon: <Book size={24} />, description: 'Consulta e gestão do Plano Geral de Contas angolano.' },
+    { id: 'mapa-amortizacao', label: 'Mapa de Amortização', icon: <Layers size={24} />, description: 'Quadro Oficial de Amortizações e Reintegrações por exercÃ­cio, taxas, valor de aquisiÃ§Ã£o e amortizações acumuladas.' },
+    { id: 'demonstracao-resultados', label: 'Demonstração de Resultados', icon: <FileText size={24} />, description: 'Demonstração de Resultados por Natureza oficial com comparativo anual e ligação ao Caderno de Notas e Contas.' },
+    { id: 'notas-contas', label: 'Notas e Contas', icon: <FileCheck size={24} />, description: 'Caderno completo de Notas Ã  Demonstração de Resultados (Notas 22 a 35) com reconciliação fiscal.' },
+    { id: 'accounting-maps', label: 'Balancete AnalÃ­tico', icon: <BarChart3 size={24} />, description: 'Emissão de balancetes, balanÃ§os e demonstrações de resultados.' },
+    { id: 'balancete-razao', label: 'Balancete RazÃ£o', icon: <BarChart3 size={24} />, description: 'Balancete RazÃ£o da firma por perÃ­odo contabilistico com movimentos de débito/crédito e saldos por conta PGC.' },
     { id: 'balanco', label: 'BalanÃ§o', icon: <Scale size={24} />, description: 'BalanÃ§o Patrimonial Angolano (Activo, Capital PrÃ³prio e Passivo) com comparativo de exercÃ­cios.' },
-    { id: 'classify-movements', label: 'Classificar Movimentos', icon: <CheckSquare size={24} />, description: 'Ajustamento e classificaÃ§Ã£o de rubricas contabilÃ­sticas de vendas e compras.' },
-    { id: 'stamp-tax', label: 'Imposto de Selo', icon: <ShieldCheck size={24} />, description: 'Mapa de liquidaÃ§Ã£o e controlo de Imposto de Selo sobre recebimentos.' },
-    { id: 'income-tax-advance', label: 'Imposto por Conta', icon: <CreditCard size={24} />, description: 'AutoliquidaÃ§Ã£o provisÃ³ria do Imposto Industrial (2% sobre vendas).' },
-    { id: 'general-regime', label: 'Regime Geral', icon: <BadgeCheck size={24} />, description: 'Contabilidade para empresas enquadradas no regime geral de tributaÃ§Ã£o.' },
-    { id: 'simplified-regime', label: 'Regime Simplificado', icon: <Layers size={24} />, description: 'GestÃ£o simplificada para empresas com volume de negÃ³cios reduzido.' },
-    { id: 'exclusion-regime', label: 'Regime de ExclusÃ£o', icon: <XCircle size={24} />, description: 'Controlo de entidades isentas ou excluÃ­das do regime de IVA.' },
-    { id: 'accounting-settings', label: 'ConfiguraÃ§Ãµes ContÃ¡beis', icon: <Settings size={24} />, description: 'DefiniÃ§Ã£o de parÃ¢metros fiscais, anos e moedas de relato.' },
-    { id: 'annual-declarations', label: 'DeclaraÃ§Ãµes Anuais', icon: <Calendar size={24} />, description: 'PreparaÃ§Ã£o e submissÃ£o de modelos fiscais anuais (M1, M2).' },
-    { id: 'saft', label: 'Ficheiro SAFT', icon: <FileCode size={24} />, description: 'ExportaÃ§Ã£o do ficheiro de auditoria tributÃ¡ria para a AGT.' },
-    { id: 'retencao-pagar', label: 'RetenÃ§Ã£o na Fonte a Pagar', icon: <FileText size={24} />, description: 'GestÃ£o de retenÃ§Ãµes na fonte a pagar.' },
-    { id: 'retencao-receber', label: 'RetenÃ§Ã£o na Fonte a Receber', icon: <FileText size={24} />, description: 'GestÃ£o de retenÃ§Ãµes na fonte a receber.' },
-    { id: 'imposto-industrial-retencao-anual', label: 'RetenÃ§Ã£o na Fonte Anual', icon: <FileCheck size={24} />, description: 'DeclaraÃ§Ã£o anual de retenÃ§Ã£o na fonte do Imposto Industrial a fornecedores (Artigo 67.Âº CII).' },
+    { id: 'classify-movements', label: 'Classificar Movimentos', icon: <CheckSquare size={24} />, description: 'Ajustamento e classificação de rubricas contabilÃ­sticas de vendas e compras.' },
+    { id: 'stamp-tax', label: 'Imposto de Selo', icon: <ShieldCheck size={24} />, description: 'Mapa de liquidação e controlo de Imposto de Selo sobre recebimentos.' },
+    { id: 'income-tax-advance', label: 'Imposto por Conta', icon: <CreditCard size={24} />, description: 'Autoliquidação provisÃ³ria do Imposto Industrial (2% sobre vendas).' },
+    { id: 'general-regime', label: 'Regime Geral', icon: <BadgeCheck size={24} />, description: 'Contabilidade para empresas enquadradas no regime geral de tributação.' },
+    { id: 'simplified-regime', label: 'Regime Simplificado', icon: <Layers size={24} />, description: 'Gestão simplificada para empresas com volume de negÃ³cios reduzido.' },
+    { id: 'exclusion-regime', label: 'Regime de Exclusão', icon: <XCircle size={24} />, description: 'Controlo de entidades isentas ou excluÃ­das do regime de IVA.' },
+    { id: 'accounting-settings', label: 'Configurações ContÃ¡beis', icon: <Settings size={24} />, description: 'DefiniÃ§Ã£o de parÃ¢metros fiscais, anos e moedas de relato.' },
+    { id: 'annual-declarations', label: 'Declarações Anuais', icon: <Calendar size={24} />, description: 'Preparação e submissão de modelos fiscais anuais (M1, M2).' },
+    { id: 'saft', label: 'Ficheiro SAFT', icon: <FileCode size={24} />, description: 'Exportação do ficheiro de auditoria tributÃ¡ria para a AGT.' },
+    { id: 'retencao-pagar', label: 'RetenÃ§Ã£o na Fonte a Pagar', icon: <FileText size={24} />, description: 'Gestão de retenÃ§Ãµes na fonte a pagar.' },
+    { id: 'retencao-receber', label: 'RetenÃ§Ã£o na Fonte a Receber', icon: <FileText size={24} />, description: 'Gestão de retenÃ§Ãµes na fonte a receber.' },
+    { id: 'imposto-industrial-retencao-anual', label: 'RetenÃ§Ã£o na Fonte Anual', icon: <FileCheck size={24} />, description: 'Declaração anual de retenÃ§Ã£o na fonte do Imposto Industrial a fornecedores (Artigo 67.Âº CII).' },
   ];
 
   const renderContent = () => {
@@ -24637,7 +24637,7 @@ const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employee
               {companyData?.name || 'EMPRESA CERTIFICADA AGT'}
             </h2>
             <p className="text-xs text-zinc-500 font-bold uppercase tracking-wider mt-0.5">
-              NIF: {companyData?.nif || 'â€”'} â€¢ Contabilidade Geral & Fiscalidade Angola
+              NIF: {companyData?.nif || 'â€”'} • Contabilidade Geral & Fiscalidade Angola
             </p>
           </div>
         </div>
@@ -24646,7 +24646,7 @@ const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employee
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-black text-[#003366] uppercase tracking-tighter">Contabilidade</h1>
-          <p className="text-sm text-zinc-400 font-bold uppercase tracking-widest mt-1">MÃ³dulos de GestÃ£o Fiscal e ContabilÃ­stica</p>
+          <p className="text-sm text-zinc-400 font-bold uppercase tracking-widest mt-1">Módulos de Gestão Fiscal e ContabilÃ­stica</p>
         </div>
         <div className="flex items-center gap-4 bg-white border border-zinc-200 px-4 py-2 shadow-sm">
           <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">ExercÃ­cio Fiscal:</span>
@@ -24770,7 +24770,7 @@ const GraphicConfigModule = ({
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Tem certeza que deseja remover esta configuraÃ§Ã£o grÃ¡fica?')) return;
+    if (!confirm('Tem certeza que deseja remover esta configuração grÃ¡fica?')) return;
     await supabase.from('setup_grafico_series').delete().eq('id', id);
     loadConfigs();
     if (onRefresh) onRefresh();
@@ -24815,8 +24815,8 @@ const GraphicConfigModule = ({
 
   const TYPES = [
     { label: 'LogÃ³tipo Principal', tipo: 'logo', icon: <Layout size={24} /> },
-    { label: 'CabeÃ§alho Personalizado', tipo: 'cabecalho', icon: <FileText size={24} /> },
-    { label: 'RodapÃ© Personalizado', tipo: 'rodape', icon: <Receipt size={24} /> },
+    { label: 'Cabeçalho Personalizado', tipo: 'cabecalho', icon: <FileText size={24} /> },
+    { label: 'Rodapé Personalizado', tipo: 'rodape', icon: <Receipt size={24} /> },
     { label: 'Marca d\'Ãgua', tipo: 'marca_dagua', icon: <Droplets size={24} /> },
   ];
 
@@ -24828,8 +24828,8 @@ const GraphicConfigModule = ({
             <ArrowLeft size={24} />
           </button>
           <div>
-            <h2 className="text-xl font-bold text-[#003366]">ConfiguraÃ§Ã£o GrÃ¡fica - {serie.name}</h2>
-            <p className="text-xs text-zinc-500 uppercase tracking-widest font-medium">Configure as imagens e layout dos documentos desta sÃ©rie</p>
+            <h2 className="text-xl font-bold text-[#003366]">Configuração GrÃ¡fica - {serie.name}</h2>
+            <p className="text-xs text-zinc-500 uppercase tracking-widest font-medium">Configure as imagens e layout dos documentos desta série</p>
           </div>
         </div>
       </div>
@@ -24853,7 +24853,7 @@ const GraphicConfigModule = ({
                 
                 <div>
                   <h3 className="font-bold text-[#003366] text-sm">{t.label}</h3>
-                  <p className="text-xs text-zinc-400 mt-1">{config ? 'Configurado e pronto para uso.' : 'NÃ£o configurado para esta sÃ©rie.'}</p>
+                  <p className="text-xs text-zinc-400 mt-1">{config ? 'Configurado e pronto para uso.' : 'Não configurado para esta série.'}</p>
                 </div>
 
                 {config ? (
@@ -24925,7 +24925,7 @@ const GraphicConfigModule = ({
               <div className="flex-1 overflow-y-auto p-6 space-y-6">
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Estado da ConfiguraÃ§Ã£o</label>
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Estado da Configuração</label>
                     <button 
                       onClick={() => setForm(f => ({ ...f, ativo: !f.ativo }))}
                       className={`relative w-10 h-5 rounded-full transition-colors ${form.ativo ? 'bg-emerald-500' : 'bg-zinc-300'}`}
@@ -25012,7 +25012,7 @@ const GraphicConfigModule = ({
 
                 <div className="pt-6 border-t border-zinc-100">
                    <div className="bg-zinc-50 p-4 border border-zinc-200 rounded-lg">
-                     <p className="text-[10px] font-bold text-zinc-400 uppercase mb-2">PrÃ©-visualizaÃ§Ã£o</p>
+                     <p className="text-[10px] font-bold text-zinc-400 uppercase mb-2">Pré-visualização</p>
                      <div className="aspect-video bg-white border border-zinc-100 flex items-center justify-center overflow-hidden relative">
                         {configs.find(c => c.tipo === editingType) && (
                           <img 
@@ -25041,7 +25041,7 @@ const GraphicConfigModule = ({
                   onClick={handleSave}
                   className="flex-1 bg-[#003366] text-white py-3 text-[10px] font-bold uppercase tracking-widest hover:bg-[#002244] transition-colors shadow-lg"
                 >
-                  Salvar AlteraÃ§Ãµes
+                  Salvar Alterações
                 </button>
               </div>
             </motion.div>
@@ -25104,7 +25104,7 @@ const FiscalSeriesModule = ({
     
     try {
       if (!user?.empresa_id) {
-        alert('SessÃ£o expirada ou sem empresa associada.');
+        alert('Sessão expirada ou sem empresa associada.');
         return;
       }
       
@@ -25137,9 +25137,9 @@ const FiscalSeriesModule = ({
           
           setShowForm(false);
           onRefresh();
-          alert('SÃ©rie atualizada com sucesso!');
+          alert('Série atualizada com sucesso!');
         } else {
-          alert('Erro ao atualizar sÃ©rie: ' + error.message);
+          alert('Erro ao atualizar série: ' + error.message);
         }
       } else {
         const year = new Date().getFullYear().toString();
@@ -25182,9 +25182,9 @@ const FiscalSeriesModule = ({
           
           setShowForm(false);
           onRefresh();
-          alert('SÃ©rie criada com sucesso!');
+          alert('Série criada com sucesso!');
         } else {
-          alert('Erro ao criar sÃ©rie: ' + (error?.message || 'Erro desconhecido.'));
+          alert('Erro ao criar série: ' + (error?.message || 'Erro desconhecido.'));
         }
       }
     } catch (error) {
@@ -25193,10 +25193,10 @@ const FiscalSeriesModule = ({
   };
 
   const OPTIONS = [
-    { label: 'GestÃ£o de Utilizadores', icon: <Users size={14} /> },
+    { label: 'Gestão de Utilizadores', icon: <Users size={14} /> },
     { label: 'Configurar Logotipo', icon: <Image size={14} /> },
-    { label: 'Configurar CabeÃ§alho Cartas', icon: <FileText size={14} /> },
-    { label: 'Configurar RodapÃ© Cartas', icon: <FileText size={14} /> },
+    { label: 'Configurar Cabeçalho Cartas', icon: <FileText size={14} /> },
+    { label: 'Configurar Rodapé Cartas', icon: <FileText size={14} /> },
     { label: 'Configurar Marca D\'Agua', icon: <Droplets size={14} /> },
     { label: 'Configurar Bancos', icon: <Building2 size={14} /> },
     { label: 'Editar Destino da Serie', icon: <Edit size={14} /> },
@@ -25206,15 +25206,15 @@ const FiscalSeriesModule = ({
     <div className="space-y-6">
       <div className="flex justify-between items-center bg-white p-4 border border-zinc-200">
         <div>
-          <h2 className="text-xl font-bold text-[#003366]">SÃ©ries Fiscais</h2>
-          <p className="text-xs text-zinc-500 uppercase tracking-widest font-medium">GestÃ£o de numeraÃ§Ã£o e configuraÃ§Ã£o de documentos</p>
+          <h2 className="text-xl font-bold text-[#003366]">Séries Fiscais</h2>
+          <p className="text-xs text-zinc-500 uppercase tracking-widest font-medium">Gestão de numeração e configuração de documentos</p>
         </div>
         {(user?.is_admin || user?.role === 'admin') && (
           <button 
             onClick={() => openForm()}
             className="bg-[#003366] text-white px-6 py-2.5 text-xs font-bold uppercase tracking-widest flex items-center gap-2 hover:bg-[#002244] transition-all shadow-lg"
           >
-            <Plus size={16} /> Criar SÃ©rie
+            <Plus size={16} /> Criar Série
           </button>
         )}
       </div>
@@ -25238,7 +25238,7 @@ const FiscalSeriesModule = ({
               <div className="p-4 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50">
                 <h3 className="font-bold text-[#003366] flex items-center gap-2 uppercase tracking-widest text-xs">
                   <FileText size={16} />
-                  Criar Nova SÃ©rie
+                  Criar Nova Série
                 </h3>
                 <button 
                   onClick={() => setShowForm(false)}
@@ -25249,7 +25249,7 @@ const FiscalSeriesModule = ({
               </div>
               <form onSubmit={handleRegister} className="p-6 space-y-4">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Nome da SÃ©rie</label>
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Nome da Série</label>
                   <input type="text" required value={name} onChange={e => setName(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none" />
                 </div>
                 <div className="space-y-1">
@@ -25273,22 +25273,22 @@ const FiscalSeriesModule = ({
                   <p className="text-[9px] text-zinc-500">Pressione e segure o CTRL (ou CMD) para selecionar mÃºltiplos utilizadores.</p>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Tipo de SÃ©rie (Documento)</label>
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Tipo de Série (Documento)</label>
                   <select value={type} onChange={e => setType(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none">
                     <option value="FT">Fatura (FT)</option>
                     <option value="FR">Fatura Recibo (FR)</option>
                     <option value="RC">Recibo (RC)</option>
-                    <option value="NC">Nota de CrÃ©dito (NC)</option>
-                    <option value="ND">Nota de DÃ©bito (ND)</option>
+                    <option value="NC">Nota de Crédito (NC)</option>
+                    <option value="ND">Nota de Débito (ND)</option>
                     <option value="GR">Guia de Remessa (GR)</option>
                     <option value="GT">Guia de Transporte (GT)</option>
                     <option value="PP">Fatura Proforma (PP)</option>
-                    <option value="OR">OrÃ§amento / Proposta (OR)</option>
+                    <option value="OR">Orçamento / Proposta (OR)</option>
                     <option value="normal">Geral / Tudo (Normal)</option>
-                    <option value="manual">RecuperaÃ§Ã£o Documentos Manuais</option>
+                    <option value="manual">Recuperação Documentos Manuais</option>
                   </select>
                 </div>
-                <button type="submit" className="w-full bg-[#003366] text-white py-3 text-xs font-bold uppercase tracking-widest hover:bg-[#002244]">Registar SÃ©rie</button>
+                <button type="submit" className="w-full bg-[#003366] text-white py-3 text-xs font-bold uppercase tracking-widest hover:bg-[#002244]">Registar Série</button>
               </form>
             </motion.div>
           </div>
@@ -25300,15 +25300,15 @@ const FiscalSeriesModule = ({
           <thead>
             <tr className="bg-[#003366] text-white text-[10px] uppercase tracking-[0.1em] font-black">
               <th rowSpan={2} className="px-4 py-4 border-r border-zinc-700/50">Data Inicio</th>
-              <th rowSpan={2} className="px-4 py-4 border-r border-zinc-700/50">SÃ©rie</th>
+              <th rowSpan={2} className="px-4 py-4 border-r border-zinc-700/50">Série</th>
               <th rowSpan={2} className="px-4 py-4 border-r border-zinc-700/50">ReferÃªncia</th>
               <th rowSpan={2} className="px-4 py-4 border-r border-zinc-700/50">Destino</th>
               <th rowSpan={2} className="px-2 py-4 border-r border-zinc-700/50 text-center">Tipo</th>
               <th colSpan={6} className="px-4 py-2 border-b border-r border-zinc-700/50 text-center text-[9px] opacity-70">Documentos Habilitados</th>
-              <th colSpan={3} className="px-4 py-2 border-b border-r border-zinc-700/50 text-center text-[9px] opacity-70">ConfiguraÃ§Ã£o Grafica</th>
+              <th colSpan={3} className="px-4 py-2 border-b border-r border-zinc-700/50 text-center text-[9px] opacity-70">Configuração Grafica</th>
               <th rowSpan={2} className="px-4 py-4 border-r border-zinc-700/50 text-center uppercase">Users</th>
               <th rowSpan={2} className="px-4 py-4 border-r border-zinc-700/50 text-center uppercase">Bancos</th>
-              <th rowSpan={2} className="px-4 py-4 text-center">AÃ§Ãµes</th>
+              <th rowSpan={2} className="px-4 py-4 text-center">Ações</th>
             </tr>
             <tr className="bg-[#003366]/90 text-white/70 text-[9px] uppercase font-bold">
               <th className="px-2 py-2 border-r border-zinc-700/30 text-center">FT</th>
@@ -25370,7 +25370,7 @@ const FiscalSeriesModule = ({
                           className="relative w-full max-w-xs bg-white rounded-none shadow-2xl overflow-hidden p-6 space-y-3 border border-zinc-200"
                         >
                           <div className="flex justify-between items-center mb-4 border-b border-zinc-100 pb-2">
-                            <p className="text-[10px] font-black text-[#003366] uppercase tracking-widest italic">OpÃ§Ãµes da SÃ©rie</p>
+                            <p className="text-[10px] font-black text-[#003366] uppercase tracking-widest italic">OpÃ§Ãµes da Série</p>
                             <button onClick={() => setShowOptionsId(null)} className="text-zinc-400 hover:text-red-500"><X size={16}/></button>
                           </div>
                           {OPTIONS.filter(opt => (user?.is_admin || user?.role === 'admin') || opt.label !== 'Editar Destino da Serie').map((opt, idx) => (
@@ -25403,7 +25403,7 @@ const FiscalSeriesModule = ({
         </table>
         {series.length === 0 && (
           <div className="p-20 text-center bg-zinc-50/50">
-            <p className="text-zinc-400 text-sm font-medium italic">Nenhuma sÃ©rie fiscal configurada.</p>
+            <p className="text-zinc-400 text-sm font-medium italic">Nenhuma série fiscal configurada.</p>
           </div>
         )}
       </div>
@@ -25563,10 +25563,10 @@ const InvoiceList = ({
     { id: 'recibos', label: 'Recibos (RC)', icon: FileText },
     { id: 'recebidos', label: 'Documentos recebidos', icon: ClipboardList },
     { id: 'clientes', label: 'Clientes', icon: Users },
-    { id: 'sales_report', label: 'RelatÃ³rio de Vendas', icon: BarChart3 },
+    { id: 'sales_report', label: 'Relatório de Vendas', icon: BarChart3 },
     { id: 'adesao', label: 'Local de trabalho', icon: MapPin },
     { id: 'series', label: 'Taxas e impostos', icon: FileText },
-    { id: 'fiscal-series', label: 'SÃ©rie Fiscal', icon: BadgeCheck },
+    { id: 'fiscal-series', label: 'Série Fiscal', icon: BadgeCheck },
   ];
 
   if (mode === 'electronic') {
@@ -25574,7 +25574,7 @@ const InvoiceList = ({
   }
 
   const filteredIssuedDocuments = Array.isArray(issuedDocuments) ? issuedDocuments.filter(doc => {
-    // Recibos emitidos nesta tabela sÃ£o sempre documentos de venda legÃ­timos.
+    // Recibos emitidos nesta tabela são sempre documentos de venda legÃ­timos.
     // Excluir apenas se explicitamente marcado como fornecedor sem cliente
     const docOrigem = (doc as any).documento_origem_id;
     const docTipo = (doc.tipo_documento || doc.document_type || '').toUpperCase();
@@ -25610,7 +25610,7 @@ const InvoiceList = ({
     // NOTE: The "emitidos" tab now shows ALL document types including Receipts (RC).
     // Receipts emitted against invoices are part of the fiscal document trail and must be visible.
 
-    // 1. Pesquisa Geral (Nome Cliente ou NÃºmero)
+    // 1. Pesquisa Geral (Nome Cliente ou Número)
     const searchStr = searchTerm.toLowerCase();
     const matchesSearch = (doc.invoice_number || doc.numero_documento || '').toLowerCase().includes(searchStr) ||
                          (doc.client_name || doc.cliente_nome || doc.client_id || '').toString().toLowerCase().includes(searchStr);
@@ -25628,7 +25628,7 @@ const InvoiceList = ({
     const docYear = doc.ano ? String(doc.ano) : (extractYear(doc.data_emissao) || extractYear(doc.date) || extractYear((doc as any).created_at));
     const matchesYear = !fiscalYear || !docYear || String(docYear) === String(fiscalYear);
 
-    // 3. Filtro de SÃ©rie
+    // 3. Filtro de Série
     const matchesSeries = filterSerieFiscal === 'all' || doc.serie === filterSerieFiscal;
 
     // 4. Filtro de Tipo de Documento
@@ -25662,13 +25662,13 @@ const InvoiceList = ({
     }
     
     if (typeFilter !== 'Todos') {
-      const isDraftSpec = (typeFilter === 'ProvisÃ³rios / Documento de Suporte (Draft)' && (!doc.is_certified || doc.is_draft || docTypeNormalized === 'DRAFT'));
+      const isDraftSpec = (typeFilter === 'Provisórios / Documento de Suporte (Draft)' && (!doc.is_certified || doc.is_draft || docTypeNormalized === 'DRAFT'));
       let filterMatches = false;
       if (typeFilter === 'Factura') filterMatches = (docTypeNormalized === 'FT');
       else if (typeFilter === 'Factura Recibo') filterMatches = (docTypeNormalized === 'FR');
       else if (typeFilter === 'Recibo') filterMatches = (docTypeNormalized === 'RC');
-      else if (typeFilter === 'Nota de CrÃ©dito') filterMatches = (docTypeNormalized === 'NC');
-      else if (typeFilter === 'Nota de DÃ©bito') filterMatches = (docTypeNormalized === 'ND');
+      else if (typeFilter === 'Nota de Crédito') filterMatches = (docTypeNormalized === 'NC');
+      else if (typeFilter === 'Nota de Débito') filterMatches = (docTypeNormalized === 'ND');
       else if (typeFilter === 'Guia de Remessa') filterMatches = (docTypeNormalized === 'GR');
       else if (typeFilter === 'Guia de Transporte') filterMatches = (docTypeNormalized === 'GT');
       else if (typeFilter === 'Guia de DevoluÃ§Ã£o') filterMatches = (docTypeNormalized === 'GD');
@@ -25677,18 +25677,18 @@ const InvoiceList = ({
       matchesType = matchesType && (isDraftSpec || filterMatches || docTypeNormalized === getNormalizedType(typeFilter));
     }
 
-    // 5. Filtro de CertificaÃ§Ã£o
+    // 5. Filtro de Certificação
     const matchesCert = selectedStatusCertFiscal === 'all' || 
                        (selectedStatusCertFiscal === 'certificado' && doc.is_certified) ||
                        (selectedStatusCertFiscal === 'pendente' && !doc.is_certified);
 
-    // 6. Filtro de AnulaÃ§Ã£o
+    // 6. Filtro de Anulação
     const isAnulado = doc.estado === 'ANULADO' || doc.status === 'anulado' || doc.documento_anulado === true;
     const matchesAnulado = selectedStatusAnuladoFiscal === 'all' || 
                           (selectedStatusAnuladoFiscal === 'anulado' && isAnulado) ||
                           (selectedStatusAnuladoFiscal === 'activo' && !isAnulado);
 
-    // 7. Filtro de Cliente EspecÃ­fico
+    // 7. Filtro de Cliente Específico
     const matchesClient = selectedClienteFiscal === 'all' || (doc.cliente_nome || doc.client_name) === selectedClienteFiscal;
 
     // 8. Filtros de Valor e Status Legado
@@ -25822,9 +25822,9 @@ const InvoiceList = ({
                 </div>
                 <p className="text-zinc-400 text-xs">
                   {activeSubTab === 'emitidos' 
-                    ? 'GestÃ£o de documentos certificados e faturas (Sincronizado com Supabase)'
+                    ? 'Gestão de documentos certificados e faturas (Sincronizado com Supabase)'
                     : activeSubTab === 'recibos'
-                      ? 'Processamento e emissÃ£o de Recibos para liquidaÃ§Ã£o de faturas'
+                      ? 'Processamento e emissão de Recibos para liquidação de faturas'
                       : 'Lista de faturas recibos e recibos recebidos'}
                 </p>
               </div>
@@ -25840,7 +25840,7 @@ const InvoiceList = ({
                       }
                     }}
                     disabled={!canAccessSeries(user, serieFilter, fiscalSeries)}
-                    title={!canAccessSeries(user, serieFilter, fiscalSeries) ? "NÃ£o tem permissÃ£o nesta sÃ©rie. Contacte o administrador." : ""}
+                    title={!canAccessSeries(user, serieFilter, fiscalSeries) ? "Não tem permissão nesta série. Contacte o administrador." : ""}
                     className={`font-bold px-6 py-2.5 rounded-none flex items-center gap-2 transition-all shadow-sm text-sm ${canAccessSeries(user, serieFilter, fiscalSeries) ? 'bg-[#2563eb] hover:bg-blue-700 text-white' : 'bg-zinc-200 text-zinc-500 cursor-not-allowed'}`}
                   >
                     <Plus size={20} className="bg-white/20 rounded-none p-0.5" />
@@ -25852,14 +25852,14 @@ const InvoiceList = ({
                   className="bg-white border border-zinc-200 text-zinc-600 font-bold px-6 py-2.5 rounded-none flex items-center gap-2 hover:bg-zinc-50 transition-all shadow-sm text-sm"
                 >
                   <History size={18} className="text-zinc-400" />
-                  RelatÃ³rios
+                  Relatórios
                 </button>
                 <button 
                   onClick={onViewBusinessOverview}
                   className="bg-[#4f46e5] hover:bg-indigo-700 text-white font-bold px-6 py-2.5 rounded-none flex items-center gap-2 transition-all shadow-sm text-sm"
                 >
                   <BarChart3 size={18} />
-                  VisÃ£o Geral do NegÃ³cio
+                  Visão Geral do Negócio
                 </button>
                 <button 
                   onClick={handleExportExcel}
@@ -25911,13 +25911,13 @@ const InvoiceList = ({
               </div>
 
               <div className="w-48 space-y-1.5 flex-1 min-w-[150px]">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">SÃ©rie Fiscal</label>
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Série Fiscal</label>
                 <select 
                   value={filterSerieFiscal}
                   onChange={(e) => setFilterSerieFiscal(e.target.value)}
                   className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-3 py-2 text-xs font-bold focus:outline-none focus:border-[#003366]"
                 >
-                  <option value="all">SÃ©rie: Todas</option>
+                  <option value="all">Série: Todas</option>
                   {[...new Set(issuedDocuments.map(d => d.serie).filter(Boolean))].map(s => (
                     <option key={s as string} value={s as string}>{s as string}</option>
                   ))}
@@ -25938,17 +25938,17 @@ const InvoiceList = ({
                   <option value="Factura">Factura (FT)</option>
                   <option value="Factura Recibo">Factura Recibo (FR)</option>
                   <option value="Factura Simplificada">Factura Simplificada (FS)</option>
-                  <option value="Nota de CrÃ©dito">Nota de CrÃ©dito (NC)</option>
-                  <option value="Nota de DÃ©bito">Nota de DÃ©bito (ND)</option>
+                  <option value="Nota de Crédito">Nota de Crédito (NC)</option>
+                  <option value="Nota de Débito">Nota de Débito (ND)</option>
                   <option value="Recibo">Recibo (RC)</option>
-                  <option value="OrÃ§amento">OrÃ§amento (PP)</option>
+                  <option value="Orçamento">Orçamento (PP)</option>
                   <option value="Guia de Remessa">Guia de Remessa (GR)</option>
                   <option value="Guia de Transporte">Guia de Transporte (GT)</option>
                 </select>
               </div>
 
               <div className="w-48 space-y-1.5 flex-1 min-w-[150px]">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">CertificaÃ§Ã£o</label>
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Certificação</label>
                 <select 
                   value={selectedStatusCertFiscal}
                   onChange={(e) => setSelectedStatusCertFiscal(e.target.value)}
@@ -25967,7 +25967,7 @@ const InvoiceList = ({
                   onChange={(e) => setSelectedStatusAnuladoFiscal(e.target.value)}
                   className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-3 py-2 text-xs font-bold focus:outline-none focus:border-[#003366]"
                 >
-                  <option value="all">AnulaÃ§Ã£o: Qualquer</option>
+                  <option value="all">Anulação: Qualquer</option>
                   <option value="activo">Activo / VÃ¡lido</option>
                   <option value="anulado">Anulado / Rectif.</option>
                 </select>
@@ -26014,7 +26014,7 @@ const InvoiceList = ({
                 onAction={onAction}
                 onCertify={onCertify}
                 onViewDetail={onViewDetail}
-                isDraftsPage={typeFilter === 'ProvisÃ³rios / Documento de Suporte (Draft)'}
+                isDraftsPage={typeFilter === 'Provisórios / Documento de Suporte (Draft)'}
                 globalUsers={globalUsers}
               />
             )}
@@ -26027,11 +26027,11 @@ const InvoiceList = ({
                       <th className="px-6 py-4">Data</th>
                       <th className="px-6 py-4">Vencimento</th>
                       <th className="px-6 py-4">Tipo</th>
-                      <th className="px-6 py-4">NÃºmero</th>
+                      <th className="px-6 py-4">Número</th>
                       <th className="px-6 py-4">Fornecedor/Cliente</th>
                       <th className="px-6 py-4">Pagamento</th>
                       <th className="px-6 py-4 text-right">Valor</th>
-                      <th className="px-6 py-4 text-center">AÃ§Ãµes</th>
+                      <th className="px-6 py-4 text-center">Ações</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-100">
@@ -26054,7 +26054,7 @@ const InvoiceList = ({
                             <button 
                               onClick={() => onViewDetail?.(doc)}
                               className="p-1.5 text-zinc-400 hover:text-[#003366] hover:bg-zinc-100 transition-colors inline-block"
-                              title="Ver RelatÃ³rio"
+                              title="Ver Relatório"
                             >
                               <Eye size={18} />
                             </button>
@@ -26080,7 +26080,7 @@ const InvoiceList = ({
             <div className="flex justify-between items-center">
               <div className="space-y-1">
                 <h3 className="text-xl font-bold text-zinc-800">Locais de Trabalho</h3>
-                <p className="text-zinc-400 text-xs">GestÃ£o de obras e locais de prestaÃ§Ã£o de serviÃ§os.</p>
+                <p className="text-zinc-400 text-xs">Gestão de obras e locais de prestação de serviços.</p>
               </div>
               <button 
                 onClick={() => { setSelectedWorkSite(null); setShowWorkSiteForm(true); }}
@@ -26098,9 +26098,9 @@ const InvoiceList = ({
                     <th className="px-6 py-4">CÃ³d / TÃ­tulo</th>
                     <th className="px-6 py-4">Cliente</th>
                     <th className="px-6 py-4">PerÃ­odo</th>
-                    <th className="px-6 py-4">LocalizaÃ§Ã£o</th>
+                    <th className="px-6 py-4">Localização</th>
                     <th className="px-6 py-4 text-center">Efectivos</th>
-                    <th className="px-6 py-4 text-right">AÃ§Ãµes</th>
+                    <th className="px-6 py-4 text-right">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
@@ -26142,7 +26142,7 @@ const InvoiceList = ({
                   </div>
                   <div className="space-y-1">
                     <h4 className="font-bold text-zinc-700">Nenhum local de trabalho registado</h4>
-                    <p className="text-zinc-400 text-sm">Clique em "Adicionar local de trabalho" para comeÃ§ar.</p>
+                    <p className="text-zinc-400 text-sm">Clique em "Adicionar local de trabalho" para começar.</p>
                   </div>
                 </div>
               )}
@@ -26165,7 +26165,7 @@ const InvoiceList = ({
                     className="relative w-full max-w-sm bg-white rounded-none shadow-2xl overflow-hidden"
                   >
                     <div className="p-4 border-b border-zinc-100 flex items-center justify-between bg-zinc-50">
-                      <h3 className="font-bold text-[#003366] text-sm">AÃ§Ãµes: {selectedWorkSite.title}</h3>
+                      <h3 className="font-bold text-[#003366] text-sm">Ações: {selectedWorkSite.title}</h3>
                       <button onClick={() => setShowActionMenu(false)} className="text-zinc-400 hover:text-zinc-600">
                         <X size={18} />
                       </button>
@@ -26187,7 +26187,7 @@ const InvoiceList = ({
                         <div className="w-8 h-8 rounded-none bg-emerald-50 flex items-center justify-center text-emerald-600">
                           <BarChart3 size={16} />
                         </div>
-                        <span>Ver gestÃ£o local de trabalho</span>
+                        <span>Ver gestão local de trabalho</span>
                       </button>
                       <button 
                         onClick={() => { setShowActionMenu(false); setShowRegistrationView(true); }}
@@ -26318,7 +26318,7 @@ const InvoiceList = ({
             </div>
             <div className="space-y-1">
               <h4 className="font-bold text-zinc-700">SecÃ§Ã£o em desenvolvimento</h4>
-              <p className="text-zinc-400 text-sm">Esta funcionalidade estarÃ¡ disponÃ­vel brevemente.</p>
+              <p className="text-zinc-400 text-sm">Esta funcionalidade estarÃ¡ disponível brevemente.</p>
             </div>
           </div>
         )}
@@ -26352,9 +26352,9 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
     { codigo: 'FT', descricao: 'Fatura' },
     { codigo: 'FR', descricao: 'Fatura Recibo' },
     { codigo: 'FP', descricao: 'Fatura Proforma' },
-    { codigo: 'OR', descricao: 'OrÃ§amento' },
-    { codigo: 'NC', descricao: 'Nota de CrÃ©dito' },
-    { codigo: 'ND', descricao: 'Nota de DÃ©bito' },
+    { codigo: 'OR', descricao: 'Orçamento' },
+    { codigo: 'NC', descricao: 'Nota de Crédito' },
+    { codigo: 'ND', descricao: 'Nota de Débito' },
     { codigo: 'RC', descricao: 'Recibo' },
     { codigo: 'GR', descricao: 'Guia de Remessa' },
     { codigo: 'GT', descricao: 'Guia de Transporte' },
@@ -26381,9 +26381,9 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
   }, []);
 
   useEffect(() => {
-    const isDocWithOrigin = ['Nota de CrÃ©dito', 'Recibo', 'NC', 'RC', 'NOTA DE CRÃ‰DITO', 'RECIBO'].some(
+    const isDocWithOrigin = ['Nota de Crédito', 'Recibo', 'NC', 'RC', 'NOTA DE CRÃ‰DITO', 'RECIBO'].some(
       t => t.toLowerCase() === (documentType || '').trim().toLowerCase()
-    ) || (documentType || '').toLowerCase().includes('recibo') || (documentType || '').toLowerCase().includes('crÃ©dito') || (documentType || '').toLowerCase().includes('credito');
+    ) || (documentType || '').toLowerCase().includes('recibo') || (documentType || '').toLowerCase().includes('crédito') || (documentType || '').toLowerCase().includes('credito');
 
     const companyId = user?.empresa_id || user?.company_id || '11111111-0000-0000-0000-000000000001';
 
@@ -26404,7 +26404,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                      tp.includes('FATURA') || tp.includes('FACTURA') || tp.includes('VENDA');
             }).map((d: any) => ({
               ...d,
-              numero_documento: d.numero_documento || d.invoice_number || 'Sem NÃºmero',
+              numero_documento: d.numero_documento || d.invoice_number || 'Sem Número',
               cliente_nome: d.cliente_nome || d.client_name || 'Consumidor Final',
               data_emissao: d.data_emissao || d.date || new Date().toISOString(),
               items: d.items || d.itens || d.detalhes?.items || [],
@@ -26427,7 +26427,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                            tp.includes('FATURA') || tp.includes('FACTURA') || tp.includes('VENDA');
                   }).map((d: any) => ({
                     ...d,
-                    numero_documento: d.numero_documento || d.invoice_number || 'Sem NÃºmero',
+                    numero_documento: d.numero_documento || d.invoice_number || 'Sem Número',
                     cliente_nome: d.cliente_nome || d.client_name || 'Consumidor Final',
                     data_emissao: d.data_emissao || d.date || new Date().toISOString(),
                     items: d.items || d.detalhes?.items || [],
@@ -26484,7 +26484,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
   const [isAgtItemModalOpen, setIsAgtItemModalOpen] = useState(false);
   const [showStockPicker, setShowStockPicker] = useState(false);
 
-  // SaÃ­da automÃ¡tica de stock apÃ³s emissÃ£o de venda
+  // Saída automÃ¡tica de stock apÃ³s emissão de venda
   const dispatchStockExit = async (savedDoc: any) => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -26536,7 +26536,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
        const u = String(val || '').trim().toUpperCase();
        if (!u || u === 'NORMAL' || u === 'DEFAULT') return 'GENERAL';
        if (u === 'PP' || u.includes('PROFORMA')) return 'PP'; // Fatura Proforma
-       if (u === 'OR' || u.includes('ORÃ‡AMENTO') || u.includes('ORCAMENTO') || u.includes('PROPOSTA')) return 'OR'; // OrÃ§amento
+       if (u === 'OR' || u.includes('ORÃ‡AMENTO') || u.includes('ORCAMENTO') || u.includes('PROPOSTA')) return 'OR'; // Orçamento
        if (u === 'FT' || u.includes('FATURA') || u.includes('FACTURA')) {
          if (u.includes('RECIBO') || u === 'FR') return 'FR';
          if (u.includes('SIMPLIFICADA') || u === 'FS') return 'FS';
@@ -26611,7 +26611,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
     }
 
     const tipo = field === 'tipo_artigo' ? value : (newItems[index].tipo_artigo || 'produto');
-    const isService = tipo.toLowerCase() === 'serviÃ§o' || tipo.toLowerCase() === 'servico' || tipo.toLowerCase() === 'ser';
+    const isService = tipo.toLowerCase() === 'serviço' || tipo.toLowerCase() === 'servico' || tipo.toLowerCase() === 'ser';
     
     const rowTotal = (q * p) - d;
     newItems[index].total = rowTotal;
@@ -26729,7 +26729,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isCertified) {
-      alert('Este documento jÃ¡ estÃ¡ certificado pela AGT e nÃ£o pode ser editado. Por favor, utilize as funÃ§Ãµes de clonagem ou Nota de CrÃ©dito para ajustes.');
+      alert('Este documento jÃ¡ estÃ¡ certificado pela AGT e não pode ser editado. Por favor, utilize as funções de clonagem ou Nota de Crédito para ajustes.');
       return;
     }
     
@@ -26746,7 +26746,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
       return;
     }
 
-    if (['NC', 'RC', 'Nota de CrÃ©dito', 'Recibo'].includes(documentType) && !originDocId) {
+    if (['NC', 'RC', 'Nota de Crédito', 'Recibo'].includes(documentType) && !originDocId) {
       alert('Por favor, selecione o Documento de Origem vinculado para emitir ' + documentType + '.');
       return;
     }
@@ -26760,7 +26760,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                             originDoc.estado_pagamento === 'pago' ||
                             (Number(originDoc.valor_pago || originDoc.paid_amount || 0) >= Number(originDoc.total || 0) && Number(originDoc.total || 0) > 0);
         if (isFullyPaid) {
-          alert('Esta fatura jÃ¡ se encontra totalmente liquidada com recibo emitido. NÃ£o Ã© permitido emitir outro recibo para a mesma fatura.');
+          alert('Esta fatura jÃ¡ se encontra totalmente liquidada com recibo emitido. Não é permitido emitir outro recibo para a mesma fatura.');
           return;
         }
       }
@@ -26770,7 +26770,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
       return;
     }
     if (!selectedSerieFiscal) {
-      alert('Por favor, selecione uma sÃ©rie.');
+      alert('Por favor, selecione uma série.');
       return;
     }
     if (!clientId) { alert('Por favor, selecione um cliente.'); return; }
@@ -26923,13 +26923,13 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
             <FileText size={18} />
           </div>
           <h2 className="text-xl font-bold text-[#003366]">
-            {fixedDocumentType ? `Emitir ${fixedDocumentType}` : 'InformaÃ§Ãµes do documento'}
+            {fixedDocumentType ? `Emitir ${fixedDocumentType}` : 'Informações do documento'}
           </h2>
         </div>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-3">
-        {/* Section 1: InformaÃ§Ãµes do documento */}
+        {/* Section 1: Informações do documento */}
         <div className="bg-white border border-zinc-200 p-3.5 rounded-none shadow-sm space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
             <div className="space-y-1">
@@ -26948,17 +26948,17 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                     <option value="FT">Fatura</option>
                     <option value="FR">Fatura Recibo</option>
                     <option value="RC">Recibo</option>
-                    <option value="NC">Nota de CrÃ©dito</option>
-                    <option value="OR">OrÃ§amento</option>
+                    <option value="NC">Nota de Crédito</option>
+                    <option value="OR">Orçamento</option>
                     <option value="FP">Proforma</option>
                   </>
                 )}
               </select>
             </div>
 
-            {['NC', 'RC', 'Nota de CrÃ©dito', 'Recibo'].includes(documentType) && (
+            {['NC', 'RC', 'Nota de Crédito', 'Recibo'].includes(documentType) && (
               <div className="space-y-1">
-                <label className="text-xs font-bold text-zinc-600">Documento de Origem (ObrigatÃ³rio)</label>
+                <label className="text-xs font-bold text-zinc-600">Documento de Origem (Obrigatório)</label>
                 <select
                   value={originDocId}
                   onChange={(e) => {
@@ -26997,7 +26997,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                             tax_id: activeTaxes.length > 0 ? activeTaxes[0].id : null,
                             tax_rate: 0,
                             desconto: 0,
-                            tipo_artigo: 'serviÃ§o',
+                            tipo_artigo: 'serviço',
                           }]);
                         }
                       }
@@ -27036,16 +27036,16 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
               </div>
             )}
             <div className="space-y-1">
-              <label className="text-xs font-bold text-zinc-600">SÃ©rie</label>
+              <label className="text-xs font-bold text-zinc-600">Série</label>
               <select 
                 value={selectedSerieFiscal === null ? '' : selectedSerieFiscal} 
                 onChange={(e) => setSelectedSerieFiscal(e.target.value ? Number(e.target.value) : null)} 
                 required
                 className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
               >
-                <option value="">Selecionar SÃ©rie</option>
+                <option value="">Selecionar Série</option>
                 {filteredSeries.length === 0 ? (
-                  <option value="" disabled>Solicite uma nova sÃ©rie na guia "SÃ©rie Fiscal"</option>
+                  <option value="" disabled>Solicite uma nova série na guia "Série Fiscal"</option>
                 ) : (
                   filteredSeries.map(s => (
                     <option key={s.id} value={s.id}>{s.name} ({s.type === 'manual' ? 'Manual' : 'Auto'})</option>
@@ -27068,18 +27068,18 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
             {selectedSeries?.type === 'manual' && (
               <div className="col-span-1 md:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-4 bg-amber-50/50 p-3 border border-amber-100">
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-amber-600 block">NÃºmero do Doc. Manual <span className="text-red-500">*</span></label>
+                  <label className="text-xs font-bold text-amber-600 block">Número do Doc. Manual <span className="text-red-500">*</span></label>
                   <input type="text" value={documentNumberManual} onChange={e => setDocumentNumberManual(e.target.value)} required className="w-full border border-amber-300 px-3 py-1.5 text-sm focus:outline-none focus:border-amber-600 bg-white" />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-amber-600 block">Ref. da SÃ©rie Manual <span className="text-red-500">*</span></label>
+                  <label className="text-xs font-bold text-amber-600 block">Ref. da Série Manual <span className="text-red-500">*</span></label>
                   <input type="text" value={referenceManual} onChange={e => setReferenceManual(e.target.value)} required className="w-full border border-amber-300 px-3 py-1.5 text-sm focus:outline-none focus:border-amber-600 bg-white" />
                 </div>
               </div>
             )}
 
             <div className="space-y-1">
-              <label className="text-xs font-bold text-zinc-600">Data de emissÃ£o</label>
+              <label className="text-xs font-bold text-zinc-600">Data de emissão</label>
               <input 
                 type="date" 
                 value={date} 
@@ -27099,13 +27099,13 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-bold text-zinc-600">CativaÃ§Ã£o de IVA</label>
+              <label className="text-xs font-bold text-zinc-600">Cativação de IVA</label>
               <select 
                 value={vatWithholding} 
                 onChange={(e) => setVatWithholding(e.target.value)}
                 className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
               >
-                <option value="0">Sem cativaÃ§Ã£o</option>
+                <option value="0">Sem cativação</option>
                 <option value="0.5">50%</option>
                 <option value="1">100%</option>
               </select>
@@ -27176,7 +27176,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
               return isPaymentRequiredDoc ? (
                 <>
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-zinc-600">MÃ©todo de Pagamento <span className="text-red-500">*</span></label>
+                    <label className="text-xs font-bold text-zinc-600">Método de Pagamento <span className="text-red-500">*</span></label>
                     <select 
                       value={paymentMethod} 
                       onChange={(e) => setPaymentMethod(e.target.value)}
@@ -27209,9 +27209,9 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
           </div>
         </div>
 
-        {/* Section 2: InformaÃ§Ãµes do adquirente */}
+        {/* Section 2: Informações do adquirente */}
         <div className="bg-white border border-zinc-200 p-3.5 rounded-none shadow-sm space-y-3">
-          <h3 className="text-xs font-bold text-[#0f2a4a] border-b border-zinc-100 pb-1.5 uppercase tracking-wide">InformaÃ§Ãµes do adquirente</h3>
+          <h3 className="text-xs font-bold text-[#0f2a4a] border-b border-zinc-100 pb-1.5 uppercase tracking-wide">Informações do adquirente</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
             <div className="space-y-1">
               <label className="text-xs font-semibold text-zinc-600">CÃ³digo do paÃ­s <span className="text-red-500">*</span></label>
@@ -27226,15 +27226,15 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                 <option value="BR">BR - Brasil</option>
                 <option value="US">US - Estados Unidos</option>
                 <option value="GB">GB - Reino Unido</option>
-                <option value="FR">FR - FranÃ§a</option>
+                <option value="FR">FR - França</option>
                 <option value="DE">DE - Alemanha</option>
                 <option value="CN">CN - China</option>
                 <option value="ZA">ZA - Ãfrica do Sul</option>
-                <option value="NG">NG - NigÃ©ria</option>
+                <option value="NG">NG - Nigéria</option>
               </select>
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-zinc-600">NÂº de identificaÃ§Ã£o fiscal <span className="text-red-500">*</span></label>
+              <label className="text-xs font-semibold text-zinc-600">NÂº de identificação fiscal <span className="text-red-500">*</span></label>
               <div className="flex">
                 <input
                   type="text"
@@ -27280,7 +27280,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
               </select>
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-zinc-600">Data prestaÃ§Ã£o de bens/serviÃ§os <span className="text-red-500">*</span></label>
+              <label className="text-xs font-semibold text-zinc-600">Data prestação de bens/serviços <span className="text-red-500">*</span></label>
               <input
                 type="date"
                 value={serviceDate}
@@ -27291,7 +27291,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
               </input>
             </div>
             <div className="space-y-1 sm:col-span-2 md:col-span-4">
-              <label className="text-xs font-semibold text-zinc-600">Local de prestaÃ§Ã£o de bens/serviÃ§os <span className="text-red-500">*</span></label>
+              <label className="text-xs font-semibold text-zinc-600">Local de prestação de bens/serviços <span className="text-red-500">*</span></label>
               <input
                 type="text"
                 value={serviceLocation}
@@ -27303,10 +27303,10 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
           </div>
         </div>
 
-        {/* Section 3: Bens e serviÃ§os */}
+        {/* Section 3: Bens e serviços */}
         <div className="bg-white border border-zinc-200 p-3.5 rounded-none shadow-sm space-y-3">
           <div className="flex justify-between items-center border-b border-zinc-100 pb-2">
-            <h3 className="text-xs font-bold text-[#0f2a4a] uppercase tracking-wide">Bens e serviÃ§os</h3>
+            <h3 className="text-xs font-bold text-[#0f2a4a] uppercase tracking-wide">Bens e serviços</h3>
             
               <button
               type="button"
@@ -27328,7 +27328,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
               <thead>
                 <tr className="bg-[#0f2a4a] text-white">
                   <th className="px-3 py-2 text-left font-semibold w-10">#</th>
-                  <th className="px-3 py-2 text-left font-semibold">DescriÃ§Ã£o do produto</th>
+                  <th className="px-3 py-2 text-left font-semibold">Descrição do produto</th>
                   <th className="px-3 py-2 text-center font-semibold w-24">Quantidade</th>
                   <th className="px-3 py-2 text-center font-semibold w-28">PreÃ§o Unit</th>
                   <th className="px-3 py-2 text-center font-semibold w-28">Desconto (%)</th>
@@ -27340,7 +27340,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                 {items.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="py-12 text-center text-zinc-300 font-semibold uppercase tracking-widest text-xs italic border border-dashed border-zinc-200">
-                      Nenhum bem ou serviÃ§o adicionado
+                      Nenhum bem ou serviço adicionado
                     </td>
                   </tr>
                 ) : (
@@ -27468,7 +27468,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
             onClick={onBack}
             className="px-8 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 hover:text-zinc-600 transition-all"
           >
-            Cancelar EmissÃ£o
+            Cancelar Emissão
           </button>
           <button 
             type="submit"
@@ -27669,7 +27669,7 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (items.length === 0) {
-      alert('âš ï¸ Por favor, adicione pelo menos um artigo/serviÃ§o antes de registar o documento de compra.');
+      alert('âš ï¸ Por favor, adicione pelo menos um artigo/serviço antes de registar o documento de compra.');
       return;
     }
     setLoading(true);
@@ -27760,7 +27760,7 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
           <ChevronLeft size={20} />
         </button>
         <h2 className="text-base font-black text-[#003366] uppercase tracking-wider">
-          {fixedDocumentType ? `Emitir ${fixedDocumentType}` : 'InformaÃ§Ãµes do documento de compra'}
+          {fixedDocumentType ? `Emitir ${fixedDocumentType}` : 'Informações do documento de compra'}
         </h2>
       </div>
 
@@ -28301,7 +28301,7 @@ const PurchaseActionsModal = ({ purchase, onClose, onAction }: {
             <div>
               <h3 className="font-black text-[#003366] text-xl uppercase tracking-tighter">OpÃ§Ãµes do Documento</h3>
               <p className="text-zinc-400 text-[10px] font-black uppercase tracking-widest mt-1">
-                {purchase.document_type} {purchase.purchase_number} â€¢ {purchase.supplier_name}
+                {purchase.document_type} {purchase.purchase_number} • {purchase.supplier_name}
               </p>
             </div>
           </div>
@@ -28318,7 +28318,7 @@ const PurchaseActionsModal = ({ purchase, onClose, onAction }: {
             </div>
             <div>
               <span className="block text-xs font-black uppercase tracking-wider text-zinc-800">Editar Documento</span>
-              <span className="text-[9px] font-bold text-zinc-400 uppercase">Alterar informaÃ§Ãµes e itens</span>
+              <span className="text-[9px] font-bold text-zinc-400 uppercase">Alterar informações e itens</span>
             </div>
           </button>
 
@@ -28328,7 +28328,7 @@ const PurchaseActionsModal = ({ purchase, onClose, onAction }: {
             </div>
             <div>
               <span className="block text-xs font-black uppercase tracking-wider text-zinc-800">Abrir Documento</span>
-              <span className="text-[9px] font-bold text-zinc-400 uppercase">Ver detalhes e informaÃ§Ãµes gravadas</span>
+              <span className="text-[9px] font-bold text-zinc-400 uppercase">Ver detalhes e informações gravadas</span>
             </div>
           </button>
 
@@ -28348,7 +28348,7 @@ const PurchaseActionsModal = ({ purchase, onClose, onAction }: {
                  <RefreshCw size={20} />
               </div>
               <div>
-                <span className="block text-xs font-black uppercase tracking-wider text-zinc-800">Nota de CrÃ©dito</span>
+                <span className="block text-xs font-black uppercase tracking-wider text-zinc-800">Nota de Crédito</span>
                 <span className="text-[9px] font-bold text-zinc-400 uppercase">Anular/Retificar valor</span>
               </div>
             </button>
@@ -28380,7 +28380,7 @@ const PurchaseActionsModal = ({ purchase, onClose, onAction }: {
             </div>
             <div>
               <span className="block text-xs font-black uppercase tracking-wider text-zinc-800">Imprimir (A4)</span>
-              <span className="text-[9px] font-bold text-zinc-400 uppercase">Abrir para impressÃ£o</span>
+              <span className="text-[9px] font-bold text-zinc-400 uppercase">Abrir para impressão</span>
             </div>
           </button>
 
@@ -28407,7 +28407,7 @@ const PurchaseActionsModal = ({ purchase, onClose, onAction }: {
                       Recibo Emitido (Fatura Liquidada)
                     </span>
                     <span className="text-[9px] font-bold text-zinc-400 uppercase">
-                      Fatura 100% paga. JÃ¡ nÃ£o Ã© possÃ­vel emitir mais recibos.
+                      Fatura 100% paga. JÃ¡ não é possível emitir mais recibos.
                     </span>
                   </div>
                 </button>
@@ -28428,11 +28428,11 @@ const PurchaseActionsModal = ({ purchase, onClose, onAction }: {
                 </div>
                 <div>
                   <span className="block text-xs font-black uppercase tracking-wider text-white">
-                    {st.isPartial ? 'Emitir Recibo (Saldo Restante)' : 'Emitir Recibo / LiquidaÃ§Ã£o'}
+                    {st.isPartial ? 'Emitir Recibo (Saldo Restante)' : 'Emitir Recibo / Liquidação'}
                   </span>
                   <span className="text-[9px] font-bold uppercase text-white/80">
                     {st.isPartial 
-                      ? `Registar LiquidaÃ§Ã£o Parcial (Saldo Pendente: ${formatCurrency(st.pendBalance)})` 
+                      ? `Registar Liquidação Parcial (Saldo Pendente: ${formatCurrency(st.pendBalance)})` 
                       : 'Registar recibo de pagamento ao fornecedor'}
                   </span>
                 </div>
@@ -28469,7 +28469,7 @@ const PurchaseActionsModal = ({ purchase, onClose, onAction }: {
                <BarChart3 size={20} />
             </div>
             <div>
-              <span className="block text-xs font-black uppercase tracking-wider text-zinc-800">RelatÃ³rio Detalhado</span>
+              <span className="block text-xs font-black uppercase tracking-wider text-zinc-800">Relatório Detalhado</span>
               <span className="text-[9px] font-bold text-zinc-400 uppercase">Ver detalhes e recalcular totais</span>
             </div>
           </button>
@@ -28487,7 +28487,7 @@ const PurchaseActionsModal = ({ purchase, onClose, onAction }: {
                   </div>
                   <div>
                     <span className="block text-xs font-black uppercase tracking-wider text-zinc-500">Apagar Bloqueado</span>
-                    <span className="text-[9px] font-bold text-zinc-400 uppercase">Documentos anulados nÃ£o podem ser eliminados</span>
+                    <span className="text-[9px] font-bold text-zinc-400 uppercase">Documentos anulados não podem ser eliminados</span>
                   </div>
                 </div>
               );
@@ -28523,7 +28523,7 @@ const PurchaseActionsModal = ({ purchase, onClose, onAction }: {
 
         <div className="p-6 bg-zinc-50 border-t border-zinc-100 text-center">
             <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">
-              Software de GestÃ£o â€¢ VersÃ£o Profissional
+              Software de Gestão • Versão Profissional
             </p>
         </div>
       </motion.div>
@@ -28635,7 +28635,7 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
   const handleUploadAttachment = async (file: File) => {
     try {
       const currentEmpresaId = user?.empresa_id || user?.company_id;
-      if (!currentEmpresaId) throw new Error('Empresa nÃ£o identificada. Por favor, verifique a sua sessÃ£o.');
+      if (!currentEmpresaId) throw new Error('Empresa não identificada. Por favor, verifique a sua sessão.');
 
       const extensao = file.name.split('.').pop() || '';
       const nomeArquivo = `${Date.now()}_compra_${Math.random().toString(36).substring(2)}.${extensao}`;
@@ -28872,7 +28872,7 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
         };
       });
 
-      // Garantir que nÃ£o existam documentos duplicados na lista de GestÃ£o de Compras
+      // Garantir que não existam documentos duplicados na lista de Gestão de Compras
       const uniqueNormalized = normalized.reduce((acc: any[], current: any) => {
         const isDuplicate = acc.some(item => 
           (item.id && current.id && item.id === current.id) ||
@@ -28923,24 +28923,24 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
   const handleDeletePurchase = async (id: any) => {
     try {
       const eid = user?.empresa_id || user?.company_id;
-      if (!id) throw new Error('ID do documento invÃ¡lido para eliminaÃ§Ã£o.');
-      if (!eid) throw new Error('Empresa nÃ£o identificada.');
+      if (!id) throw new Error('ID do documento invÃ¡lido para eliminação.');
+      if (!eid) throw new Error('Empresa não identificada.');
 
       // --- REGRAS DE NEGÃ“CIO: verificar bloqueios antes de confirmar ---
       const docToDelete = purchases.find(p => p.id === id);
       if (docToDelete) {
-        // Regra 1: Documentos anulados nÃ£o podem ser apagados
+        // Regra 1: Documentos anulados não podem ser apagados
         if (['anulado', 'cancelled'].includes((docToDelete.status || '').toLowerCase()) ||
             ['anulado', 'cancelled'].includes(((docToDelete as any).estado || '').toLowerCase())) {
-          toast.error('Documentos ANULADOS nÃ£o podem ser eliminados. Contacte o administrador do sistema.');
+          toast.error('Documentos ANULADOS não podem ser eliminados. Contacte o administrador do sistema.');
           return;
         }
         // Regra 2: Faturas com recibo emitido sÃ³ podem ser apagadas apÃ³s apagar o recibo
         if (docToDelete.recibo_emitido === true || (docToDelete as any).tem_recibo === true) {
-          toast.error('NÃ£o Ã© possÃ­vel eliminar esta fatura pois jÃ¡ tem um Recibo emitido. Elimine primeiro o Recibo associado.');
+          toast.error('Não é possível eliminar esta fatura pois jÃ¡ tem um Recibo emitido. Elimine primeiro o Recibo associado.');
           return;
         }
-        // VerificaÃ§Ã£o adicional: buscar recibos/pagamentos vinculados Ã  fatura na BD
+        // Verificação adicional: buscar recibos/pagamentos vinculados Ã  fatura na BD
         const { data: linkedReceipts } = await supabase
           .from('compras')
           .select('id, purchase_number, document_type')
@@ -28949,7 +28949,7 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
           .or(`numero_fatura.eq.${docToDelete.purchase_number},invoice_number.eq.${docToDelete.purchase_number}`);
         if (linkedReceipts && linkedReceipts.length > 0) {
           const reciboNums = linkedReceipts.map((r: any) => r.purchase_number).join(', ');
-          toast.error(`NÃ£o Ã© possÃ­vel eliminar esta fatura. Existe(m) Recibo(s) associado(s): ${reciboNums}. Elimine primeiro os Recibos.`);
+          toast.error(`Não é possível eliminar esta fatura. Existe(m) Recibo(s) associado(s): ${reciboNums}. Elimine primeiro os Recibos.`);
           return;
         }
       }
@@ -28989,10 +28989,10 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
           }
         }
       } catch (err: any) {
-        console.warn('[DELETE compras] ExcepÃ§Ã£o ao limpar anexos de mÃ©dia do Storage:', err.message);
+        console.warn('[DELETE compras] ExcepÃ§Ã£o ao limpar anexos de média do Storage:', err.message);
       }
 
-      // 2. Apagar tambÃ©m o documento principal da compra, se especificado no registo
+      // 2. Apagar também o documento principal da compra, se especificado no registo
       const foundPurchase = purchases.find(p => p.id === id);
       if (foundPurchase?.document_path) {
         try {
@@ -29030,7 +29030,7 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
         throw new Error('Falha ao eliminar registo diretamente no Supabase: ' + directErr.message);
       }
 
-      // 5. Chamar endpoint do backend como sincronizaÃ§Ã£o secundÃ¡ria de cache
+      // 5. Chamar endpoint do backend como sincronização secundÃ¡ria de cache
       try {
         await fetchWithAuth(`/api/purchases/${id}`, {
           method: 'DELETE'
@@ -29143,7 +29143,7 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
     );
   }
 
-  const handleDownloadPurchasesPDF = (listToExport: Purchase[], titleName = "RelatÃ³rio da GestÃ£o de Compras") => {
+  const handleDownloadPurchasesPDF = (listToExport: Purchase[], titleName = "Relatório da Gestão de Compras") => {
     const win = window.open('', '_blank');
     if (!win) return;
 
@@ -29187,7 +29187,7 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
           <div class="header">
             <div>
               <h1>${companyData?.nome || companyData?.name || 'SISTEMA DE GESTÃƒO'}</h1>
-              <p>${titleName.toUpperCase()} â€¢ NIF: ${companyData?.nif || '-'}</p>
+              <p>${titleName.toUpperCase()} • NIF: ${companyData?.nif || '-'}</p>
             </div>
             <div style="text-align: right;">
               <p><strong>Data:</strong> ${new Date().toLocaleDateString('pt-PT')} ${new Date().toLocaleTimeString('pt-PT')}</p>
@@ -29250,7 +29250,7 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
           </div>
 
           <div class="footer">
-            Documento gerado automaticamente pelo Sistema de GestÃ£o AGT.
+            Documento gerado automaticamente pelo Sistema de Gestão AGT.
           </div>
 
           <script>
@@ -29315,13 +29315,13 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
   });
 
   const tabs = [
-    { id: 'historico', label: 'GestÃ£o de Compras', icon: History },
+    { id: 'historico', label: 'Gestão de Compras', icon: History },
     { id: 'pendentes', label: 'Compras Pendentes', icon: Clock },
     { id: 'fornecedores', label: 'Fornecedores', icon: Users },
     { id: 'lista_documentos', label: 'Lista de Documentos Compras', icon: FileText },
     { id: 'antiguidades', label: 'Antiguidades de DÃ­vidas', icon: FileClock },
     { id: 'movimentos', label: 'Contas Correntes Fornecedores', icon: ArrowRightLeft },
-    { id: 'relatorio_compras', label: 'RelatÃ³rio da GestÃ£o de Compras', icon: FileSpreadsheet },
+    { id: 'relatorio_compras', label: 'Relatório da Gestão de Compras', icon: FileSpreadsheet },
   ];
 
   return (
@@ -29332,7 +29332,7 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
             <ShoppingCart size={32} />
           </div>
           <div>
-            <h2 className="text-4xl font-black text-[#003366] tracking-tight">GestÃ£o de Compras</h2>
+            <h2 className="text-4xl font-black text-[#003366] tracking-tight">Gestão de Compras</h2>
             <p className="text-zinc-400 text-sm font-bold uppercase tracking-widest mt-1">Controlo de entrada de mercadorias e fornecedores</p>
           </div>
         </div>
@@ -29408,8 +29408,8 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
             const rawItems = fullPurchase.itens || fullPurchase.items || [];
             const parsedItems = typeof rawItems === 'string' ? JSON.parse(rawItems) : (rawItems || []);
             const creditNoteData: any = {
-              tipo_documento: 'Nota de CrÃ©dito de Fornecedor',
-              document_type: 'Nota de CrÃ©dito de Fornecedor',
+              tipo_documento: 'Nota de Crédito de Fornecedor',
+              document_type: 'Nota de Crédito de Fornecedor',
               reference_document: fullPurchase.purchase_number || fullPurchase.numero_documento || fullPurchase.invoice_number,
               numero_fatura: fullPurchase.purchase_number || fullPurchase.numero_documento || fullPurchase.invoice_number,
               fornecedor_id: fullPurchase.fornecedor_id || fullPurchase.supplier_id,
@@ -29425,7 +29425,7 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
               work_site: fullPurchase.work_site,
               caixa_id: fullPurchase.caixa_id,
             };
-            handleStartCreate(creditNoteData, 'Nota de CrÃ©dito de Fornecedor');
+            handleStartCreate(creditNoteData, 'Nota de Crédito de Fornecedor');
           }}
           onDeletePurchase={(doc) => {
             handleDeletePurchase(doc.id);
@@ -29451,7 +29451,7 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
               </div>
             </div>
             <button 
-              onClick={() => handleDownloadPurchasesPDF(filteredPendingPurchases, "RelatÃ³rio de Compras Pendentes")}
+              onClick={() => handleDownloadPurchasesPDF(filteredPendingPurchases, "Relatório de Compras Pendentes")}
               className="bg-[#003366] text-white font-bold px-4 py-2 rounded-none flex items-center gap-2 hover:bg-[#002244] transition-all text-sm uppercase tracking-wider shadow-md"
             >
               <FileDown size={16} />
@@ -29468,7 +29468,7 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
             <table className="w-full text-left border-collapse whitespace-nowrap">
               <thead>
                 <tr className="bg-white text-zinc-900 text-[11px] font-bold border-b border-zinc-200">
-                  <th className="px-4 py-2 border-r border-zinc-200">EmissÃ£o / Vencimento</th>
+                  <th className="px-4 py-2 border-r border-zinc-200">Emissão / Vencimento</th>
                   <th className="px-4 py-2 border-r border-zinc-200">Tipo / NÂº Fornecedor</th>
                   <th className="px-4 py-2 border-r border-zinc-200">NÂº Interno</th>
                   <th className="px-4 py-2 border-r border-zinc-200">Fornecedor</th>
@@ -29476,7 +29476,7 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                   <th className="px-4 py-2 border-r border-zinc-200 text-right">Valor Pago</th>
                   <th className="px-4 py-2 border-r border-zinc-200 text-right">Saldo Pendente</th>
                   <th className="px-4 py-2 border-r border-zinc-200 text-right">Valor Total</th>
-                  <th className="px-4 py-2 text-right">AÃ§Ãµes</th>
+                  <th className="px-4 py-2 text-right">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
@@ -29519,12 +29519,12 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                               // Requisito 4: Faturas Recibo (e Recibos) NÃƒO podem ter recibo associado
                               if (isReceiptDoc) return null;
 
-                              // Requisito 3: Se a fatura estiver totalmente paga, nÃ£o permite emitir mais recibos sobre a mesma fatura
+                              // Requisito 3: Se a fatura estiver totalmente paga, não permite emitir mais recibos sobre a mesma fatura
                               if (st.isFullyPaid || p.recibo_emitido === true || st.pendBalance <= 0.01) {
                                 return (
                                   <button 
                                     disabled
-                                    title="Fatura totalmente paga - NÃ£o Ã© possÃ­vel emitir mais recibos"
+                                    title="Fatura totalmente paga - Não é possível emitir mais recibos"
                                     className="bg-zinc-100 text-zinc-400 border border-zinc-200 px-4 py-2 text-[10px] font-black uppercase tracking-widest cursor-not-allowed flex items-center gap-1.5 opacity-70"
                                   >
                                     <FileCheck size={14} />
@@ -29558,7 +29558,7 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
               </tbody>
             </table>
             {filteredPendingPurchases.length === 0 && (
-              <div className="p-12 text-center text-zinc-400 text-sm italic uppercase font-black tracking-widest bg-zinc-50/20">NÃ£o existem faturas de compras pendentes de pagamento no sistema.</div>
+              <div className="p-12 text-center text-zinc-400 text-sm italic uppercase font-black tracking-widest bg-zinc-50/20">Não existem faturas de compras pendentes de pagamento no sistema.</div>
             )}
           </div>
         </>
@@ -29569,7 +29569,7 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
           <div className="flex justify-between items-center mb-6">
             <div>
                <h3 className="text-xl font-black text-[#003366] uppercase tracking-tighter flex items-center gap-3">
-                 <Users size={24} /> GestÃ£o de Fornecedores
+                 <Users size={24} /> Gestão de Fornecedores
                </h3>
                <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mt-1">Lista completa e detalhada de todos os fornecedores registados</p>
             </div>
@@ -29587,11 +29587,11 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                   <th className="px-6 py-5">Fornecedor</th>
                   <th className="px-6 py-5">NIF / Contribuinte</th>
                   <th className="px-6 py-5">Contacto / Email</th>
-                  <th className="px-6 py-5">LocalizaÃ§Ã£o (PaÃ­s/Prov)</th>
+                  <th className="px-6 py-5">Localização (PaÃ­s/Prov)</th>
                   <th className="px-6 py-5">Tipo Fornecedor</th>
                   <th className="px-6 py-5">Banco / IBAN</th>
-                  <th className="px-6 py-5 text-right">CrÃ©dito/Saldo</th>
-                  <th className="px-6 py-5">AÃ§Ãµes</th>
+                  <th className="px-6 py-5 text-right">Crédito/Saldo</th>
+                  <th className="px-6 py-5">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
@@ -29867,8 +29867,8 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                  <th className="px-4 py-3">Documento NÂº</th>
                  <th className="px-4 py-3">Fornecedor</th>
                  <th className="px-4 py-3">Centro Custo</th>
-                 <th className="px-4 py-3 text-right">DÃ©bito (Pagos)</th>
-                 <th className="px-4 py-3 text-right">CrÃ©dito (DÃ­vida)</th>
+                 <th className="px-4 py-3 text-right">Débito (Pagos)</th>
+                 <th className="px-4 py-3 text-right">Crédito (DÃ­vida)</th>
                  <th className="px-4 py-3 text-right bg-zinc-100">Saldo</th>
                </tr>
             </thead>
@@ -29940,7 +29940,7 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
           if (!printContent) return;
           const w = window.open('', '_blank');
           if (!w) return;
-          w.document.write(`<html><head><title>RelatÃ³rio da GestÃ£o de Compras</title>
+          w.document.write(`<html><head><title>Relatório da Gestão de Compras</title>
             <style>
               body { font-family: Arial, sans-serif; font-size: 11px; margin: 20px; }
               h1 { font-size: 16px; text-align: center; text-transform: uppercase; color: #003366; margin-bottom: 4px; }
@@ -29968,8 +29968,8 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
             {/* Header */}
             <div className="bg-[#003366] text-white p-5 shadow-lg">
               <div className="text-center">
-                <div className="text-xs font-bold tracking-[0.3em] uppercase text-blue-200 mb-1">Sistema de GestÃ£o</div>
-                <h2 className="text-2xl font-black tracking-tight uppercase">RelatÃ³rio da GestÃ£o de Compras</h2>
+                <div className="text-xs font-bold tracking-[0.3em] uppercase text-blue-200 mb-1">Sistema de Gestão</div>
+                <h2 className="text-2xl font-black tracking-tight uppercase">Relatório da Gestão de Compras</h2>
                 <div className="text-xs text-blue-300 mt-1">{new Date().toLocaleDateString('pt-PT', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
               </div>
             </div>
@@ -29981,7 +29981,7 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                 <Search size={16} className="text-zinc-400 shrink-0" />
                 <input
                   type="text"
-                  placeholder="Pesquisar por fornecedor, nÃºmero, documento..."
+                  placeholder="Pesquisar por fornecedor, número, documento..."
                   value={(window as any).__rptSearch || ''}
                   onChange={e => { (window as any).__rptSearch = e.target.value; setActiveSubTab('relatorio_compras'); }}
                   className="flex-1 border border-zinc-300 px-3 py-1.5 text-xs focus:outline-none focus:border-[#003366]"
@@ -30127,9 +30127,9 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
           >
             <div className="p-6 border-b border-zinc-100 flex justify-between items-center bg-white shrink-0">
               <div>
-                <h3 className="text-xl font-black text-[#003366] uppercase tracking-tighter">GestÃ£o de Documento &amp; Imagem (PDF / JPG / PNG)</h3>
+                <h3 className="text-xl font-black text-[#003366] uppercase tracking-tighter">Gestão de Documento &amp; Imagem (PDF / JPG / PNG)</h3>
                 <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mt-1">
-                  {showFileModal.document_type} {showFileModal.purchase_number} â€¢ {showFileModal.supplier_name}
+                  {showFileModal.document_type} {showFileModal.purchase_number} • {showFileModal.supplier_name}
                 </p>
               </div>
               <button onClick={() => setShowFileModal(null)} className="p-2 hover:bg-zinc-100 transition-colors text-zinc-400">
@@ -30244,7 +30244,7 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                                                     {att.nome_original}
                                                  </p>
                                                  <p className="text-[9px] text-zinc-400 font-bold uppercase tracking-wider mt-0.5 font-mono">
-                                                    {att.tamanho_bytes ? (att.tamanho_bytes / 1024).toFixed(1) + ' KB' : '-'} â€¢ {att.created_at ? new Date(att.created_at).toLocaleDateString() : '-'}
+                                                    {att.tamanho_bytes ? (att.tamanho_bytes / 1024).toFixed(1) + ' KB' : '-'} • {att.created_at ? new Date(att.created_at).toLocaleDateString() : '-'}
                                                  </p>
                                               </>
                                            )}
@@ -30301,7 +30301,7 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                       <div className="bg-amber-50/50 border border-amber-200/50 p-3 rounded-none">
                          <div className="flex gap-1.5 text-amber-700 mb-1">
                             <AlertCircle size={14} className="shrink-0 mt-0.5" />
-                            <span className="text-[10px] font-black uppercase tracking-wider">Altos PadrÃµes de SeguranÃ§a AGT</span>
+                            <span className="text-[10px] font-black uppercase tracking-wider">Altos PadrÃµes de Segurança AGT</span>
                          </div>
                          <p className="text-[9px] text-amber-800 leading-normal font-semibold uppercase">
                             Isolamento de dados corporativos robusto. Documentos salvos permanentemente na tabela <span className="font-mono text-amber-900 border-b border-amber-350">media_arquivos</span> com integridade criptogrÃ¡fica.
@@ -30455,7 +30455,7 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
              } else if (action === 'receipt' || action === 'pay') {
                 const st = getPurchaseStatus(p);
                 if (st.isFullyPaid) {
-                  alert('Esta fatura de compra jÃ¡ se encontra totalmente paga (PAGO). NÃ£o Ã© possÃ­vel emitir mais recibos.');
+                  alert('Esta fatura de compra jÃ¡ se encontra totalmente paga (PAGO). Não é possível emitir mais recibos.');
                 } else {
                   setShowReceiptModal(p);
                 }
@@ -30629,7 +30629,7 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                   return;
                 }
                 if (rAmount > currentPending + 0.01) {
-                  alert(`O valor do recibo (${formatCurrency(rAmount)}) nÃ£o pode exceder o saldo pendente da fatura (${formatCurrency(currentPending)}).`);
+                  alert(`O valor do recibo (${formatCurrency(rAmount)}) não pode exceder o saldo pendente da fatura (${formatCurrency(currentPending)}).`);
                   return;
                 }
 
@@ -30722,8 +30722,8 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                   data_servico: rDate,
                   metodo_pagamento: rMethod,
                   forma_pagamento: rMethod,
-                  itens: showReceiptModal.itens || showReceiptModal.items || [{ description: `LiquidaÃ§Ã£o de Fatura de Compra ${showReceiptModal.purchase_number || ''}`, quantity: 1, unit_price: rAmount, total: rAmount }],
-                  items: showReceiptModal.itens || showReceiptModal.items || [{ description: `LiquidaÃ§Ã£o de Fatura de Compra ${showReceiptModal.purchase_number || ''}`, quantity: 1, unit_price: rAmount, total: rAmount }],
+                  itens: showReceiptModal.itens || showReceiptModal.items || [{ description: `Liquidação de Fatura de Compra ${showReceiptModal.purchase_number || ''}`, quantity: 1, unit_price: rAmount, total: rAmount }],
+                  items: showReceiptModal.itens || showReceiptModal.items || [{ description: `Liquidação de Fatura de Compra ${showReceiptModal.purchase_number || ''}`, quantity: 1, unit_price: rAmount, total: rAmount }],
                   hash: 'RC-SHA256-' + Math.random().toString(36).substring(7).toUpperCase(),
                   descricao: rObs || `Pagamento de FT nÂº ${showReceiptModal.purchase_number || ''} - Recibo ${receiptNum}`,
                   created_by_nome: user?.nome || 'Operador',
@@ -30741,7 +30741,7 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                     service_date: rDate,
                     cash_box: finalCaixaId,
                     payment_method: rMethod,
-                    items: showReceiptModal.itens || showReceiptModal.items || [{ description: `LiquidaÃ§Ã£o de Fatura de Compra ${showReceiptModal.purchase_number || ''}`, quantity: 1, unit_price: rAmount, total: rAmount }]
+                    items: showReceiptModal.itens || showReceiptModal.items || [{ description: `Liquidação de Fatura de Compra ${showReceiptModal.purchase_number || ''}`, quantity: 1, unit_price: rAmount, total: rAmount }]
                   }
                 };
 
@@ -30835,7 +30835,7 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black text-zinc-400 uppercase tracking-wider font-mono">Data EmissÃ£o Fatura</label>
+                  <label className="text-[10px] font-black text-zinc-400 uppercase tracking-wider font-mono">Data Emissão Fatura</label>
                   <input 
                     type="text" 
                     value={showReceiptModal.date ? new Date(showReceiptModal.date).toLocaleDateString() : 'N/A'} 
@@ -30844,7 +30844,7 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-wider">Data EmissÃ£o Recibo</label>
+                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-wider">Data Emissão Recibo</label>
                   <input 
                     type="date" 
                     name="receipt_date"
@@ -30912,7 +30912,7 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
               </div>
 
               <div className="space-y-1">
-                <label className="text-[10px] font-black text-zinc-500 uppercase tracking-wider">ObservaÃ§Ãµes / Notas</label>
+                <label className="text-[10px] font-black text-zinc-500 uppercase tracking-wider">Observações / Notas</label>
                 <textarea 
                   name="receipt_obs"
                   placeholder="Ex: Pagamento parcial / efetuado..."
@@ -30953,7 +30953,7 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
             {/* Control bar */}
             <div className="p-4 bg-[#003366] text-white flex justify-between items-center shrink-0 shadow-md">
               <span className="text-xs font-black uppercase tracking-widest flex items-center gap-2">
-                <Printer size={16} /> VisualizaÃ§Ã£o de ImpressÃ£o A4
+                <Printer size={16} /> Visualização de Impressão A4
               </span>
               <div className="flex gap-2">
                 <button 
@@ -30993,7 +30993,7 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                         {showA4PrintModal.document_type || 'Compra'}
                       </div>
                       <div className="text-lg font-black font-mono text-zinc-800 mt-1">{showA4PrintModal.purchase_number}</div>
-                      <div className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest mt-2">Data de EmissÃ£o: {new Date(showA4PrintModal.date).toLocaleDateString('pt-PT')}</div>
+                      <div className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest mt-2">Data de Emissão: {new Date(showA4PrintModal.date).toLocaleDateString('pt-PT')}</div>
                       {showA4PrintModal.due_date && (
                         <div className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">Data de Vencimento: {new Date(showA4PrintModal.due_date).toLocaleDateString('pt-PT')}</div>
                       )}
@@ -31025,7 +31025,7 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                     <table className="w-full text-left border-collapse">
                       <thead>
                         <tr className="border-b-2 border-zinc-200 text-[10px] font-black text-zinc-400 uppercase tracking-widest">
-                          <th className="py-3 px-2">ComposiÃ§Ã£o dos Bens e ServiÃ§os</th>
+                          <th className="py-3 px-2">ComposiÃ§Ã£o dos Bens e Serviços</th>
                           <th className="py-3 px-2 text-center text-zinc-500">Qtd</th>
                           <th className="py-3 px-2 text-right">PreÃ§o UnitÃ¡rio</th>
                           <th className="py-3 px-2 text-center font-bold">Taxa IVA</th>
@@ -31071,7 +31071,7 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                         <span className="font-mono">{formatCurrency(showA4PrintModal.total)}</span>
                       </div>
                       <div className="flex justify-between items-center text-[11px] font-bold uppercase tracking-widest text-zinc-500">
-                        <span>CativaÃ§Ã£o/Desconto</span>
+                        <span>Cativação/Desconto</span>
                         <span className="font-mono">- {formatCurrency(Number(showA4PrintModal.desconto_global || showA4PrintModal.global_discount || 0))}</span>
                       </div>
                       <div className="flex justify-between items-center text-[11px] font-bold uppercase tracking-widest text-[#003366] border-t border-zinc-100 pt-2">
@@ -31084,17 +31084,17 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                   {/* Signatures placeholders */}
                   <div className="pt-12 grid grid-cols-2 gap-12 text-center text-[9px] font-bold text-zinc-400 uppercase tracking-widest">
                     <div className="space-y-10">
-                      <div>ResponsÃ¡vel TÃ©cnico</div>
+                      <div>ResponsÃ¡vel Técnico</div>
                       <div className="border-b border-zinc-200 pb-2"></div>
                     </div>
                     <div className="space-y-10">
-                      <div>Contabilidade / RecepÃ§Ã£o</div>
+                      <div>Contabilidade / Recepção</div>
                       <div className="border-b border-zinc-200 pb-2"></div>
                     </div>
                   </div>
 
                   <div className="pt-6 text-center text-[8px] font-black tracking-widest uppercase text-zinc-300">
-                    SaaS ERP Cloud â€¢ Processamento por InteligÃªncia Coeso â€¢ Certificado AGT
+                    SaaS ERP Cloud • Processamento por InteligÃªncia Coeso • Certificado AGT
                   </div>
                 </div>
 
@@ -31123,8 +31123,8 @@ const SupplierAccount = ({ supplier, purchases, onBack }: {
 
   const handleSearch = () => {
     const movements = purchases.map(p => {
-      const isCredit = ['Fatura de Compra', 'Fatura Recibo de Compra', 'Nota de DÃ©bito de Fornecedor', 'FTC'].includes(p.document_type || '');
-      const isDebit = ['Pagamento', 'Recibo', 'Fatura Recibo de Compra', 'Nota de CrÃ©dito de Fornecedor', 'RCT'].includes(p.document_type || '');
+      const isCredit = ['Fatura de Compra', 'Fatura Recibo de Compra', 'Nota de Débito de Fornecedor', 'FTC'].includes(p.document_type || '');
+      const isDebit = ['Pagamento', 'Recibo', 'Fatura Recibo de Compra', 'Nota de Crédito de Fornecedor', 'RCT'].includes(p.document_type || '');
       
       return {
         ...p,
@@ -31180,7 +31180,7 @@ const SupplierAccount = ({ supplier, purchases, onBack }: {
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4 text-[10px]">
               <div>
-                <p className="font-bold text-zinc-400 uppercase">Data de EmissÃ£o</p>
+                <p className="font-bold text-zinc-400 uppercase">Data de Emissão</p>
                 <p className="text-zinc-800">{new Date().toLocaleString()}</p>
               </div>
               <div>
@@ -31189,7 +31189,7 @@ const SupplierAccount = ({ supplier, purchases, onBack }: {
               </div>
               <div>
                 <p className="font-bold text-zinc-400 uppercase">Morada</p>
-                <p className="text-zinc-800 text-[11px] whitespace-pre-wrap">{supplier.address || 'EndereÃ§o nÃ£o informado'}</p>
+                <p className="text-zinc-800 text-[11px] whitespace-pre-wrap">{supplier.address || 'EndereÃ§o não informado'}</p>
               </div>
             </div>
             <div>
@@ -31229,8 +31229,8 @@ const SupplierAccount = ({ supplier, purchases, onBack }: {
                 <th className="px-4 py-3">Data</th>
                 <th className="px-4 py-3">Doc NÂº</th>
                 <th className="px-4 py-3">Tipo Documento</th>
-                <th className="px-4 py-3 text-right">CrÃ©dito (Aumento DÃ­vida)</th>
-                <th className="px-4 py-3 text-right">DÃ©bito (Pagamento)</th>
+                <th className="px-4 py-3 text-right">Crédito (Aumento DÃ­vida)</th>
+                <th className="px-4 py-3 text-right">Débito (Pagamento)</th>
                 <th className="px-4 py-3 text-right">Saldo</th>
               </tr>
             </thead>
@@ -31382,22 +31382,22 @@ const SupplierModule = ({ products, activeTaxes, workSites, fiscalSeries, caixas
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || name.trim() === '') {
-      alert('Por favor, preencha o campo Nome do Fornecedor. Ã‰ um campo obrigatÃ³rio.');
+      alert('Por favor, preencha o campo Nome do Fornecedor. Ã‰ um campo obrigatório.');
       return;
     }
     if (!nif || nif.trim() === '') {
-      alert('Por favor, preencha o campo NIF. Ã‰ um campo obrigatÃ³rio.');
+      alert('Por favor, preencha o campo NIF. Ã‰ um campo obrigatório.');
       return;
     }
     
     if (nif && !validateAngolaNIF(nif)) {
-      alert('O NIF inserido Ã© invÃ¡lido segundo as regras da AGT Angola. Deve conter 10 dÃ­gitos e comeÃ§ar com 1, 2, 3, 4 ou 5.');
+      alert('O NIF inserido é invÃ¡lido segundo as regras da AGT Angola. Deve conter 10 dÃ­gitos e começar com 1, 2, 3, 4 ou 5.');
       return;
     }
 
     try {
       if (!user?.empresa_id) {
-        alert('SessÃ£o expirada. Por favor, faÃ§a login novamente.');
+        alert('Sessão expirada. Por favor, faça login novamente.');
         return;
       }
 
@@ -31440,19 +31440,19 @@ const SupplierModule = ({ products, activeTaxes, workSites, fiscalSeries, caixas
     }
   };
 
-  // â›” EliminaÃ§Ã£o fÃ­sica de fornecedores BLOQUEADA por conformidade fiscal.
+  // â›” Eliminação fÃ­sica de fornecedores BLOQUEADA por conformidade fiscal.
   // Para desativar, usar updateFornecedor com { activo: false }.
   const handleDeleteSupplier = (_id: number | string) => {
-    alert('A eliminaÃ§Ã£o de fornecedores estÃ¡ desativada por conformidade fiscal.\n\nPara desativar este fornecedor, edite o registo e altere o estado para "Inactivo".');
+    alert('A eliminação de fornecedores estÃ¡ desativada por conformidade fiscal.\n\nPara desativar este fornecedor, edite o registo e altere o estado para "Inactivo".');
   };
 
   const sections = [
-    { id: 'suppliers-list', label: 'GestÃ£o de Fornecedores', icon: <Users size={24} />, description: 'Registo e consulta de todos os fornecedores da empresa.' },
-    { id: 'purchases-list', label: 'Registo de Compras', icon: <ShoppingCart size={24} />, description: 'LanÃ§amento de faturas de compra e entrada de stock.' },
+    { id: 'suppliers-list', label: 'Gestão de Fornecedores', icon: <Users size={24} />, description: 'Registo e consulta de todos os fornecedores da empresa.' },
+    { id: 'purchases-list', label: 'Registo de Compras', icon: <ShoppingCart size={24} />, description: 'Lançamento de faturas de compra e entrada de stock.' },
     { id: 'current-accounts', label: 'Contas Correntes', icon: <FileText size={24} />, description: 'Consulta de saldos e movimentos por fornecedor.' },
     { id: 'payments', label: 'Pagamentos', icon: <Wallet size={24} />, description: 'Registo de pagamentos efetuados a fornecedores.' },
-    { id: 'orders', label: 'Encomendas', icon: <Truck size={24} />, description: 'GestÃ£o de pedidos de compra e ordens de fornecimento.' },
-    { id: 'reports', label: 'RelatÃ³rios de Compras', icon: <BarChart3 size={24} />, description: 'AnÃ¡lise detalhada de compras e despesas por perÃ­odo.' },
+    { id: 'orders', label: 'Encomendas', icon: <Truck size={24} />, description: 'Gestão de pedidos de compra e ordens de fornecimento.' },
+    { id: 'reports', label: 'Relatórios de Compras', icon: <BarChart3 size={24} />, description: 'Análise detalhada de compras e despesas por perÃ­odo.' },
   ];
 
   if (!activeSubTab) {
@@ -31509,7 +31509,7 @@ const SupplierModule = ({ products, activeTaxes, workSites, fiscalSeries, caixas
                     <th className="px-6 py-4">NIF</th>
                     <th className="px-6 py-4">Email</th>
                     <th className="px-6 py-4">Telefone</th>
-                    <th className="px-6 py-4 text-right">AÃ§Ãµes</th>
+                    <th className="px-6 py-4 text-right">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
@@ -31580,14 +31580,14 @@ const SupplierModule = ({ products, activeTaxes, workSites, fiscalSeries, caixas
                     <th className="px-6 py-4">Fornecedor</th>
                     <th className="px-6 py-4">NIF</th>
                     <th className="px-6 py-4 text-right">Saldo Atual</th>
-                    <th className="px-6 py-4 text-right">AÃ§Ãµes</th>
+                    <th className="px-6 py-4 text-right">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
                   {suppliers.map(s => {
                     const sPurchases = purchases.filter(p => p.supplier_id === s.id);
-                    const debt = sPurchases.reduce((acc, p) => acc + (['Fatura de Compra', 'Fatura Recibo de Compra', 'Nota de DÃ©bito de Fornecedor'].includes(p.document_type || '') ? (p.total || 0) : 0), 0);
-                    const paid = sPurchases.reduce((acc, p) => acc + (['Pagamento', 'Recibo', 'Fatura Recibo de Compra', 'Nota de CrÃ©dito de Fornecedor'].includes(p.document_type || '') ? (p.total || 0) : 0), 0);
+                    const debt = sPurchases.reduce((acc, p) => acc + (['Fatura de Compra', 'Fatura Recibo de Compra', 'Nota de Débito de Fornecedor'].includes(p.document_type || '') ? (p.total || 0) : 0), 0);
+                    const paid = sPurchases.reduce((acc, p) => acc + (['Pagamento', 'Recibo', 'Fatura Recibo de Compra', 'Nota de Crédito de Fornecedor'].includes(p.document_type || '') ? (p.total || 0) : 0), 0);
                     const initial = (s as any).saldo_inicial || 0;
                     const balance = initial + debt - paid;
                     
@@ -31639,9 +31639,9 @@ const SupplierModule = ({ products, activeTaxes, workSites, fiscalSeries, caixas
                     <th className="px-6 py-4">Data</th>
                     <th className="px-6 py-4">NÂº Pagamento</th>
                     <th className="px-6 py-4">Fornecedor</th>
-                    <th className="px-6 py-4">MÃ©todo</th>
+                    <th className="px-6 py-4">Método</th>
                     <th className="px-6 py-4 text-right">Valor Pago</th>
-                    <th className="px-6 py-4 text-center">AÃ§Ãµes</th>
+                    <th className="px-6 py-4 text-center">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
@@ -31666,7 +31666,7 @@ const SupplierModule = ({ products, activeTaxes, workSites, fiscalSeries, caixas
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={6} className="p-12 text-center text-zinc-400 italic">Nenhum pagamento registado atÃ© ao momento.</td>
+                      <td colSpan={6} className="p-12 text-center text-zinc-400 italic">Nenhum pagamento registado até ao momento.</td>
                     </tr>
                   )}
                 </tbody>
@@ -31687,7 +31687,7 @@ const SupplierModule = ({ products, activeTaxes, workSites, fiscalSeries, caixas
                     <th className="px-6 py-4">Data</th>
                     <th className="px-6 py-4">NÂº Encomenda</th>
                     <th className="px-6 py-4">Fornecedor</th>
-                    <th className="px-6 py-4">PrevisÃ£o Entrega</th>
+                    <th className="px-6 py-4">Previsão Entrega</th>
                     <th className="px-6 py-4 text-right">Valor Total</th>
                     <th className="px-6 py-4 text-center">Estado</th>
                   </tr>
@@ -31699,7 +31699,7 @@ const SupplierModule = ({ products, activeTaxes, workSites, fiscalSeries, caixas
                         <td className="px-6 py-4 text-zinc-500">{new Date(p.date || '').toLocaleDateString()}</td>
                         <td className="px-6 py-4 text-[#003366]">{p.invoice_number}</td>
                         <td className="px-6 py-4 uppercase text-zinc-900">{p.supplier_name}</td>
-                        <td className="px-6 py-4 text-zinc-500">{p.due_date ? new Date(p.due_date).toLocaleDateString() : 'NÃ£o definido'}</td>
+                        <td className="px-6 py-4 text-zinc-500">{p.due_date ? new Date(p.due_date).toLocaleDateString() : 'Não definido'}</td>
                         <td className="px-6 py-4 text-right font-black">{formatCurrency(p.total)}</td>
                         <td className="px-6 py-4 text-center">
                           <span className="px-3 py-1 bg-amber-50 text-amber-600 text-[9px] font-black uppercase tracking-widest border border-amber-100">
@@ -31750,7 +31750,7 @@ const SupplierModule = ({ products, activeTaxes, workSites, fiscalSeries, caixas
                 </div>
                 <div>
                   <h3 className="font-bold text-lg uppercase tracking-tight">Registar Novo Fornecedor</h3>
-                  <p className="text-[10px] text-white/60 font-bold uppercase tracking-widest">InformaÃ§Ãµes Cadastrais e Fiscais</p>
+                  <p className="text-[10px] text-white/60 font-bold uppercase tracking-widest">Informações Cadastrais e Fiscais</p>
                 </div>
               </div>
               <button onClick={() => setShowForm(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors text-white/70">
@@ -31959,14 +31959,14 @@ const ProductList = ({
       doc.setTextColor(70, 80, 95);
       doc.setFontSize(8);
       doc.setFont('helvetica', 'normal');
-      doc.text('ArmazÃ©m de Origem:', 18, 48);
+      doc.text('Armazém de Origem:', 18, 48);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(180, 40, 40);
       doc.text(String(transferData.fromWarehouseName), 56, 48);
 
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(70, 80, 95);
-      doc.text('ArmazÃ©m de Destino:', 18, 55);
+      doc.text('Armazém de Destino:', 18, 55);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(20, 130, 60);
       doc.text(String(transferData.toWarehouseName), 56, 55);
@@ -32057,9 +32057,9 @@ const ProductList = ({
       doc.setFontSize(7.5);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(70, 80, 95);
-      doc.text('Entregue por (ArmazÃ©m Origem)', 42, y + 5, { align: 'center' });
+      doc.text('Entregue por (Armazém Origem)', 42, y + 5, { align: 'center' });
       doc.text('Transportado por (Motorista)', 106, y + 5, { align: 'center' });
-      doc.text('Recebido por (ArmazÃ©m Destino)', 169, y + 5, { align: 'center' });
+      doc.text('Recebido por (Armazém Destino)', 169, y + 5, { align: 'center' });
 
       doc.setFontSize(6.5);
       doc.setFont('helvetica', 'normal');
@@ -32071,7 +32071,7 @@ const ProductList = ({
       // Footer
       doc.setFontSize(6.5);
       doc.setTextColor(160, 160, 160);
-      doc.text('Software de GestÃ£o AGT - Guia de TransferÃªncia ' + docId + ' gerada informaticamente', 105, 285, { align: 'center' });
+      doc.text('Software de Gestão AGT - Guia de TransferÃªncia ' + docId + ' gerada informaticamente', 105, 285, { align: 'center' });
 
       doc.save('Guia_Transferencia_' + (transferData.product.name || 'Artigo').replace(/[^a-zA-Z0-9]/g, '_') + '_' + Date.now() + '.pdf');
     } catch (e) {
@@ -32086,8 +32086,8 @@ const ProductList = ({
         alert('Por favor introduza uma quantidade vÃ¡lida superior a 0.');
         return;
       }
-      const fromName = warehouses.find(w => w.id === fromWh)?.name || ('ArmazÃ©m #' + fromWh);
-      const toName = warehouses.find(w => w.id === toWh)?.name || ('ArmazÃ©m #' + toWh);
+      const fromName = warehouses.find(w => w.id === fromWh)?.name || ('Armazém #' + fromWh);
+      const toName = warehouses.find(w => w.id === toWh)?.name || ('Armazém #' + toWh);
 
       const { error: movError } = await supabase.from('movimentacoes_stock').insert({
         empresa_id: user.empresa_id,
@@ -32103,10 +32103,10 @@ const ProductList = ({
       });
       if (movError) throw movError;
 
-      // Actualizar tambÃ©m o armazÃ©m do produto para refletir o novo destino
+      // Actualizar também o armazém do produto para refletir o novo destino
       await supabase.from('produtos').update({ warehouse_id: toWh }).eq('id', productId);
 
-      // Gerar automaticamente o relatÃ³rio leve e completo da guia de transferÃªncia
+      // Gerar automaticamente o relatório leve e completo da guia de transferÃªncia
       if (selectedProduct) {
         generateStockTransferPDF({
           product: selectedProduct,
@@ -32126,11 +32126,11 @@ const ProductList = ({
   };
 
   const handleDeleteProduct = async (id: string | number) => {
-    if (!window.confirm('Tem a certeza que deseja eliminar este produto? Esta aÃ§Ã£o removerÃ¡ o registo da lista e a imagem permanentemente.')) return;
+    if (!window.confirm('Tem a certeza que deseja eliminar este produto? Esta ação removerÃ¡ o registo da lista e a imagem permanentemente.')) return;
     setLoading(true);
     try {
       if (!user?.empresa_id) {
-        alert('UsuÃ¡rio nÃ£o identificado. Verifique se estÃ¡ logado.');
+        alert('UsuÃ¡rio não identificado. Verifique se estÃ¡ logado.');
         setLoading(false);
         return;
       }
@@ -32149,7 +32149,7 @@ const ProductList = ({
         throw fetchError;
       }
 
-      // PASSO 2: apagar imagem do bucket, e nÃ£o deixar lixo no storage
+      // PASSO 2: apagar imagem do bucket, e não deixar lixo no storage
       if (product?.image_path) {
         const { error: storageError } = await supabase.storage
           .from('produtos-imagens')
@@ -32168,7 +32168,7 @@ const ProductList = ({
         .eq('empresa_id', user.empresa_id);
 
       if (deleteError) {
-        // Se a coluna ativo nÃ£o existir, tentamos Hard Delete fallback
+        // Se a coluna ativo não existir, tentamos Hard Delete fallback
         const { error: hardDeleteError } = await supabase
           .from('produtos')
           .delete()
@@ -32196,7 +32196,7 @@ const ProductList = ({
     setLoading(true);
     try {
       if (!user?.empresa_id) {
-        alert('Empresa nÃ£o identificada.');
+        alert('Empresa não identificada.');
         return;
       }
       const companyId = user.empresa_id;
@@ -32231,7 +32231,7 @@ const ProductList = ({
       alert('Imagem atualizada com sucesso!');
     } catch (err: any) {
       console.error('[QuickImageUpload] Erro:', err);
-      alert('Erro ao carregar imagem: ' + (err.message || 'Erro de permissÃ£o ou rede'));
+      alert('Erro ao carregar imagem: ' + (err.message || 'Erro de permissão ou rede'));
     } finally {
       setLoading(false);
     }
@@ -32239,20 +32239,20 @@ const ProductList = ({
 
   const tabs = [
     { id: 'stock', label: 'Stock Atual', icon: Package },
-    { id: 'gestao-artigos', label: 'GestÃ£o de Artigos', icon: BookOpen },
-    { id: 'requisicao-material', label: 'RequisiÃ§Ã£o Material', icon: ClipboardList },
-    { id: 'gestao-saidas', label: 'GestÃ£o de SaÃ­das', icon: TrendingDown },
-    { id: 'valorizacao-stock', label: 'ValorizaÃ§Ã£o Stock', icon: Scale },
-    { id: 'producao', label: 'ProduÃ§Ã£o', icon: Cpu },
+    { id: 'gestao-artigos', label: 'Gestão de Artigos', icon: BookOpen },
+    { id: 'requisicao-material', label: 'Requisição Material', icon: ClipboardList },
+    { id: 'gestao-saidas', label: 'Gestão de Saídas', icon: TrendingDown },
+    { id: 'valorizacao-stock', label: 'Valorização Stock', icon: Scale },
+    { id: 'producao', label: 'Produção', icon: Cpu },
     { id: 'movements', label: 'Movimentos', icon: History },
-    { id: 'warehouse', label: 'ArmazÃ©ns', icon: Home },
-    { id: 'reports', label: 'RelatÃ³rios', icon: FileText },
+    { id: 'warehouse', label: 'Armazéns', icon: Home },
+    { id: 'reports', label: 'Relatórios', icon: FileText },
     { id: 'price_table', label: 'Tabela de PreÃ§os', icon: Tag },
   ];
 
   return (
     <div className="space-y-4">
-      {/* CabeÃ§alho Unificado e Compacto da GestÃ£o de Stock */}
+      {/* Cabeçalho Unificado e Compacto da Gestão de Stock */}
       <div className="bg-white border border-zinc-200 rounded-xl shadow-2xs overflow-hidden">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-5 py-3 border-b border-zinc-100">
           <div className="flex items-center gap-3">
@@ -32261,10 +32261,10 @@ const ProductList = ({
             </div>
             <div>
               <h2 className="text-sm sm:text-base font-black text-[#003366] uppercase tracking-tight leading-none">
-                GestÃ£o de Stock & InventÃ¡rio
+                Gestão de Stock & InventÃ¡rio
               </h2>
               <p className="text-zinc-400 text-[10px] sm:text-[11px] font-medium mt-0.5">
-                Controlo em tempo real de armazÃ©ns, entradas de compras, saÃ­das e inventÃ¡rio fÃ­sico.
+                Controlo em tempo real de armazéns, entradas de compras, saÃ­das e inventÃ¡rio fÃ­sico.
               </p>
             </div>
           </div>
@@ -32281,7 +32281,7 @@ const ProductList = ({
           )}
         </div>
 
-        {/* Abas de NavegaÃ§Ã£o Compactas */}
+        {/* Abas de Navegação Compactas */}
         <div className="flex items-center gap-1.5 px-4 py-1.5 bg-zinc-50/70 overflow-x-auto">
           {tabs.map(tab => (
             <button
@@ -32378,7 +32378,7 @@ const ProductList = ({
                 <th className="px-6 py-4">Qtd</th>
                 <th className="px-6 py-4">Stock Anterior</th>
                 <th className="px-6 py-4">Stock Atual</th>
-                <th className="px-6 py-4">DescriÃ§Ã£o</th>
+                <th className="px-6 py-4">Descrição</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
@@ -32440,7 +32440,7 @@ const ProductList = ({
           onProductUpdated={onRefresh}
         />
       ) : (
-        <div className="p-12 text-center text-zinc-400 text-sm font-medium bg-white border border-zinc-200">MÃ³dulo em desenvolvimento.</div>
+        <div className="p-12 text-center text-zinc-400 text-sm font-medium bg-white border border-zinc-200">Módulo em desenvolvimento.</div>
       )}
 
       {/* Modals for Adjustments and Transfers */}
@@ -32449,8 +32449,8 @@ const ProductList = ({
           <div className="bg-white w-full max-w-4xl p-8 rounded-none shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center border-b border-zinc-100 pb-4">
               <div>
-                <h3 className="text-xl font-bold text-[#003366] uppercase tracking-tight">RelatÃ³rio de Stock: {selectedProduct.name}</h3>
-                <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mt-1">HistÃ³rico completo de movimentos e variaÃ§Ãµes de inventÃ¡rio.</p>
+                <h3 className="text-xl font-bold text-[#003366] uppercase tracking-tight">Relatório de Stock: {selectedProduct.name}</h3>
+                <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mt-1">Histórico completo de movimentos e variações de inventÃ¡rio.</p>
               </div>
               <button onClick={() => setShowStockReportModal(false)} className="text-zinc-400 hover:text-zinc-600"><X size={24} /></button>
             </div>
@@ -32467,7 +32467,7 @@ const ProductList = ({
                 </div>
               </div>
               <div className="p-4 bg-zinc-50 border border-zinc-100">
-                <div className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Total SaÃ­das</div>
+                <div className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Total Saídas</div>
                 <div className="text-xl font-black text-red-600">
                   {(stockMovements ?? []).filter(m => m.product_id === selectedProduct.id && (m.type === 'exit' || m.type === 'adjustment_minus')).reduce((sum, m) => sum + m.quantity, 0)}
                 </div>
@@ -32486,11 +32486,11 @@ const ProductList = ({
                   <tr className="bg-zinc-50 text-[10px] font-black uppercase tracking-widest text-zinc-400 border-b border-zinc-200">
                     <th className="px-6 py-4">Data</th>
                     <th className="px-6 py-4">Tipo</th>
-                    <th className="px-6 py-4">ArmazÃ©m</th>
+                    <th className="px-6 py-4">Armazém</th>
                     <th className="px-6 py-4 text-center">Qtd</th>
                     <th className="px-6 py-4 text-center">Stock Ant.</th>
                     <th className="px-6 py-4 text-center">Stock Atual</th>
-                    <th className="px-6 py-4">DescriÃ§Ã£o</th>
+                    <th className="px-6 py-4">Descrição</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
@@ -32526,7 +32526,7 @@ const ProductList = ({
                 onClick={() => window.print()}
                 className="flex items-center gap-2 px-6 py-2 text-[#003366] font-bold text-xs uppercase tracking-widest hover:bg-zinc-100"
               >
-                <Printer size={16} /> Imprimir RelatÃ³rio
+                <Printer size={16} /> Imprimir Relatório
               </button>
               <button 
                 onClick={() => setShowStockReportModal(false)}
@@ -32567,7 +32567,7 @@ const ProductList = ({
               </div>
               <div className="space-y-4">
                 <div>
-                  <h4 className="text-xs font-black text-[#003366] uppercase tracking-widest mb-2 border-b border-zinc-100 pb-1">InformaÃ§Ã£o Geral</h4>
+                  <h4 className="text-xs font-black text-[#003366] uppercase tracking-widest mb-2 border-b border-zinc-100 pb-1">Informação Geral</h4>
                   <div className="space-y-2">
                     <div className="flex justify-between text-xs">
                       <span className="text-zinc-400 font-bold uppercase">Nome:</span>
@@ -32586,13 +32586,13 @@ const ProductList = ({
                       <span className="text-zinc-800 font-medium">{selectedProduct.barcode || '---'}</span>
                     </div>
                     <div className="flex justify-between text-xs">
-                      <span className="text-zinc-400 font-bold uppercase">ArmazÃ©m:</span>
+                      <span className="text-zinc-400 font-bold uppercase">Armazém:</span>
                       <span className="text-zinc-800 font-medium">{warehouses.find(w => w.id === selectedProduct.warehouse_id)?.name || 'Geral'}</span>
                     </div>
                   </div>
                 </div>
                 <div>
-                  <h4 className="text-xs font-black text-[#003366] uppercase tracking-widest mb-2 border-b border-zinc-100 pb-1">HistÃ³rico Recente</h4>
+                  <h4 className="text-xs font-black text-[#003366] uppercase tracking-widest mb-2 border-b border-zinc-100 pb-1">Histórico Recente</h4>
                   <div className="space-y-1 max-h-40 overflow-y-auto pr-2">
                     {stockMovements.filter(m => m.product_id === selectedProduct.id).slice(0, 5).map(m => (
                       <div key={m.id} className="text-[10px] flex justify-between py-1 border-b border-zinc-50 last:border-0">
@@ -32637,8 +32637,8 @@ const ProductList = ({
             <div className="space-y-3">
               <div className="space-y-1 bg-slate-50 p-2.5 border border-slate-200">
                 <div className="flex items-center justify-between">
-                  <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">ArmazÃ©m de Origem</label>
-                  <span className="text-[8px] font-black uppercase px-1.5 py-0.5 bg-red-100 text-red-700 rounded-xs">SaÃ­da / Origem</span>
+                  <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">Armazém de Origem</label>
+                  <span className="text-[8px] font-black uppercase px-1.5 py-0.5 bg-red-100 text-red-700 rounded-xs">Saída / Origem</span>
                 </div>
                 <select id="trans-from" className="w-full border border-slate-300 p-2 text-xs focus:outline-none focus:border-[#003366] bg-white font-bold">
                   {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
@@ -32647,7 +32647,7 @@ const ProductList = ({
 
               <div className="space-y-1 bg-slate-50 p-2.5 border border-slate-200">
                 <div className="flex items-center justify-between">
-                  <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">ArmazÃ©m de Destino</label>
+                  <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">Armazém de Destino</label>
                   <span className="text-[8px] font-black uppercase px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded-xs">Entrada / Destino</span>
                 </div>
                 <select id="trans-to" className="w-full border border-slate-300 p-2 text-xs focus:outline-none focus:border-[#003366] bg-white font-bold">
@@ -32666,7 +32666,7 @@ const ProductList = ({
               <div className="p-2.5 bg-amber-50 border border-amber-200 flex items-center gap-2">
                 <CheckCircle size={15} className="text-amber-600 flex-shrink-0" />
                 <p className="text-[10px] text-amber-800 font-medium">
-                  A confirmaÃ§Ã£o desta operaÃ§Ã£o gera e descarrega automaticamente a <strong>Guia Oficial de TransferÃªncia de Stock (PDF)</strong> com assinaturas e detalhes fiscais.
+                  A confirmação desta operação gera e descarrega automaticamente a <strong>Guia Oficial de TransferÃªncia de Stock (PDF)</strong> com assinaturas e detalhes fiscais.
                 </p>
               </div>
             </div>
@@ -32713,7 +32713,7 @@ const ProductList = ({
                 </div>
                 <select id="adj-type" className="w-full border border-slate-300 p-2 text-xs focus:outline-none focus:border-[#003366] bg-white font-bold">
                   <option value="adjustment_plus">Entrada (Acerto Positivo / Sobra de InventÃ¡rio)</option>
-                  <option value="adjustment_minus">SaÃ­da (Acerto Negativo / Quebra ou Perda)</option>
+                  <option value="adjustment_minus">Saída (Acerto Negativo / Quebra ou Perda)</option>
                 </select>
               </div>
 
@@ -32727,10 +32727,10 @@ const ProductList = ({
 
               <div className="space-y-1 bg-slate-50 p-2.5 border border-slate-200">
                 <div className="flex items-center justify-between">
-                  <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">Motivo / DescriÃ§Ã£o Justificativa</label>
+                  <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">Motivo / Descrição Justificativa</label>
                   <span className="text-[8px] font-black uppercase px-1.5 py-0.5 bg-zinc-200 text-zinc-700 rounded-xs">Auditoria Fiscal</span>
                 </div>
-                <textarea id="adj-desc" className="w-full border border-slate-300 p-2 text-xs focus:outline-none focus:border-[#003366] bg-white font-medium" rows={2} placeholder="Ex: Quebra acidental no armazÃ©m, erro de contagem no inventÃ¡rio..."></textarea>
+                <textarea id="adj-desc" className="w-full border border-slate-300 p-2 text-xs focus:outline-none focus:border-[#003366] bg-white font-medium" rows={2} placeholder="Ex: Quebra acidental no armazém, erro de contagem no inventÃ¡rio..."></textarea>
               </div>
             </div>
 
@@ -32794,10 +32794,10 @@ const ProductList = ({
                   image_path = filePath;
                 }
 
-                // empresa_id obrigatÃ³rio â€” nunca usar UUID fixo/hardcoded como fallback
+                // empresa_id obrigatório â€” nunca usar UUID fixo/hardcoded como fallback
                 const currentCompanyId = user?.empresa_id || user?.company_id;
                 if (!currentCompanyId) {
-                  alert('Erro: empresa nÃ£o identificada. FaÃ§a login novamente antes de guardar produtos.');
+                  alert('Erro: empresa não identificada. Faça login novamente antes de guardar produtos.');
                   return;
                 }
 
@@ -32849,7 +32849,7 @@ const ProductList = ({
                   if (newProd) savedProdId = newProd.id;
                 }
 
-                // Registar tambÃ©m na tabela media_arquivos para manter a galeria/biblioteca sincronizada
+                // Registar também na tabela media_arquivos para manter a galeria/biblioteca sincronizada
                 if (image_url && imageFile) {
                   try {
                     await supabase.from('media_arquivos').insert([{
@@ -32887,20 +32887,20 @@ const ProductList = ({
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-2">
                   <div>
                     <span className="text-xs font-black uppercase text-[#003366] tracking-wider flex items-center gap-2">
-                      <Tag size={18} /> Selecione o Tipo de Actividade do NegÃ³cio *
+                      <Tag size={18} /> Selecione o Tipo de Actividade do Negócio *
                     </span>
                     <p className="text-[11px] text-zinc-500 mt-0.5">
-                      Primeiro selecione o ramo de actividade. Os campos especÃ­ficos correspondentes serÃ£o exibidos abaixo.
+                      Primeiro selecione o ramo de actividade. Os campos específicos correspondentes serão exibidos abaixo.
                     </p>
                   </div>
                   {tipoActividade && (
                     <span className="self-start sm:self-auto text-[10px] font-black uppercase px-3 py-1 bg-[#003366] text-white rounded-none tracking-widest">
                       Actividade Ativa: {
-                        tipoActividade === 'farmacia' ? 'FarmÃ¡cia' :
+                        tipoActividade === 'farmacia' ? 'Farmácia' :
                         tipoActividade === 'stand_automovel' ? 'Stand AutomÃ³vel' :
                         tipoActividade === 'hotelaria' ? 'Hotelaria' :
                         tipoActividade === 'restaurante' ? 'Restaurante / Bar' :
-                        tipoActividade === 'loja' ? 'Loja / Retalho' : 'ComÃ©rcio Geral'
+                        tipoActividade === 'loja' ? 'Loja / Retalho' : 'Comércio Geral'
                       }
                     </span>
                   )}
@@ -32908,12 +32908,12 @@ const ProductList = ({
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
                   {[
-                    { id: 'farmacia', label: 'FarmÃ¡cia', icon: Pill, desc: 'Medicamentos & Lotes', badge: 'SaÃºde', border: 'hover:border-emerald-500', active: 'border-emerald-600 bg-emerald-50/80 text-emerald-900 ring-2 ring-emerald-500' },
-                    { id: 'stand_automovel', label: 'Stand AutomÃ³vel', icon: Car, desc: 'PeÃ§as & Viaturas', badge: 'AutomÃ³vel', border: 'hover:border-amber-500', active: 'border-amber-600 bg-amber-50/80 text-amber-900 ring-2 ring-amber-500' },
+                    { id: 'farmacia', label: 'Farmácia', icon: Pill, desc: 'Medicamentos & Lotes', badge: 'SaÃºde', border: 'hover:border-emerald-500', active: 'border-emerald-600 bg-emerald-50/80 text-emerald-900 ring-2 ring-emerald-500' },
+                    { id: 'stand_automovel', label: 'Stand AutomÃ³vel', icon: Car, desc: 'Peças & Viaturas', badge: 'AutomÃ³vel', border: 'hover:border-amber-500', active: 'border-amber-600 bg-amber-50/80 text-amber-900 ring-2 ring-amber-500' },
                     { id: 'hotelaria', label: 'Hotelaria', icon: Bed, desc: 'Alojamento & DiÃ¡rias', badge: 'Hotel', border: 'hover:border-indigo-500', active: 'border-indigo-600 bg-indigo-50/80 text-indigo-900 ring-2 ring-indigo-500' },
                     { id: 'restaurante', label: 'Restaurante / Bar', icon: Utensils, desc: 'Pratos & Bebidas', badge: 'Restaurante', border: 'hover:border-rose-500', active: 'border-rose-600 bg-rose-50/80 text-rose-900 ring-2 ring-rose-500' },
-                    { id: 'loja', label: 'Loja', icon: ShoppingBag, desc: 'VestuÃ¡rio & CalÃ§ado', badge: 'Retalho', border: 'hover:border-purple-500', active: 'border-purple-600 bg-purple-50/80 text-purple-900 ring-2 ring-purple-500' },
-                    { id: 'comercio', label: 'ComÃ©rcio Geral', icon: Store, desc: 'CatÃ¡logo Geral', badge: 'ComÃ©rcio', border: 'hover:border-blue-500', active: 'border-[#003366] bg-blue-50/80 text-[#003366] ring-2 ring-[#003366]' }
+                    { id: 'loja', label: 'Loja', icon: ShoppingBag, desc: 'VestuÃ¡rio & Calçado', badge: 'Retalho', border: 'hover:border-purple-500', active: 'border-purple-600 bg-purple-50/80 text-purple-900 ring-2 ring-purple-500' },
+                    { id: 'comercio', label: 'Comércio Geral', icon: Store, desc: 'CatÃ¡logo Geral', badge: 'Comércio', border: 'hover:border-blue-500', active: 'border-[#003366] bg-blue-50/80 text-[#003366] ring-2 ring-[#003366]' }
                   ].map((item) => {
                     const isSelected = tipoActividade === item.id;
                     const IconComp = item.icon;
@@ -32955,7 +32955,7 @@ const ProductList = ({
                     Selecione o Tipo de Actividade para preencher o formulÃ¡rio
                   </h4>
                   <p className="text-xs text-zinc-500 max-w-lg mx-auto leading-relaxed">
-                    Clique numa das opÃ§Ãµes de actividade acima (FarmÃ¡cia, Stand AutomÃ³vel, Hotelaria, Restaurante / Bar, Loja ou ComÃ©rcio Geral) para desbloquear os campos especÃ­ficos deste produto.
+                    Clique numa das opÃ§Ãµes de actividade acima (Farmácia, Stand AutomÃ³vel, Hotelaria, Restaurante / Bar, Loja ou Comércio Geral) para desbloquear os campos específicos deste produto.
                   </p>
                 </div>
               ) : (
@@ -32997,8 +32997,8 @@ const ProductList = ({
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
                       {tipoActividade === 'farmacia' ? 'Nome do Medicamento / FÃ¡rmaco *' :
-                       tipoActividade === 'stand_automovel' ? 'Nome da PeÃ§a / Viatura *' :
-                       tipoActividade === 'hotelaria' ? 'DesignaÃ§Ã£o do Quarto / ServiÃ§o *' :
+                       tipoActividade === 'stand_automovel' ? 'Nome da Peça / Viatura *' :
+                       tipoActividade === 'hotelaria' ? 'Designação do Quarto / Serviço *' :
                        tipoActividade === 'restaurante' ? 'Nome do Prato / Bebida / Item *' :
                        tipoActividade === 'loja' ? 'Nome do Artigo / VestuÃ¡rio *' :
                        'Nome do Produto *'}
@@ -33012,7 +33012,7 @@ const ProductList = ({
                         tipoActividade === 'stand_automovel' ? 'Ex: Pastilha de TravÃ£o Dianteira, Pneu 205/55R16...' :
                         tipoActividade === 'hotelaria' ? 'Ex: Quarto Duplo Standard, SuÃ­te Presidencial...' :
                         tipoActividade === 'restaurante' ? 'Ex: Bife na Chapa, Cerveja Cuca, Vinho Tinto...' :
-                        tipoActividade === 'loja' ? 'Ex: CalÃ§a Jeans Slim, Camisa Social Branca...' :
+                        tipoActividade === 'loja' ? 'Ex: Calça Jeans Slim, Camisa Social Branca...' :
                         'Ex: Arroz Agulha 1kg, Ã“leo Alimentar...'
                       }
                       className="w-full bg-zinc-50 border border-zinc-200 p-2 text-xs focus:outline-none focus:border-[#003366] font-medium" 
@@ -33025,7 +33025,7 @@ const ProductList = ({
                       {tipoActividade === 'farmacia' ? 'PrincÃ­pio Ativo / Dosagem / Lote' :
                        tipoActividade === 'stand_automovel' ? 'CÃ³digo OEM / ReferÃªncia Auto' :
                        tipoActividade === 'hotelaria' ? 'NÂº do Quarto / CÃ³digo da Unidade' :
-                       tipoActividade === 'restaurante' ? 'CÃ³digo do Menu / Ficha TÃ©cnica' :
+                       tipoActividade === 'restaurante' ? 'CÃ³digo do Menu / Ficha Técnica' :
                        tipoActividade === 'loja' ? 'ReferÃªncia / Tamanho / Cor' :
                        'ReferÃªncia / SKU'}
                     </label>
@@ -33063,7 +33063,7 @@ const ProductList = ({
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
                       {tipoActividade === 'hotelaria' ? 'Custo Operacional por Estadia (Kz)' :
-                       tipoActividade === 'restaurante' ? 'Custo da Ficha TÃ©cnica (Kz)' :
+                       tipoActividade === 'restaurante' ? 'Custo da Ficha Técnica (Kz)' :
                        'PreÃ§o de Custo (Kz)'}
                     </label>
                     <input 
@@ -33078,8 +33078,8 @@ const ProductList = ({
                   {/* 5. STOCK QUANTIDADE */}
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
-                      {tipoActividade === 'hotelaria' ? 'Capacidade / LotaÃ§Ã£o de Quartos' :
-                       tipoActividade === 'restaurante' ? 'Stock / Doses DisponÃ­veis' :
+                      {tipoActividade === 'hotelaria' ? 'Capacidade / Lotação de Quartos' :
+                       tipoActividade === 'restaurante' ? 'Stock / Doses Disponíveis' :
                        tipoActividade === 'farmacia' ? 'Stock Inicial (Caixas / Frascos)' :
                        'Stock Inicial'}
                     </label>
@@ -33094,7 +33094,7 @@ const ProductList = ({
                   {/* 6. STOCK MÃNIMO */}
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
-                      {tipoActividade === 'hotelaria' ? 'LotaÃ§Ã£o MÃ­nima de Reserva' :
+                      {tipoActividade === 'hotelaria' ? 'Lotação MÃ­nima de Reserva' :
                        tipoActividade === 'restaurante' ? 'Stock MÃ­nimo de Alerta' :
                        'Stock MÃ­nimo'}
                     </label>
@@ -33110,8 +33110,8 @@ const ProductList = ({
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
                       {tipoActividade === 'farmacia' ? 'Categoria FarmacÃªutica' :
-                       tipoActividade === 'stand_automovel' ? 'Categoria Auto / PeÃ§as' :
-                       tipoActividade === 'hotelaria' ? 'Tipologia de AcomodaÃ§Ã£o' :
+                       tipoActividade === 'stand_automovel' ? 'Categoria Auto / Peças' :
+                       tipoActividade === 'hotelaria' ? 'Tipologia de Acomodação' :
                        tipoActividade === 'restaurante' ? 'SecÃ§Ã£o do Menu' :
                        tipoActividade === 'loja' ? 'Categoria de Moda / Retalho' :
                        'Categoria'}
@@ -33120,11 +33120,11 @@ const ProductList = ({
                       name="category" 
                       defaultValue={editingProduct?.category} 
                       placeholder={
-                        tipoActividade === 'farmacia' ? 'Ex: AnalgÃ©sicos, AntibiÃ³ticos, Xaropes' :
-                        tipoActividade === 'stand_automovel' ? 'Ex: Motor, TravÃµes, SuspensÃ£o, Pneus' :
+                        tipoActividade === 'farmacia' ? 'Ex: Analgésicos, AntibiÃ³ticos, Xaropes' :
+                        tipoActividade === 'stand_automovel' ? 'Ex: Motor, TravÃµes, Suspensão, Pneus' :
                         tipoActividade === 'hotelaria' ? 'Ex: Quarto Standard, SuÃ­te Executiva' :
                         tipoActividade === 'restaurante' ? 'Ex: Entradas, Pratos Principais, Bebidas' :
-                        tipoActividade === 'loja' ? 'Ex: VestuÃ¡rio Homem, CalÃ§ado, AcessÃ³rios' :
+                        tipoActividade === 'loja' ? 'Ex: VestuÃ¡rio Homem, Calçado, Acessórios' :
                         'Ex: Geral, Bebidas, Limpeza'
                       }
                       className="w-full bg-zinc-50 border border-zinc-200 p-2 text-xs focus:outline-none focus:border-[#003366] font-medium" 
@@ -33135,7 +33135,7 @@ const ProductList = ({
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
                       {tipoActividade === 'farmacia' ? 'Forma FarmacÃªutica / Unidade' :
-                       tipoActividade === 'hotelaria' ? 'Unidade de CobranÃ§a' :
+                       tipoActividade === 'hotelaria' ? 'Unidade de Cobrança' :
                        tipoActividade === 'restaurante' ? 'Unidade de Medida / Dose' :
                        'Unidade'}
                     </label>
@@ -33164,7 +33164,7 @@ const ProductList = ({
                           <option value="dia">DiÃ¡ria (dia)</option>
                           <option value="noite">Noite (noite)</option>
                           <option value="hr">Hora (hr)</option>
-                          <option value="un">Unidade / ServiÃ§o (un)</option>
+                          <option value="un">Unidade / Serviço (un)</option>
                         </>
                       ) : tipoActividade === 'restaurante' ? (
                         <>
@@ -33187,7 +33187,7 @@ const ProductList = ({
                         <>
                           <option value="un">Unidade (un)</option>
                           <option value="par">Par (par)</option>
-                          <option value="pc">PeÃ§a (pc)</option>
+                          <option value="pc">Peça (pc)</option>
                           <option value="conj">Conjunto (conj)</option>
                         </>
                       ) : metrics.length > 0 ? (
@@ -33208,7 +33208,7 @@ const ProductList = ({
                   {/* 9. BARCODE */}
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
-                      {tipoActividade === 'hotelaria' ? 'CÃ³digo de IdentificaÃ§Ã£o / Chave' : 'CÃ³digo de Barras / Barcode'}
+                      {tipoActividade === 'hotelaria' ? 'CÃ³digo de Identificação / Chave' : 'CÃ³digo de Barras / Barcode'}
                     </label>
                     <input 
                       name="barcode" 
@@ -33234,12 +33234,12 @@ const ProductList = ({
                   {/* 11. ARMAZÃ‰M */}
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
-                      {tipoActividade === 'farmacia' ? 'ArmazÃ©m FarmacÃªutico *' :
-                       tipoActividade === 'stand_automovel' ? 'ArmazÃ©m / Stand *' :
-                       tipoActividade === 'hotelaria' ? 'Unidade Hoteleira / ArmazÃ©m *' :
-                       tipoActividade === 'restaurante' ? 'Cozinha / Bar / ArmazÃ©m *' :
-                       tipoActividade === 'loja' ? 'ArmazÃ©m da Loja *' :
-                       'ArmazÃ©m *'}
+                      {tipoActividade === 'farmacia' ? 'Armazém FarmacÃªutico *' :
+                       tipoActividade === 'stand_automovel' ? 'Armazém / Stand *' :
+                       tipoActividade === 'hotelaria' ? 'Unidade Hoteleira / Armazém *' :
+                       tipoActividade === 'restaurante' ? 'Cozinha / Bar / Armazém *' :
+                       tipoActividade === 'loja' ? 'Armazém da Loja *' :
+                       'Armazém *'}
                     </label>
                     <select 
                       name="warehouse_id" 
@@ -33247,7 +33247,7 @@ const ProductList = ({
                       defaultValue={editingProduct?.warehouse_id} 
                       className="w-full bg-zinc-50 border border-zinc-200 p-2 text-xs focus:outline-none focus:border-[#003366] font-bold"
                     >
-                      <option value="">Selecione o armazÃ©m</option>
+                      <option value="">Selecione o armazém</option>
                       {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
                     </select>
                   </div>
@@ -33256,7 +33256,7 @@ const ProductList = ({
                   <div className="md:col-span-3 flex justify-end pt-3 border-t border-zinc-100">
                     <button type="submit" className="bg-[#003366] text-white px-6 py-2 text-xs font-bold hover:bg-[#002244] transition-all flex items-center gap-2 cursor-pointer shadow-md">
                       <Save size={14} />
-                      <span>{editingProduct ? 'Guardar AlteraÃ§Ãµes' : 'Registar Produto no Stock'}</span>
+                      <span>{editingProduct ? 'Guardar Alterações' : 'Registar Produto no Stock'}</span>
                     </button>
                   </div>
                 </>
@@ -33293,7 +33293,7 @@ const ReceiptModal = ({ document: doc, caixas, onClose, onSuccess }: {
       return;
     }
     if (amount > remaining) {
-      alert(`O valor nÃ£o pode ser superior ao saldo em falta (${remaining.toFixed(2)}).`);
+      alert(`O valor não pode ser superior ao saldo em falta (${remaining.toFixed(2)}).`);
       return;
     }
     try {
@@ -33319,7 +33319,7 @@ const ReceiptModal = ({ document: doc, caixas, onClose, onSuccess }: {
       }
     } catch (error: any) {
       console.error('Error creating receipt:', error);
-      alert('Falha na comunicaÃ§Ã£o ao emitir recibo: ' + (error.message || error));
+      alert('Falha na comunicação ao emitir recibo: ' + (error.message || error));
     }
   };
 
@@ -33421,7 +33421,7 @@ const ConvertDocumentModal = ({ document, onClose, onSuccess }: {
       if (!authUser) return;
 
       if (!user?.empresa_id) {
-        alert('SessÃ£o expirada. Inicie sessÃ£o novamente.');
+        alert('Sessão expirada. Inicie sessão novamente.');
         return;
       }
 
@@ -33437,7 +33437,7 @@ const ConvertDocumentModal = ({ document, onClose, onSuccess }: {
       const docTypeMap: { [key: string]: string } = {
         'Fatura': 'FT',
         'Fatura Recibo': 'FR',
-        'OrÃ§amento': 'OR',
+        'Orçamento': 'OR',
         'Fatura Proforma': 'PP'
       };
 
@@ -33485,7 +33485,7 @@ const ConvertDocumentModal = ({ document, onClose, onSuccess }: {
           <h3 className="font-bold text-[#003366] text-xl uppercase tracking-tight">Faturar / Converter</h3>
           <button onClick={onClose} className="text-zinc-400 hover:text-zinc-600"><X size={20} /></button>
         </div>
-        <p className="text-[10px] text-zinc-400 font-bold uppercase mb-4">A conversÃ£o gera um novo documento com numeraÃ§Ã£o sequencial automÃ¡tica conforme a sÃ©rie selecionada.</p>
+        <p className="text-[10px] text-zinc-400 font-bold uppercase mb-4">A conversão gera um novo documento com numeração sequencial automÃ¡tica conforme a série selecionada.</p>
         <div className="mb-6 p-4 bg-zinc-50 border border-zinc-100">
           <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Documento Origem</p>
           <p className="font-bold text-[#003366]">{document.numero_documento}</p>
@@ -33501,7 +33501,7 @@ const ConvertDocumentModal = ({ document, onClose, onSuccess }: {
             >
               <option>Fatura</option>
               <option>Fatura Recibo</option>
-              <option>OrÃ§amento</option>
+              <option>Orçamento</option>
               <option>Fatura Proforma</option>
             </select>
           </div>
@@ -33517,13 +33517,13 @@ const ConvertDocumentModal = ({ document, onClose, onSuccess }: {
 
 const canAccessSeries = (user: any, serieFilter: string, fiscalSeries: any[]) => {
   if (!user) {
-    console.log('[Access] Bloqueado: UsuÃ¡rio nÃ£o definido');
+    console.log('[Access] Bloqueado: UsuÃ¡rio não definido');
     return false;
   }
   const isAdmin = user.is_admin || user.role === 'admin' || user.is_system_admin === true;
   if (isAdmin) return true;
   
-  // VerificaÃ§Ã£o de permissÃ£o especÃ­fica por Ã¡rea (Fallback de seguranÃ§a)
+  // Verificação de permissão especÃ­fica por área (Fallback de segurança)
   const hasGlobalPermission = user.permission_areas?.includes('vendas') || 
                                user.permission_areas?.includes('faturacao') || 
                                user.permission_areas?.includes('series');
@@ -33533,7 +33533,7 @@ const canAccessSeries = (user: any, serieFilter: string, fiscalSeries: any[]) =>
   const currentUserId = String(user.id).toLowerCase();
   
   if (serieFilter === 'Todas' || !serieFilter) {
-    // Se estiver em 'Todas', permitimos o botÃ£o se ele tiver acesso a pelo menos UMA sÃ©rie activa
+    // Se estiver em 'Todas', permitimos o botÃ£o se ele tiver acesso a pelo menos UMA série activa
     const hasAny = fiscalSeries.some(s => {
       if (s.user_ids && Array.isArray(s.user_ids)) {
         return s.user_ids.some((uid: any) => String(uid).toLowerCase() === currentUserId);
@@ -33543,7 +33543,7 @@ const canAccessSeries = (user: any, serieFilter: string, fiscalSeries: any[]) =>
       }
       return false;
     });
-    console.log('[Access] VerificaÃ§Ã£o global para Todas as sÃ©ries:', hasAny);
+    console.log('[Access] Verificação global para Todas as séries:', hasAny);
     return hasAny;
   }
   
@@ -33552,7 +33552,7 @@ const canAccessSeries = (user: any, serieFilter: string, fiscalSeries: any[]) =>
   );
 
   if (!serie) {
-    console.log('[Access] SÃ©rie nÃ£o encontrada para filtro:', serieFilter);
+    console.log('[Access] Série não encontrada para filtro:', serieFilter);
     return false;
   }
   
@@ -33563,7 +33563,7 @@ const canAccessSeries = (user: any, serieFilter: string, fiscalSeries: any[]) =>
     hasAccess = String(serie.user_id).toLowerCase() === currentUserId;
   }
   
-  console.log(`[Access] VerificaÃ§Ã£o para sÃ©rie ${serieFilter}:`, hasAccess);
+  console.log(`[Access] Verificação para série ${serieFilter}:`, hasAccess);
   return hasAccess;
 };
 
@@ -33627,7 +33627,7 @@ export default function App() {
     return VALID_TABS.includes(hash) ? hash : 'dashboard';
   });
 
-  // Wrapper que actualiza o hash da URL quando o tab muda e recolhe automaticamente o menu quando uma pÃ¡gina abre
+  // Wrapper que actualiza o hash da URL quando o tab muda e recolhe automaticamente o menu quando uma página abre
   const setActiveTab = (tab: string) => {
     setActiveTabState(tab);
     if (window.location.hash !== `#${tab}`) {
@@ -33640,7 +33640,7 @@ export default function App() {
     }
   };
 
-  // Quando qualquer pÃ¡gina Ã© aberta, a barra lateral desaparece automaticamente
+  // Quando qualquer página é aberta, a barra lateral desaparece automaticamente
   React.useEffect(() => {
     if (activeTab !== 'dashboard') {
       setSidebarOpen(false);
@@ -33649,7 +33649,7 @@ export default function App() {
     }
   }, [activeTab]);
 
-  // Detectar mudanÃ§as de permissÃµes feitas por admin para este utilizador (Realtime, localStorage e Eventos)
+  // Detectar mudanças de permissÃµes feitas por admin para este utilizador (Realtime, localStorage e Eventos)
   React.useEffect(() => {
     if (!user?.id) return;
     const permKey = `agt_perm_updated_${user.id}`;
@@ -33693,7 +33693,7 @@ export default function App() {
         },
         async (payload: any) => {
           try {
-            console.log('[App] MudanÃ§a de perfil detetada em tempo real no banco de dados:', payload);
+            console.log('[App] Mudança de perfil detetada em tempo real no banco de dados:', payload);
             await refreshUser();
           } catch (err) {
             console.warn('[App] Erro ao atualizar utilizador via Realtime:', err);
@@ -33702,7 +33702,7 @@ export default function App() {
       )
       .subscribe();
 
-    // 4. VerificaÃ§Ã£o ao focar a aba
+    // 4. Verificação ao focar a aba
     const onWindowFocus = async () => {
       try {
         await refreshUser();
@@ -33720,7 +33720,7 @@ export default function App() {
     };
   }, [user?.id, refreshUser]);
 
-  // Escutar mudanÃ§as de hash (botÃ£o Voltar/AvanÃ§ar do browser)
+  // Escutar mudanças de hash (botÃ£o Voltar/Avançar do browser)
   React.useEffect(() => {
     const VALID_TABS = [
       'dashboard','crm_empresas','crm_negocio','clients','workplaces','secretary','pos','contracts',
@@ -33837,7 +33837,7 @@ export default function App() {
 
         setPrintingGraphicConfigs(configs);
       } catch (err) {
-        console.warn('[App] Erro ao carregar configuraÃ§Ãµes grÃ¡ficas:', err);
+        console.warn('[App] Erro ao carregar configurações grÃ¡ficas:', err);
       }
     };
     loadPrintingConfigs();
@@ -33867,12 +33867,12 @@ export default function App() {
   const activeFetchDocYearRef = useRef<string>('');
 
   useEffect(() => {
-    // Com o AuthContext sincronizado, apenas precisamos garantir que o App saiba quando pode comeÃ§ar
+    // Com o AuthContext sincronizado, apenas precisamos garantir que o App saiba quando pode começar
     if (user !== undefined && user !== null) {
       console.log('[App] Utilize autenticado detetado. Empresa:', user.empresa_id);
       setAuthReady(true);
     } else if (user === null) {
-      console.log('[App] Utilizador nÃ£o autenticado.');
+      console.log('[App] Utilizador não autenticado.');
       setAuthReady(false);
     }
   }, [user]);
@@ -33999,15 +33999,15 @@ export default function App() {
       const companyId = explicitId || user?.empresa_id;
       if (!companyId) return;
       
-      // REGRA 6: DeduplicaÃ§Ã£o e cache multitenant seguro
+      // REGRA 6: Deduplicação e cache multitenant seguro
       const { data, error } = await loadTenantImpostos(companyId);
         
       if (error) {
         throw error;
       }
       
-      // Filtermos na UI para cobrir se a coluna `ativo` existe ou se o Supabase nÃ£o quebrar 
-      // Se nÃ£o existir, vai ignorar
+      // Filtermos na UI para cobrir se a coluna `ativo` existe ou se o Supabase não quebrar 
+      // Se não existir, vai ignorar
       const filtered = (data || []).filter(t => t.activo !== false);
       setActiveTaxes(filtered);
     } catch (err) {
@@ -34064,7 +34064,7 @@ export default function App() {
     e.preventDefault();
     try {
       if (!user?.empresa_id) {
-        alert('Utilizador nÃ£o autenticado.');
+        alert('Utilizador não autenticado.');
         return;
       }
       
@@ -34136,7 +34136,7 @@ export default function App() {
         tipo_entidade: cl.tipo_entidade || 'Cliente',
         tipo_cliente: cl.tipo_cliente || 'normal',
         saldo_inicial: Number(cl.saldo_inicial || 0),
-        estado_nif: cl.estado_nif || 'nÃ£o encontrado',
+        estado_nif: cl.estado_nif || 'não encontrado',
         ativo: cl.ativo !== false && cl.is_active !== false,
         is_active: cl.ativo !== false && cl.is_active !== false,
         empresa_id: cl.empresa_id || companyId
@@ -34206,7 +34206,7 @@ export default function App() {
       if (!companyId) return;
 
       console.log(`[App] Buscando Produtos para ${companyId}...`);
-      // REGRA 6: DeduplicaÃ§Ã£o e cache multitenant seguro
+      // REGRA 6: Deduplicação e cache multitenant seguro
       const { data, error } = await loadTenantProdutos(companyId, { tipo: 'all' });
 
       if (error) throw error;
@@ -34255,13 +34255,13 @@ export default function App() {
   async function saveDocumentoEmitido(doc: any) {
     try {
       if (!user?.empresa_id) {
-        console.error('UsuÃ¡rio nÃ£o autenticado ou sem empresa no saveDocumentoEmitido');
-        toast.error('Erro: UsuÃ¡rio nÃ£o autenticado ou sem empresa vinculada.');
+        console.error('UsuÃ¡rio não autenticado ou sem empresa no saveDocumentoEmitido');
+        toast.error('Erro: UsuÃ¡rio não autenticado ou sem empresa vinculada.');
         return;
       }
 
       const docRef = doc.invoice_number || doc.numero_documento;
-      console.log('Dados enviados para emissÃ£o:', { 
+      console.log('Dados enviados para emissão:', { 
         empresa_id: user.empresa_id,
         numero_documento: docRef,
         tipo: doc.document_type || doc.tipo_documento,
@@ -34296,7 +34296,7 @@ export default function App() {
         }
       };
 
-      // 1. Tentar EmissÃ£o Segura via RPC do Supabase para CertificaÃ§Ã£o e Sequenciamento InquebrÃ¡vel
+      // 1. Tentar Emissão Segura via RPC do Supabase para Certificação e Sequenciamento InquebrÃ¡vel
       const rpcPayload = {
         p_empresa_id: user.empresa_id,
         p_tipo_documento: payload.tipo_documento,
@@ -34311,8 +34311,8 @@ export default function App() {
       const { data: emitData, error: rpcError } = await supabase.rpc('emitir_documento_seguro', rpcPayload);
 
       if (rpcError) {
-        console.error('[App] Erro crÃ­tico na emissÃ£o via RPC:', rpcError);
-        // Fallback para inserÃ§Ã£o simples se o RPC nÃ£o existir ou falhar
+        console.error('[App] Erro crítico na emissão via RPC:', rpcError);
+        // Fallback para inserÃ§Ã£o simples se o RPC não existir ou falhar
         const { error: insertError } = await supabase
           .from('documentos_emitidos')
           .insert(payload);
@@ -34330,7 +34330,7 @@ export default function App() {
         await fetchData();
       }
     } catch (err: any) {
-      console.error('Erro crÃ­tico no saveDocumentoEmitido:', err);
+      console.error('Erro crítico no saveDocumentoEmitido:', err);
       toast.error(`Erro inesperado: ${err.message}`);
     }
   }
@@ -34375,7 +34375,7 @@ export default function App() {
 
       const anoToFetch = String(explicitYear || fiscalYear || new Date().getFullYear());
       console.log('[App] Carregando documentos emitidos via API para ano:', anoToFetch);
-      // SEGURANÃ‡A: empresa_id nÃ£o enviado â€” API determina tenant da sessÃ£o JWT
+      // SEGURANÃ‡A: empresa_id não enviado â€” API determina tenant da sessão JWT
       const res = await fetchWithAuth(`/api/invoices?year=${anoToFetch}`);
       
       if (!res.ok) {
@@ -34387,7 +34387,7 @@ export default function App() {
 
       // PROTEÃ‡ÃƒO DE CORRIDA: Se o utilizador jÃ¡ alternou para outro ano enquanto a rede respondia, descartar
       if (activeFetchDocYearRef.current && String(activeFetchDocYearRef.current) !== String(anoToFetch)) {
-        console.log(`[App] Descartando resposta de ano obsoleto (${anoToFetch}) pois o ano ativo Ã© (${activeFetchDocYearRef.current})`);
+        console.log(`[App] Descartando resposta de ano obsoleto (${anoToFetch}) pois o ano ativo é (${activeFetchDocYearRef.current})`);
         return;
       }
       
@@ -34542,7 +34542,7 @@ export default function App() {
       }
 
       if (!finalEmpresaId) {
-        throw new Error('Empresa nÃ£o identificada para o movimento de caixa');
+        throw new Error('Empresa não identificada para o movimento de caixa');
       }
 
       // IdempotÃªncia: verificar se jÃ¡ existe movimento com mesmo documento_id OU (caixa+referencia+tipo)
@@ -34678,7 +34678,7 @@ export default function App() {
       const data = await fetchMetrics(companyId);
       setMetrics(data || []);
     } catch (err) {
-      console.error('Erro ao carregar mÃ©tricas:', err);
+      console.error('Erro ao carregar métricas:', err);
     }
   };
 
@@ -34820,7 +34820,7 @@ export default function App() {
 
   const fetchData = async () => {
     if (isFetchingRef.current) {
-      console.log('[DEBUG-SYNC] fetchData jÃ¡ estÃ¡ em execuÃ§Ã£o, agendando execuÃ§Ã£o pendente...');
+      console.log('[DEBUG-SYNC] fetchData jÃ¡ estÃ¡ em execução, agendando execução pendente...');
       pendingFetchRef.current = true;
       return;
     }
@@ -34830,7 +34830,7 @@ export default function App() {
       console.log('[DEBUG-SYNC] Iniciando fetchData...');
       const session = await authService.getSessionSafe();
       if (!session) {
-        console.warn('[DEBUG-SYNC] Sync bloqueado: Nenhuma sessÃ£o ativa encontrada.');
+        console.warn('[DEBUG-SYNC] Sync bloqueado: Nenhuma sessão ativa encontrada.');
         return;
       }
 
@@ -34856,7 +34856,7 @@ export default function App() {
       }
 
       if (!targetCompanyId && session?.user?.id) {
-        console.error('[DEBUG-SYNC] ERRO CRÃTICO: NÃ£o foi possÃ­vel determinar o Tenant ID do utilizador.');
+        console.error('[DEBUG-SYNC] ERRO CRÃTICO: Não foi possível determinar o Tenant ID do utilizador.');
         // Tentativa de Ãºltimo recurso via conta Ã³rfÃ£ (o user ID como empresa_id)
         targetCompanyId = session?.user?.id;
         console.warn('[DEBUG-SYNC] Usando UserID as fallback de EmpresaID:', targetCompanyId);
@@ -34889,7 +34889,7 @@ export default function App() {
         if (err.message?.includes('fetch') || err.name === 'TypeError') {
           setConnectionError(true);
         }
-        // NÃ£o lanÃ§amos erro aqui para permitir que o resto da pÃ¡gina carregue (parcialmente)
+        // Não lançamos erro aqui para permitir que o resto da página carregue (parcialmente)
       } finally {
         const syncDuration = performance.now() - syncStartTime;
         console.log(`[TIMER-SYNC] Supabase Queries took ${syncDuration.toFixed(2)}ms`);
@@ -34960,17 +34960,17 @@ export default function App() {
                               isEmpresaAtiva === false;
 
         if (isStagingEnvironment()) {
-          // REGRA PERMANENTE: Ambiente STAGING / HOMOLOGAÃ‡ÃƒO possui LicenÃ§a TÃ©cnica Permanente que NUNCA expira nem bloqueia
+          // REGRA PERMANENTE: Ambiente STAGING / HOMOLOGAÃ‡ÃƒO possui Licença Técnica Permanente que NUNCA expira nem bloqueia
           setIsLicenseBlocked(false);
           setLicenseAlert(null);
         } else if (isDeactivated || (expiry && diffDays <= 0)) {
           setIsLicenseBlocked(true);
-          setLicenseAlert('A licenÃ§a desta empresa encontra-se suspensa ou expirada. O sistema estÃ¡ em Modo Somente Leitura.');
+          setLicenseAlert('A licença desta empresa encontra-se suspensa ou expirada. O sistema estÃ¡ em Modo Somente Leitura.');
         } else if (expiry && diffDays <= 3 && diffDays > 0) {
           const isTrial = ['trial', 'teste', 'em teste'].includes(statusNorm) || !licenseData?.id;
           setLicenseAlert(isTrial 
-            ? `A sua licenÃ§a de teste de 14 dias expira em ${diffDays} dias (${formatDate(expiryStr)}). Regularize o plano para continuar sem interrupÃ§Ãµes.`
-            : `A sua licenÃ§a expira em ${diffDays} dias (${formatDate(expiryStr)}). Regularize o pagamento para evitar o bloqueio automÃ¡tico.`
+            ? `A sua licença de teste de 14 dias expira em ${diffDays} dias (${formatDate(expiryStr)}). Regularize o plano para continuar sem interrupÃ§Ãµes.`
+            : `A sua licença expira em ${diffDays} dias (${formatDate(expiryStr)}). Regularize o pagamento para evitar o bloqueio automÃ¡tico.`
           );
           if (diffDays <= 2 && !localStorage.getItem('license_popup_shown_today')) {
              setShowLicensePopup(true);
@@ -35096,7 +35096,7 @@ export default function App() {
   const handleAddWorkSite = async (site: Omit<WorkSite, 'id'>) => {
     try {
       if (!user?.empresa_id) {
-        alert('SessÃ£o expirada. Por favor, faÃ§a login novamente.');
+        alert('Sessão expirada. Por favor, faça login novamente.');
         return;
       }
 
@@ -35127,7 +35127,7 @@ export default function App() {
   };
 
   const handleDeleteProduct = async (id: string | number) => {
-    if (!window.confirm('Tem a certeza que deseja eliminar este produto? Esta aÃ§Ã£o nÃ£o pode ser revertida.')) return;
+    if (!window.confirm('Tem a certeza que deseja eliminar este produto? Esta ação não pode ser revertida.')) return;
     try {
       if (!user?.empresa_id) return;
       
@@ -35186,7 +35186,7 @@ export default function App() {
       await localTrabalhoService.updateLocalTrabalho(id, payload, user.empresa_id);
       
       await loadLocaisTrabalho();
-      alert('AlteraÃ§Ãµes guardadas com sucesso!');
+      alert('Alterações guardadas com sucesso!');
     } catch (err: any) {
       console.error('[App] Erro ao atualizar Local:', err);
       alert('Erro ao guardar: ' + (err.message || 'Erro desconhecido'));
@@ -35209,12 +35209,12 @@ export default function App() {
   const handleCertifyDocument = async (id: number | string) => {
     try {
       if (!user?.id || !user?.empresa_id) {
-        alert('Erro: Utilizador nÃ£o autenticado corretamente.');
+        alert('Erro: Utilizador não autenticado corretamente.');
         return;
       }
       
       const doc = issuedDocuments.find(d => String(d.id) === String(id));
-      if (!doc) throw new Error('Documento nÃ£o encontrado na listagem para certificaÃ§Ã£o');
+      if (!doc) throw new Error('Documento não encontrado na listagem para certificação');
       
       if (doc.is_certified) throw new Error('Este documento jÃ¡ se encontra certificado.');
 
@@ -35250,7 +35250,7 @@ export default function App() {
            return;
         }
         
-        throw new Error(`Erro na certificaÃ§Ã£o fiscal: ${parsedError}`);
+        throw new Error(`Erro na certificação fiscal: ${parsedError}`);
       }
 
       const resData = await res.json();
@@ -35267,7 +35267,7 @@ export default function App() {
   };
 
   const handleDocumentAction = async (action: string, doc: IssuedDocument) => {
-    // ValidaÃ§Ã£o de Integridade Fiscal antes de abrir (Regra 18)
+    // Validação de Integridade Fiscal antes de abrir (Regra 18)
     if (doc.is_certified && ['edit', 'export_pdf', 'print_a4', 'preview_a4', 'preview_receipt'].includes(action)) {
       try {
         const { data, error } = await supabase.rpc('validar_integridade_documento', {
@@ -35276,13 +35276,13 @@ export default function App() {
         
         if (error) {
           console.error("Erro ao validar integridade:", error);
-          alert("NÃ£o foi possÃ­vel validar a integridade fiscal deste documento. Acesso bloqueado por seguranÃ§a.");
+          alert("Não foi possível validar a integridade fiscal deste documento. Acesso bloqueado por segurança.");
           return;
         }
 
         if (data && data.success === false) {
           alert(`[BLOQUEIO DE SEGURANÃ‡A] ${data.error || 'Documento com integridade comprometida.'}`);
-          return; // Aborta abertura se o hash nÃ£o bater
+          return; // Aborta abertura se o hash não bater
         }
       } catch (err) {
         console.error("Falha ao tentar executar RPC validar_integridade_documento:", err);
@@ -35341,7 +35341,7 @@ export default function App() {
             setIsCreatingInvoice(true);
           } else if (action === 'credit_note') {
             setSelectedDocument(invoiceData);
-            setFixedDocumentType('Nota de CrÃ©dito');
+            setFixedDocumentType('Nota de Crédito');
             setIsCreatingInvoice(true);
           } else if (action === 'delivery_guide') {
             setSelectedDocument(invoiceData);
@@ -35480,7 +35480,7 @@ export default function App() {
       return false;
     }) || (clients || []).find((c: any) => (c.name || c.nome || '').toLowerCase().includes('consumidor final'));
 
-    // 2. Mapear itens do pedido para a tabela "Bens e ServiÃ§os" da Fatura
+    // 2. Mapear itens do pedido para a tabela "Bens e Serviços" da Fatura
     const rawItems = Array.isArray(pedido.itens) ? pedido.itens : (Array.isArray(pedido.items) ? pedido.items : []);
     const mappedItems: any[] = rawItems.map((it: any) => {
       const q = Number(it.quantidade || it.quantity || it.qtd || 1);
@@ -35492,7 +35492,7 @@ export default function App() {
 
       return {
         product_id: it.produto_id || it.id || null,
-        description: it.nome || it.descricao || it.description || it.name || 'Produto / ServiÃ§o do Mini Site',
+        description: it.nome || it.descricao || it.description || it.name || 'Produto / Serviço do Mini Site',
         referencia: it.codigo || it.barcode || it.referente || it.referencia || '',
         quantity: q,
         unit_price: p,
@@ -35558,7 +35558,7 @@ export default function App() {
       global_discount: 0,
       items: mappedItems,
       detalhes: { items: mappedItems },
-      notes: `Documento emitido a partir do Pedido ${pedido.numero_pedido || pedido.id} do Mini Site Oficial. ObservaÃ§Ãµes: ${pedido.observacoes || 'N/A'}`
+      notes: `Documento emitido a partir do Pedido ${pedido.numero_pedido || pedido.id} do Mini Site Oficial. Observações: ${pedido.observacoes || 'N/A'}`
     };
 
     setSelectedDocument(invoiceDraft);
@@ -35578,7 +35578,7 @@ export default function App() {
     }
   }, [authReady, fiscalYear]);
 
-  // Se a rota for um Mini Site pÃºblico (?site=slug ou #/site/slug), renderiza sem exigir login administrativo
+  // Se a rota for um Mini Site público (?site=slug ou #/site/slug), renderiza sem exigir login administrativo
   if (isPublicMiniSite()) {
     return <MiniSitePublic />;
   }
@@ -35644,8 +35644,8 @@ export default function App() {
                     <Globe size={20} />
                   </div>
                   <div className="flex-1">
-                    <p className="text-sm font-black uppercase tracking-tight">Erro de LigaÃ§Ã£o ao Supabase</p>
-                    <p className="text-xs font-medium">NÃ£o foi possÃ­vel ligar ao servidor de dados. Verifique a sua ligaÃ§Ã£o Ã  internet ou configuraÃ§Ãµes de API.</p>
+                    <p className="text-sm font-black uppercase tracking-tight">Erro de Ligação ao Supabase</p>
+                    <p className="text-xs font-medium">Não foi possível ligar ao servidor de dados. Verifique a sua ligação Ã  internet ou configurações de API.</p>
                   </div>
                   <button 
                     onClick={() => fetchData()}
@@ -35667,7 +35667,7 @@ export default function App() {
                     </div>
                   </div>
                   <button onClick={() => setActiveTab('licencas')} className="bg-amber-600 text-white text-[10px] font-black px-4 py-2 uppercase tracking-widest hover:bg-amber-700 transition-all rounded shadow-sm">
-                    Renovar LicenÃ§a
+                    Renovar Licença
                   </button>
                 </div>
               )}
@@ -35679,12 +35679,12 @@ export default function App() {
                     </div>
                     <div>
                        <p className="text-xl font-black uppercase tracking-tighter italic">
-                         {isProductionEnvironment() ? 'ProduÃ§Ã£o: LicenÃ§a Suspensa / Aguarda AtivaÃ§Ã£o' : 'Sistema em Modo de VisualizaÃ§Ã£o'}
+                         {isProductionEnvironment() ? 'Produção: Licença Suspensa / Aguarda Ativação' : 'Sistema em Modo de Visualização'}
                        </p>
                        <p className="text-xs font-bold opacity-90 text-white/80 max-w-xl mt-1">
                          {isProductionEnvironment() 
-                           ? 'A licenÃ§a oficial desta empresa ainda nÃ£o estÃ¡ ativa em ProduÃ§Ã£o. Novas operaÃ§Ãµes estÃ£o bloqueadas atÃ© aprovaÃ§Ã£o pelo SuperAdmin. Pode experimentar todas as funcionalidades livremente na Ãrea de DemonstraÃ§Ã£o.'
-                           : 'AtenÃ§Ã£o: A licenÃ§a desta empresa encontra-se suspensa ou expirou. Novas operaÃ§Ãµes estÃ£o temporariamente limitadas.'}
+                           ? 'A licença oficial desta empresa ainda não estÃ¡ ativa em Produção. Novas operações estão bloqueadas até aprovação pelo SuperAdmin. Pode experimentar todas as funcionalidades livremente na Ãrea de Demonstração.'
+                           : 'AtenÃ§Ã£o: A licença desta empresa encontra-se suspensa ou expirou. Novas operações estão temporariamente limitadas.'}
                        </p>
                     </div>
                   </div>
@@ -35700,7 +35700,7 @@ export default function App() {
                       </a>
                     )}
                     <button onClick={() => setActiveTab('licencas')} className="bg-white text-red-600 px-6 py-3 font-black uppercase tracking-widest text-[10px] rounded hover:bg-zinc-100 transition-all shadow-xl">
-                      Ver LicenÃ§a / Regularizar
+                      Ver Licença / Regularizar
                     </button>
                   </div>
                 </div>
@@ -35708,7 +35708,7 @@ export default function App() {
               <div className="mb-6 flex items-center justify-between border-b border-zinc-200/60 pb-4">
                 <div className="flex items-center gap-2 text-xs font-bold text-zinc-400 uppercase tracking-widest">
                   <LayoutDashboard size={14} />
-                  <span>Sistema de GestÃ£o</span>
+                  <span>Sistema de Gestão</span>
                   <ChevronRight size={12} />
                   <span className="text-[#003366]">{activeTab}</span>
                 </div>
@@ -35735,15 +35735,15 @@ export default function App() {
                         <ShieldAlert size={48} className="animate-pulse" />
                       </div>
                       <div className="space-y-3">
-                        <h2 className="text-4xl font-black text-[#003366] uppercase tracking-tighter">OperaÃ§Ã£o Bloqueada</h2>
+                        <h2 className="text-4xl font-black text-[#003366] uppercase tracking-tighter">Operação Bloqueada</h2>
                         <p className="text-zinc-500 max-w-xl mx-auto text-sm font-medium leading-relaxed">
-                          Detectamos que a licenÃ§a da sua empresa expirou ou que existem pagamentos pendentes. 
-                          Para garantir a integridade fiscal e o cumprimento das normas, novas operaÃ§Ãµes de venda e registo estÃ£o temporariamente suspensas.
+                          Detectamos que a licença da sua empresa expirou ou que existem pagamentos pendentes. 
+                          Para garantir a integridade fiscal e o cumprimento das normas, novas operações de venda e registo estão temporariamente suspensas.
                         </p>
                       </div>
                       <div className="flex gap-4 justify-center pt-4">
                         <button onClick={() => setIsCreatingInvoice(false)} className="px-10 py-3 bg-zinc-100 text-zinc-600 font-bold uppercase tracking-widest text-[10px] hover:bg-zinc-200 transition-all">Voltar</button>
-                        <button onClick={() => { setIsCreatingInvoice(false); setActiveTab('licencas'); }} className="px-10 py-3 bg-[#003366] text-white font-bold uppercase tracking-widest text-[10px] shadow-lg hover:bg-[#002244] transition-all">Ver Estado da LicenÃ§a</button>
+                        <button onClick={() => { setIsCreatingInvoice(false); setActiveTab('licencas'); }} className="px-10 py-3 bg-[#003366] text-white font-bold uppercase tracking-widest text-[10px] shadow-lg hover:bg-[#002244] transition-all">Ver Estado da Licença</button>
                       </div>
                     </div>
                   ) : (
@@ -35841,7 +35841,7 @@ export default function App() {
                             }
                           } catch (error: any) {
                             console.error('Error voiding document:', error);
-                            alert('Falha crÃ­tica na anulaÃ§Ã£o: ' + error.message);
+                            alert('Falha crÃ­tica na anulação: ' + error.message);
                             setShowAnularModal(null);
                           }
                         }}
@@ -35864,7 +35864,7 @@ export default function App() {
                             <h3 className="text-lg font-black uppercase tracking-tighter">Eliminar Documento</h3>
                           </div>
                           <p className="text-sm text-zinc-600 mb-6 font-medium">
-                            Tem a certeza que deseja eliminar permanentemente o documento <span className="font-bold text-zinc-900">{showDeleteModal.numero_documento || showDeleteModal.invoice_number}</span>? Esta aÃ§Ã£o nÃ£o pode ser desfeita.
+                            Tem a certeza que deseja eliminar permanentemente o documento <span className="font-bold text-zinc-900">{showDeleteModal.numero_documento || showDeleteModal.invoice_number}</span>? Esta ação não pode ser desfeita.
                           </p>
                           <div className="flex justify-end gap-3">
                             <button
@@ -35876,7 +35876,7 @@ export default function App() {
                             <button
                               onClick={async () => {
                                 try {
-                                  if (!user) throw new Error('Utilizador nÃ£o autenticado');
+                                  if (!user) throw new Error('Utilizador não autenticado');
                                   
                                   const { error } = await supabase
                                     .from('documentos_emitidos')
@@ -35889,11 +35889,11 @@ export default function App() {
                                     await fetchData();
                                     setShowDeleteModal(null);
                                   } else {
-                                    alert(`Erro ao eliminar: ${error.message || 'NÃ£o foi possÃ­vel eliminar o documento.'}`);
+                                    alert(`Erro ao eliminar: ${error.message || 'Não foi possível eliminar o documento.'}`);
                                   }
                                 } catch (error) {
                                   console.error('Error deleting document:', error);
-                                  alert('Erro de conexÃ£o ao eliminar documento.');
+                                  alert('Erro de conexão ao eliminar documento.');
                                 }
                               }}
                               className="px-6 py-2 bg-red-600 text-white text-xs font-bold uppercase tracking-wider hover:bg-red-700 transition-colors"
@@ -35959,7 +35959,7 @@ export default function App() {
                                   <ShieldAlert size={40} />
                                 </div>
                                 <h2 className="text-2xl font-black text-[#003366] uppercase tracking-tighter">Acesso Restrito</h2>
-                                <p className="text-zinc-500 max-w-md">O seu utilizador nÃ£o tem permissÃ£o para aceder a esta Ã¡rea. Contacte o administrador da empresa para solicitar acesso.</p>
+                                <p className="text-zinc-500 max-w-md">O seu utilizador não tem permissão para aceder a esta área. Contacte o administrador da empresa para solicitar acesso.</p>
                                 <button 
                                   onClick={() => setActiveTab('dashboard')}
                                   className="mt-4 px-8 py-3 bg-[#003366] text-white text-xs font-black uppercase tracking-widest hover:bg-[#002244] transition-all"
@@ -36018,8 +36018,8 @@ export default function App() {
                                     </div>
                                     <h2 className="text-xl font-black text-rose-900 uppercase tracking-tight">Acesso ao POS Bloqueado</h2>
                                     <p className="text-xs text-zinc-600 leading-relaxed">
-                                      O seu utilizador encontra-se configurado como <strong>Sem Acesso (Bloqueado)</strong> para o mÃ³dulo Ponto de Venda.
-                                      Contacte o administrador do sistema para conceder a respetiva autorizaÃ§Ã£o no mÃ³dulo <strong>Configurar POS</strong>.
+                                      O seu utilizador encontra-se configurado como <strong>Sem Acesso (Bloqueado)</strong> para o módulo Ponto de Venda.
+                                      Contacte o administrador do sistema para conceder a respetiva autorização no módulo <strong>Configurar POS</strong>.
                                     </p>
                                     <button 
                                       onClick={() => { setActiveTab('dashboard'); window.location.hash = 'dashboard'; }}
@@ -36325,8 +36325,8 @@ export default function App() {
                                 <div className="space-y-6">
                                   <header className="flex justify-between items-center bg-white p-6 border-b border-zinc-200">
                                     <div>
-                                      <h2 className="text-2xl font-bold text-[#003366] tracking-tight">ProvisÃ³rios / Documento de Suporte (Draft)</h2>
-                                      <p className="text-zinc-500 text-sm font-medium">GestÃ£o de documentos provisÃ³rios e rascunhos emitidos.</p>
+                                      <h2 className="text-2xl font-bold text-[#003366] tracking-tight">Provisórios / Documento de Suporte (Draft)</h2>
+                                      <p className="text-zinc-500 text-sm font-medium">Gestão de documentos provisórios e rascunhos emitidos.</p>
                                     </div>
                                     <div className="flex items-center gap-3">
                                       <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Filtrar Moeda:</label>
@@ -36480,7 +36480,7 @@ export default function App() {
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="font-black text-sm uppercase tracking-wider text-white">PrÃ©-visualizaÃ§Ã£o Oficial de Venda</span>
+                    <span className="font-black text-sm uppercase tracking-wider text-white">Pré-visualização Oficial de Venda</span>
                     {printingInvoice.is_certified ? (
                       <span className="text-[9px] font-black uppercase tracking-widest bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5">Certificado</span>
                     ) : (
@@ -36488,7 +36488,7 @@ export default function App() {
                     )}
                   </div>
                   <p className="text-[10px] text-zinc-400 font-mono mt-0.5">
-                    {printingInvoice.numero_documento || printingInvoice.invoice_number} â€¢ {printingInvoice.client_name || 'Consumidor Final'}
+                    {printingInvoice.numero_documento || printingInvoice.invoice_number} • {printingInvoice.client_name || 'Consumidor Final'}
                   </p>
                 </div>
               </div>
@@ -36668,7 +36668,7 @@ export default function App() {
                       </select>
                     </div>
                     <div className="space-y-1.5 md:col-span-2">
-                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">DescriÃ§Ã£o</label>
+                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Descrição</label>
                       <input required type="text" value={taskFormData.description} onChange={e => setTaskFormData({...taskFormData, description: e.target.value})} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
                     </div>
                     <div className="space-y-1.5">
@@ -36688,7 +36688,7 @@ export default function App() {
                       <input required type="date" value={taskFormData.endDate ? String(taskFormData.endDate).slice(0, 10) : ''} onChange={e => setTaskFormData({...taskFormData, endDate: e.target.value})} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
                     </div>
                     <div className="space-y-1.5 md:col-span-2">
-                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">ObservaÃ§Ãµes</label>
+                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Observações</label>
                       <textarea value={taskFormData.obs} onChange={e => setTaskFormData({...taskFormData, obs: e.target.value})} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366] min-h-[60px]" />
                     </div>
                   </div>
@@ -36719,9 +36719,9 @@ export default function App() {
               <div className="mx-auto w-20 h-20 bg-amber-50 rounded-full flex items-center justify-center mb-6">
                 <AlertTriangle size={40} className="text-amber-600 animate-pulse" id="alert-icon-anim" />
               </div>
-              <h3 className="text-2xl font-black text-[#003366] uppercase tracking-tighter mb-2 italic underline decoration-amber-500 decoration-4 underline-offset-8">Aviso de ExpiraÃ§Ã£o</h3>
+              <h3 className="text-2xl font-black text-[#003366] uppercase tracking-tighter mb-2 italic underline decoration-amber-500 decoration-4 underline-offset-8">Aviso de Expiração</h3>
               <p className="text-zinc-600 font-medium mb-8 leading-relaxed mt-6">
-                  A sua licenÃ§a de uso do ERP estÃ¡ prestes a expirar. Para evitar o bloqueio automÃ¡tico de vendas, stocks e processamento, por favor regularize a sua subscriÃ§Ã£o nos prÃ³ximos dias.
+                  A sua licença de uso do ERP estÃ¡ prestes a expirar. Para evitar o bloqueio automÃ¡tico de vendas, stocks e processamento, por favor regularize a sua subscriÃ§Ã£o nos próximos dias.
               </p>
               
               <div className="flex flex-col gap-3">
@@ -36741,7 +36741,7 @@ export default function App() {
               </div>
             </div>
             <div className="bg-zinc-50 p-4 border-t border-zinc-100 flex items-center justify-between">
-              <span className="text-[10px] font-bold text-zinc-400 italic">Central de SeguranÃ§a do Ecossistema</span>
+              <span className="text-[10px] font-bold text-zinc-400 italic">Central de Segurança do Ecossistema</span>
               <span className="text-[10px] font-black text-amber-600 uppercase tracking-widest">
                 {licenseStatus && Math.ceil((new Date(licenseStatus.data_fim).getTime() - Date.now()) / (1000 * 60 * 60 * 24))} Dias Restantes
               </span>
@@ -37076,8 +37076,8 @@ const ActivitiesManagementModule = () => {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h3 className="text-xl font-bold text-[#003366] uppercase tracking-tight">GestÃ£o de Atividades</h3>
-          <p className="text-zinc-500 text-xs">MonitorizaÃ§Ã£o em tempo real de sessÃµes, comportamentos, inserÃ§Ãµes e tempo ativo</p>
+          <h3 className="text-xl font-bold text-[#003366] uppercase tracking-tight">Gestão de Atividades</h3>
+          <p className="text-zinc-500 text-xs">Monitorização em tempo real de sessÃµes, comportamentos, inserÃ§Ãµes e tempo ativo</p>
         </div>
         <button
           onClick={loadActivitiesData}
@@ -37093,11 +37093,11 @@ const ActivitiesManagementModule = () => {
         <div className="bg-white p-5 border border-zinc-200 shadow-sm flex flex-col justify-between">
           <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Total de Logins</span>
           <span className="text-2xl font-black text-[#003366] mt-1">{stats.totalLogins || 0}</span>
-          <p className="text-[10px] text-zinc-400 mt-2">SessÃµes iniciadas no sistema</p>
+          <p className="text-[10px] text-zinc-400 mt-2">Sessões iniciadas no sistema</p>
         </div>
 
         <div className="bg-white p-5 border border-zinc-200 shadow-sm flex flex-col justify-between">
-          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Tempo de LigaÃ§Ã£o</span>
+          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Tempo de Ligação</span>
           <span className="text-lg font-black text-[#003366] mt-1 truncate">
             {formatDuration(stats.totalTempoSegundos || 0)}
           </span>
@@ -37107,19 +37107,19 @@ const ActivitiesManagementModule = () => {
         <div className="bg-white p-5 border border-zinc-200 shadow-sm flex flex-col justify-between">
           <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Movimentos / Cliques</span>
           <span className="text-2xl font-black text-[#003366] mt-1">{stats.totalMovimentos || 0}</span>
-          <p className="text-[10px] text-zinc-400 mt-2">Cliques de navegaÃ§Ã£o no ecrÃ£</p>
+          <p className="text-[10px] text-zinc-400 mt-2">Cliques de navegação no ecrÃ£</p>
         </div>
 
         <div className="bg-white p-5 border border-zinc-200 shadow-sm flex flex-col justify-between">
           <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Registos / InserÃ§Ãµes</span>
           <span className="text-2xl font-black text-emerald-600 mt-1">{stats.totalInsercoes || 0}</span>
-          <p className="text-[10px] text-zinc-400 mt-2">Guardas e criaÃ§Ãµes de formulÃ¡rio</p>
+          <p className="text-[10px] text-zinc-400 mt-2">Guardas e criações de formulÃ¡rio</p>
         </div>
 
         <div className="bg-white p-5 border border-zinc-200 shadow-sm flex flex-col justify-between">
           <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Tarefas ConcluÃ­das</span>
           <span className="text-2xl font-black text-amber-600 mt-1">{stats.totalTarefas || 0}</span>
-          <p className="text-[10px] text-zinc-400 mt-2">AÃ§Ãµes de negÃ³cio despachadas</p>
+          <p className="text-[10px] text-zinc-400 mt-2">Ações de negÃ³cio despachadas</p>
         </div>
       </div>
 
@@ -37127,7 +37127,7 @@ const ActivitiesManagementModule = () => {
         {/* LEADERBOARD DESEMPENHO */}
         <div className="bg-white border border-zinc-200 shadow-sm p-6 lg:col-span-1">
           <h4 className="font-bold text-[#003366] text-sm uppercase tracking-wide border-b border-zinc-100 pb-3 mb-4">
-            EstatÃ­sticas de Desempenho (Top Utilizadores)
+            Estatísticas de Desempenho (Top Utilizadores)
           </h4>
           
           {stats.topPerformers && stats.topPerformers.length > 0 ? (
@@ -37165,7 +37165,7 @@ const ActivitiesManagementModule = () => {
             </div>
           ) : (
             <div className="text-center py-8 text-zinc-400 text-xs">
-              Nenhuma estatÃ­stica de desempenho calculada ainda.
+              Nenhuma estatística de desempenho calculada ainda.
             </div>
           )}
         </div>
@@ -37245,7 +37245,7 @@ const ActivitiesManagementModule = () => {
                           ) : (
                             <div className="space-y-0.5 text-left">
                               <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-none text-[9px] font-bold bg-zinc-100 text-zinc-600 uppercase">
-                                SaÃ­da
+                                Saída
                               </span>
                               {h.data_saida && (
                                 <div className="text-[8px] text-zinc-400 leading-none">

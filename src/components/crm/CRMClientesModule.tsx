@@ -3,10 +3,12 @@ import {
   Users, UserPlus, Search, Filter, ArrowLeft, Phone, Mail, 
   MapPin, Building2, FileText, CheckCircle, AlertCircle, Plus, 
   Trash2, Edit, ChevronRight, Eye, ShieldCheck, DollarSign, Calendar, Globe, Loader2,
-  BarChart3, RefreshCw, Printer, Download, MessageSquare, Briefcase, FolderGit2, ShoppingCart, X
+  BarChart3, RefreshCw, Printer, Download, MessageSquare, Briefcase, FolderGit2, ShoppingCart, X,
+  Receipt
 } from 'lucide-react';
 import { crmNegocioService } from '../../services/crmNegocioService';
 import { validarNIFAGT, NifConsultaResult } from '../../services/agt/validarNIF';
+import ClienteContaCorrenteModal from './ClienteContaCorrenteModal';
 import toast from 'react-hot-toast';
 
 interface CRMClientesModuleProps {
@@ -29,6 +31,8 @@ export const CRMClientesModule: React.FC<CRMClientesModuleProps> = ({ user, comp
   const [selectedCliente, setSelectedCliente] = useState<any | null>(null);
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [perfilTab, setPerfilTab] = useState<'geral' | 'contactos' | 'negocios' | 'vendas' | 'projetos' | 'atendimento' | 'documentos' | 'historico'>('geral');
+  const [contaCorrenteCliente, setContaCorrenteCliente] = useState<any | null>(null);
+  const [isContaCorrenteOpen, setIsContaCorrenteOpen] = useState(false);
 
   // NIF lookup state
   const [nifLoading, setNifLoading] = useState(false);
@@ -502,19 +506,26 @@ export const CRMClientesModule: React.FC<CRMClientesModuleProps> = ({ user, comp
                           {c.ativo !== false ? 'Ativo' : 'Inativo'}
                         </span>
                       </td>
-                      <td className="p-4 text-center flex items-center justify-center gap-1.5">
-                        <button onClick={() => { setSelectedCliente(c); setActiveTab('perfil'); }} className="p-2 bg-blue-50 text-[#003366] hover:bg-[#003366] hover:text-white rounded-lg transition-all font-bold text-xs inline-flex items-center gap-1" title="Ver Perfil">
+                      <td className="p-4 text-center flex items-center justify-center gap-1.5 flex-wrap">
+                        <button 
+                          onClick={() => { setContaCorrenteCliente(c); setIsContaCorrenteOpen(true); }}
+                          className="p-1.5 px-2.5 bg-emerald-50 text-emerald-800 hover:bg-emerald-600 hover:text-white rounded-none border border-emerald-300 transition-all font-bold text-xs inline-flex items-center gap-1 cursor-pointer shadow-xs"
+                          title="Extrato de Conta Corrente do Cliente"
+                        >
+                          <Receipt size={14} /> Conta Corrente
+                        </button>
+                        <button onClick={() => { setSelectedCliente(c); setActiveTab('perfil'); }} className="p-1.5 px-2.5 bg-blue-50 text-[#003366] hover:bg-[#003366] hover:text-white rounded-none border border-blue-200 transition-all font-bold text-xs inline-flex items-center gap-1" title="Ver Perfil">
                           <Eye size={14} /> Perfil
                         </button>
-                        <button onClick={() => handleOpenEditClient(c)} className="p-2 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-xl transition-all cursor-pointer" title="Editar">
+                        <button onClick={() => handleOpenEditClient(c)} className="p-1.5 px-2 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-none border border-slate-300 transition-all cursor-pointer" title="Editar">
                           <Edit size={14} />
                         </button>
                         {c.ativo !== false ? (
-                          <button onClick={() => handleArchiveClient(c)} className="p-2 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-lg transition-all" title="Arquivar">
+                          <button onClick={() => handleArchiveClient(c)} className="p-1.5 px-2 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-none border border-rose-200 transition-all" title="Arquivar">
                             <Trash2 size={14} />
                           </button>
                         ) : (
-                          <button onClick={() => handleRestoreClient(c)} className="p-2 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-lg transition-all" title="Restaurar">
+                          <button onClick={() => handleRestoreClient(c)} className="p-1.5 px-2 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-none border border-emerald-200 transition-all" title="Restaurar">
                             <RefreshCw size={14} />
                           </button>
                         )}
@@ -533,14 +544,14 @@ export const CRMClientesModule: React.FC<CRMClientesModuleProps> = ({ user, comp
         </div>
       )}
 
-      {/* SECTION 3: MODAL DE NOVO CLIENTE / EDITAR (Em frente da página, cantos redondos, sem secções pesadas) */}
+      {/* SECTION 3: MODAL DE NOVO CLIENTE / EDITAR (Cantos quadrados no estilo padrão do sistema) */}
       {(isFormModalOpen || activeTab === 'novo') && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full border border-slate-200 overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-white rounded-none shadow-2xl max-w-2xl w-full border border-slate-300 overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-150">
             {/* Header */}
             <div className="px-6 py-4 bg-[#003366] text-white flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-white/10 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-none bg-white/10 flex items-center justify-center">
                   <UserPlus size={16} className="text-white" />
                 </div>
                 <div>
@@ -556,7 +567,7 @@ export const CRMClientesModule: React.FC<CRMClientesModuleProps> = ({ user, comp
                   setIsFormModalOpen(false);
                   if (activeTab === 'novo') setActiveTab('lista');
                 }}
-                className="w-8 h-8 rounded-xl bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer"
+                className="w-8 h-8 rounded-none bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer"
                 title="Fechar"
               >
                 <X size={16} />
@@ -578,7 +589,7 @@ export const CRMClientesModule: React.FC<CRMClientesModuleProps> = ({ user, comp
                       required
                       value={formData.contribuinte}
                       onChange={handleChange}
-                      className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono font-bold focus:outline-none focus:border-[#003366] focus:bg-white transition-all"
+                      className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-none text-xs font-mono font-bold focus:outline-none focus:border-[#003366] focus:bg-white transition-all"
                       placeholder="Ex: 5000..."
                     />
                     {nifLoading && (
@@ -605,7 +616,7 @@ export const CRMClientesModule: React.FC<CRMClientesModuleProps> = ({ user, comp
                     required
                     value={formData.nome}
                     onChange={handleChange}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold focus:outline-none focus:border-[#003366] focus:bg-white transition-all"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-none text-xs font-bold focus:outline-none focus:border-[#003366] focus:bg-white transition-all"
                     placeholder="Nome completo ou denominação social"
                   />
                 </div>
@@ -620,7 +631,7 @@ export const CRMClientesModule: React.FC<CRMClientesModuleProps> = ({ user, comp
                     name="telefone"
                     value={formData.telefone}
                     onChange={handleChange}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono focus:outline-none focus:border-[#003366] focus:bg-white transition-all"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-none text-xs font-mono focus:outline-none focus:border-[#003366] focus:bg-white transition-all"
                     placeholder="+244 9..."
                   />
                 </div>
@@ -635,7 +646,7 @@ export const CRMClientesModule: React.FC<CRMClientesModuleProps> = ({ user, comp
                     name="email"
                     value={formData.email}
                     onChange={handleChange}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:outline-none focus:border-[#003366] focus:bg-white transition-all"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-none text-xs focus:outline-none focus:border-[#003366] focus:bg-white transition-all"
                     placeholder="comercial@exemplo.com"
                   />
                 </div>
@@ -649,7 +660,7 @@ export const CRMClientesModule: React.FC<CRMClientesModuleProps> = ({ user, comp
                     name="tipo_cliente"
                     value={formData.tipo_cliente}
                     onChange={handleChange}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium focus:outline-none focus:border-[#003366] focus:bg-white transition-all cursor-pointer"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-none text-xs font-medium focus:outline-none focus:border-[#003366] focus:bg-white transition-all cursor-pointer"
                   >
                     <option value="normal">Normal</option>
                     <option value="vip">VIP</option>
@@ -668,7 +679,7 @@ export const CRMClientesModule: React.FC<CRMClientesModuleProps> = ({ user, comp
                     name="saldo_inicial"
                     value={formData.saldo_inicial}
                     onChange={handleChange}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono focus:outline-none focus:border-[#003366] focus:bg-white transition-all"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-none text-xs font-mono focus:outline-none focus:border-[#003366] focus:bg-white transition-all"
                     placeholder="0.00"
                   />
                 </div>
@@ -683,7 +694,7 @@ export const CRMClientesModule: React.FC<CRMClientesModuleProps> = ({ user, comp
                     name="morada"
                     value={formData.morada}
                     onChange={handleChange}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:outline-none focus:border-[#003366] focus:bg-white transition-all"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-none text-xs focus:outline-none focus:border-[#003366] focus:bg-white transition-all"
                     placeholder="Rua, Bairro, Edifício..."
                   />
                 </div>
@@ -698,7 +709,7 @@ export const CRMClientesModule: React.FC<CRMClientesModuleProps> = ({ user, comp
                     name="provincia"
                     value={formData.provincia}
                     onChange={handleChange}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:outline-none focus:border-[#003366] focus:bg-white transition-all"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-none text-xs focus:outline-none focus:border-[#003366] focus:bg-white transition-all"
                     placeholder="Luanda"
                   />
                 </div>
@@ -713,7 +724,7 @@ export const CRMClientesModule: React.FC<CRMClientesModuleProps> = ({ user, comp
                     name="municipio"
                     value={formData.municipio}
                     onChange={handleChange}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:outline-none focus:border-[#003366] focus:bg-white transition-all"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-none text-xs focus:outline-none focus:border-[#003366] focus:bg-white transition-all"
                     placeholder="Luanda / Viana / Talatona..."
                   />
                 </div>
@@ -728,13 +739,13 @@ export const CRMClientesModule: React.FC<CRMClientesModuleProps> = ({ user, comp
                     rows={2}
                     value={formData.observacoes}
                     onChange={handleChange}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:outline-none focus:border-[#003366] focus:bg-white transition-all resize-none"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-none text-xs focus:outline-none focus:border-[#003366] focus:bg-white transition-all resize-none"
                     placeholder="Observações ou histórico do cliente..."
                   />
                 </div>
               </div>
 
-              {/* Botões com cantos redondos */}
+              {/* Botões com cantos quadrados */}
               <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-200">
                 <button 
                   type="button" 
@@ -742,20 +753,20 @@ export const CRMClientesModule: React.FC<CRMClientesModuleProps> = ({ user, comp
                     setIsFormModalOpen(false);
                     if (activeTab === 'novo') setActiveTab('lista');
                   }}
-                  className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl text-xs font-bold uppercase hover:bg-slate-100 transition-all cursor-pointer"
+                  className="px-4 py-2 border border-slate-300 text-slate-700 rounded-none text-xs font-bold uppercase hover:bg-slate-100 transition-all cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button 
                   type="button"
                   onClick={(e) => handleSaveClient(e, true)}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold uppercase transition-all shadow-xs cursor-pointer"
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-none text-xs font-bold uppercase transition-all shadow-xs cursor-pointer"
                 >
                   Guardar e Novo
                 </button>
                 <button 
                   type="submit" 
-                  className="px-5 py-2 bg-[#003366] hover:bg-[#002244] text-white rounded-xl text-xs font-bold uppercase transition-all shadow-md cursor-pointer"
+                  className="px-5 py-2 bg-[#003366] hover:bg-[#002244] text-white rounded-none text-xs font-bold uppercase transition-all shadow-md cursor-pointer"
                 >
                   {selectedCliente ? 'Atualizar Cliente' : 'Guardar Cliente'}
                 </button>
@@ -1056,6 +1067,19 @@ export const CRMClientesModule: React.FC<CRMClientesModuleProps> = ({ user, comp
             </div>
           </div>
         </div>
+      )}
+
+      {/* MODAL DE CONTA CORRENTE DO CLIENTE */}
+      {isContaCorrenteOpen && contaCorrenteCliente && (
+        <ClienteContaCorrenteModal
+          cliente={contaCorrenteCliente}
+          companyData={companyData}
+          isOpen={isContaCorrenteOpen}
+          onClose={() => {
+            setIsContaCorrenteOpen(false);
+            setContaCorrenteCliente(null);
+          }}
+        />
       )}
     </div>
   );

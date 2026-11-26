@@ -9182,7 +9182,7 @@ app.use((req, res, next) => {
       const { data: companiesList } = await supabaseAdmin.from('empresas').select('*');
       const { data: configEmpresas } = await supabaseAdmin.from('config_empresa').select('*');
       const { data: licenses } = await supabaseAdmin.from('licencas_empresas').select('*');
-      const { data: profiles } = await supabaseAdmin.from('perfis').select('empresa_id');
+      const { data: profiles } = await supabaseAdmin.from('perfis').select('empresa_id, username, email');
 
       const normalizeCRMPlan = (raw: string | null | undefined): 'Básico' | 'Standard' | 'Profissional' | 'Enterprise' => {
         if (!raw) return 'Profissional';
@@ -9205,6 +9205,8 @@ app.use((req, res, next) => {
         const lic = licenses?.find(l => String(l.empresa_id) === String(emp.id));
         const config = configEmpresas?.find(c => String(c.empresa_id) === String(emp.id));
         const companyUsers = profiles?.filter(p => String(p.empresa_id) === String(emp.id)).length || 0;
+        const adminProfile = profiles?.find(p => String(p.empresa_id) === String(emp.id));
+        const companyUsername = adminProfile?.username || (emp.email ? emp.email.split('@')[0] : 'admin');
         
         const rawPlano = lic?.plano || lic?.tipo_licenca || config?.plano || emp.plano;
         const normPlan = normalizeCRMPlan(rawPlano);
@@ -9217,6 +9219,8 @@ app.use((req, res, next) => {
           ...emp,
           empresa_id: emp.id,
           nome_empresa: emp.nome_empresa || emp.nome || 'Empresa Sem Nome',
+          username: companyUsername,
+          admin_username: companyUsername,
           status_licenca: lic?.status_licenca || emp.status_licenca || config?.status_licenca || 'TRIAL',
           plano: normPlan,
           tipo_licenca: normPlan,
@@ -9242,24 +9246,61 @@ app.use((req, res, next) => {
       if (!await isSuperAdmin(req)) return res.status(403).json({ error: "Acesso negado." });
       if (!supabaseAdmin) return res.status(500).json({ error: "Supabase Admin não disponível" });
 
-      const { data: profiles, error } = await supabaseAdmin
+      const empresaId = (req.query.empresa_id as string | undefined)?.trim();
+
+      let query = supabaseAdmin
         .from('perfis')
         .select('*')
         .order('created_at', { ascending: false });
+
+      if (empresaId) {
+        query = query.eq('empresa_id', empresaId);
+      }
+
+      const { data: profiles, error } = await query;
 
       if (error) {
          console.warn("Error fetching profiles:", error.message);
          return res.json([]);
       }
       
-      const { data: companiesList } = await supabaseAdmin.from('empresas').select('id, nome_empresa, nif');
+      const { data: companiesList } = await supabaseAdmin.from('empresas').select('id, nome_empresa, nif, email, nome_administrador, auth_user_id');
       
-      const hydratedProfiles = (profiles || []).map(p => {
+      let list = profiles || [];
+
+      // Se uma empresa específica foi pedida e não há utilizadores em perfis, fallback sintético inteligente
+      if (empresaId && list.length === 0) {
+        const emp = companiesList?.find(c => String(c.id) === String(empresaId));
+        if (emp) {
+          const fallbackUsername = (emp.email ? emp.email.split('@')[0] : 'admin').trim();
+          const synthProfile = {
+            id: emp.auth_user_id || `admin_${emp.id}`,
+            user_id: emp.auth_user_id || `admin_${emp.id}`,
+            empresa_id: emp.id,
+            email: emp.email,
+            username: fallbackUsername,
+            full_name: emp.nome_administrador || 'Administrador',
+            nome: emp.nome_administrador || 'Administrador',
+            role: 'admin',
+            is_admin: true,
+            is_active: true,
+            ativo: true,
+            created_at: new Date().toISOString()
+          };
+          list = [synthProfile];
+          supabaseAdmin.from('perfis').upsert(synthProfile, { onConflict: 'id' }).then(() => {}).catch(() => {});
+        }
+      }
+
+      const hydratedProfiles = list.map(p => {
          const emp = companiesList?.find(c => String(c.id) === String(p.empresa_id));
+         const resolvedUsername = (p.username || (p.email ? p.email.split('@')[0] : 'admin')).trim();
          return {
             ...p,
+            username: resolvedUsername,
+            full_name: p.full_name || p.nome || p.email?.split('@')[0] || 'Utilizador',
             empresas: emp ? { nome_empresa: emp.nome_empresa, nif: emp.nif } : null
-         }
+         };
       });
 
       res.json(hydratedProfiles);

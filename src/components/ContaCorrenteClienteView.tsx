@@ -247,7 +247,7 @@ export const ContaCorrenteClienteView: React.FC<ContaCorrenteClienteViewProps> =
       }
       const fileInterno = (resolvedSiteName && resolvedSiteName !== 'Obra Generica' && resolvedSiteName !== 'Obra Genérica') 
         ? String(resolvedSiteName).trim() 
-        : '-----';
+        : 'Obra Genérica';
 
       rawMovs.push({
         id: d.id,

@@ -339,48 +339,48 @@ export const CRMClientesModule: React.FC<CRMClientesModuleProps> = ({ user, comp
       {/* SECTION 1: DASHBOARD CLIENTES */}
       {activeTab === 'dashboard' && (
         <div className="space-y-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="bg-white p-3.5 rounded-none border border-slate-200 shadow-xs flex items-center justify-between">
               <div>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total de Clientes</p>
-                <h3 className="text-2xl font-black text-slate-900 mt-1">{totalClientes}</h3>
-                <span className="text-[10px] text-emerald-600 font-bold mt-1 inline-flex items-center gap-1">Base sincronizada</span>
+                <h3 className="text-lg font-black text-slate-900 mt-0.5">{totalClientes}</h3>
+                <span className="text-[9px] text-emerald-600 font-bold inline-flex items-center gap-1">Base sincronizada</span>
               </div>
-              <div className="w-12 h-12 rounded-xl bg-blue-50 text-[#003366] flex items-center justify-center">
-                <Users size={24} />
+              <div className="w-9 h-9 rounded-none bg-blue-50 text-[#003366] flex items-center justify-center">
+                <Users size={18} />
               </div>
             </div>
 
-            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+            <div className="bg-white p-3.5 rounded-none border border-slate-200 shadow-xs flex items-center justify-between">
               <div>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Clientes Ativos</p>
-                <h3 className="text-2xl font-black text-emerald-600 mt-1">{clientesAtivos}</h3>
-                <span className="text-[10px] text-emerald-600 font-bold mt-1 inline-flex items-center gap-1">Em atividade comercial</span>
+                <h3 className="text-lg font-black text-emerald-600 mt-0.5">{clientesAtivos}</h3>
+                <span className="text-[9px] text-emerald-600 font-bold inline-flex items-center gap-1">Em atividade</span>
               </div>
-              <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
-                <CheckCircle size={24} />
+              <div className="w-9 h-9 rounded-none bg-emerald-50 text-emerald-700 flex items-center justify-center">
+                <CheckCircle size={18} />
               </div>
             </div>
 
-            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+            <div className="bg-white p-3.5 rounded-none border border-slate-200 shadow-xs flex items-center justify-between">
               <div>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Clientes Inativos</p>
-                <h3 className="text-2xl font-black text-rose-600 mt-1">{clientesInativos}</h3>
-                <span className="text-[10px] text-slate-400 font-bold mt-1 inline-flex items-center gap-1">Arquivados</span>
+                <h3 className="text-lg font-black text-rose-600 mt-0.5">{clientesInativos}</h3>
+                <span className="text-[9px] text-slate-400 font-bold inline-flex items-center gap-1">Arquivados</span>
               </div>
-              <div className="w-12 h-12 rounded-xl bg-rose-50 text-rose-700 flex items-center justify-center">
-                <AlertCircle size={24} />
+              <div className="w-9 h-9 rounded-none bg-rose-50 text-rose-700 flex items-center justify-center">
+                <AlertCircle size={18} />
               </div>
             </div>
 
-            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+            <div className="bg-white p-3.5 rounded-none border border-slate-200 shadow-xs flex items-center justify-between">
               <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Interações Registadas</p>
-                <h3 className="text-2xl font-black text-purple-600 mt-1">{interacoes.length}</h3>
-                <span className="text-[10px] text-purple-600 font-bold mt-1 inline-flex items-center gap-1">Atendimento ativo</span>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Interações</p>
+                <h3 className="text-lg font-black text-purple-600 mt-0.5">{interacoes.length}</h3>
+                <span className="text-[9px] text-purple-600 font-bold inline-flex items-center gap-1">Atendimento</span>
               </div>
-              <div className="w-12 h-12 rounded-xl bg-purple-50 text-purple-700 flex items-center justify-center">
-                <MessageSquare size={24} />
+              <div className="w-9 h-9 rounded-none bg-purple-50 text-purple-700 flex items-center justify-center">
+                <MessageSquare size={18} />
               </div>
             </div>
           </div>
@@ -510,7 +510,7 @@ export const CRMClientesModule: React.FC<CRMClientesModuleProps> = ({ user, comp
                           <button 
                             onClick={() => handleArchiveClient(c)} 
                             className="w-7 h-7 flex items-center justify-center bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-none border border-rose-200 transition-colors cursor-pointer" 
-                            title="Arquivar"
+                            title="Arquivar / Desativar (Apagar clientes nunca é permitido)"
                           >
                             <Trash2 size={14} />
                           </button>

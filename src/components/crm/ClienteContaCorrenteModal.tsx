@@ -253,7 +253,10 @@ export const ClienteContaCorrenteModal: React.FC<ClienteContaCorrenteModalProps>
         id: String(d.id),
         dataValor: dataFmt,
         dataDocumento: dataFmt,
-        fileInterno: d.detalhes?.file_interno || 'Obra Generica',
+        fileInterno: (() => {
+          const ws = d.work_site_title || d.local_trabalho || d.work_site_name || d.work_site || d.detalhes?.work_site_title || d.detalhes?.local_trabalho || d.detalhes?.file_interno;
+          return (ws && ws !== 'Obra Generica' && ws !== 'Obra Genérica') ? String(ws).trim() : 'Obra Genérica';
+        })(),
         fileCliente: d.detalhes?.file_cliente || '—',
         urn: '',
         endService: '',

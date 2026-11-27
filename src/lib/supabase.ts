@@ -8,9 +8,14 @@ const PROD_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIs
 
 const isStaging = getAppEnvironment() === 'staging';
 
+const envSupabaseUrl = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL || '').trim();
+const envSupabaseAnon = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_ANON_KEY || '').trim();
+const hasValidEnvUrl = envSupabaseUrl.startsWith('http') &&
+  (!isStaging || !envSupabaseUrl.includes('nawqfidnawokqaheqvar'));
+
 // Deterministic URL and key selection based strictly on environment
-const supabaseUrl = isStaging ? STAGING_URL : PROD_URL;
-const supabaseAnonKey = isStaging ? STAGING_ANON : PROD_ANON;
+const supabaseUrl = hasValidEnvUrl ? envSupabaseUrl : (isStaging ? STAGING_URL : PROD_URL);
+const supabaseAnonKey = (hasValidEnvUrl && envSupabaseAnon) ? envSupabaseAnon : (isStaging ? STAGING_ANON : PROD_ANON);
 
 const isBrowser = typeof window !== 'undefined';
 let isPageSuspended = false;
@@ -64,13 +69,16 @@ export async function checkSupabaseHealth() {
 }
 
 // Safe Promise execution helper with Timeout, Try/Catch & Retries
-function makeSafePromise(promise: Promise<any>, description: string): Promise<any> {
+function makeSafePromise(
+  promiseOrFactory: Promise<any> | (() => Promise<any>),
+  description: string,
+  maxAttempts = 3
+): Promise<any> {
   const timeoutMs = 15000;
-  
+
   const wrappedPromise = new Promise(async (resolve) => {
     let resolved = false;
-    
-    // Timeout safeguard
+
     const timer = setTimeout(() => {
       if (!resolved) {
         resolved = true;
@@ -88,19 +96,18 @@ function makeSafePromise(promise: Promise<any>, description: string): Promise<an
     }, timeoutMs);
 
     let attempts = 0;
-    const maxAttempts = 3;
     let delay = 1000;
 
     while (attempts < maxAttempts) {
       attempts++;
       try {
-        const result = await promise;
-        
+        const execTarget = typeof promiseOrFactory === 'function' ? promiseOrFactory() : promiseOrFactory;
+        const result = await execTarget;
+
         if (result && result.error) {
           const errCode = String(result.error.code);
           const errMsg = String(result.error.message || '');
 
-          // REGRA 9 & 10: NUNCA retentar se recursos estiverem esgotados ou se o pedido foi cancelado/abortado
           const isResourceExhausted = errMsg.includes('INSUFFICIENT_RESOURCES') || errMsg.includes('ERR_INSUFFICIENT_RESOURCES');
           const isAborted = errMsg.includes('aborted') || errMsg.includes('AbortError') || (result.error as any)?.name === 'AbortError';
 
@@ -114,7 +121,7 @@ function makeSafePromise(promise: Promise<any>, description: string): Promise<an
           }
 
           const isTransient = errCode === '503' || errCode === '502' || errMsg.includes('FetchError') || errMsg.includes('Failed to fetch') || errMsg.includes('NetworkError');
-          
+
           if (isTransient && attempts < maxAttempts && !resolved) {
             console.warn(`[SafeSupabase Retry] Transient issue in '${description}'. Retrying in ${delay}ms... (Attempt ${attempts}/${maxAttempts})`);
             await new Promise(r => setTimeout(r, delay));
@@ -133,7 +140,6 @@ function makeSafePromise(promise: Promise<any>, description: string): Promise<an
         const errMsg = String(err?.message || '');
         console.error(`[SafeSupabase Exception] on '${description}':`, err);
 
-        // REGRA 9 & 10: NUNCA retentar se recursos estiverem esgotados ou se for cancelado/abortado
         const isResourceExhausted = errMsg.includes('INSUFFICIENT_RESOURCES') || errMsg.includes('ERR_INSUFFICIENT_RESOURCES');
         const isAborted = errMsg.includes('aborted') || errMsg.includes('AbortError') || err?.name === 'AbortError';
 
@@ -141,8 +147,9 @@ function makeSafePromise(promise: Promise<any>, description: string): Promise<an
           if (!resolved) {
             resolved = true;
             clearTimeout(timer);
+            const isAuth = description.startsWith('Auth:');
             resolve({
-              data: null,
+              data: isAuth ? { user: null, session: null } : null,
               error: {
                 message: isAborted ? 'Pedido cancelado.' : 'Recursos de rede insuficientes.',
                 code: isAborted ? 'ABORTED' : 'ERR_INSUFFICIENT_RESOURCES',
@@ -152,7 +159,7 @@ function makeSafePromise(promise: Promise<any>, description: string): Promise<an
             return;
           }
         }
-        
+
         const isTransient = errMsg.includes('Failed to fetch') || errMsg.includes('network') || errMsg.includes('server unreachable') || errMsg.includes('fetch');
         if (isTransient && attempts < maxAttempts && !resolved) {
           console.warn(`[SafeSupabase Exception Retry] Attempting recovery for '${description}' (Attempt ${attempts}/${maxAttempts})...`);
@@ -184,16 +191,27 @@ function makeSafePromise(promise: Promise<any>, description: string): Promise<an
 
 // Proxied recursive query builder to intercept final execution (.then / .catch)
 function createBuilderProxy(originalBuilder: any, name: string): any {
+  let memoizedExecution: Promise<any> | null = null;
+  const getExecutionPromise = (target: any) => {
+    if (!memoizedExecution) {
+      memoizedExecution = makeSafePromise(
+        () => Promise.resolve().then(() => target),
+        `Query: ${name}`
+      );
+    }
+    return memoizedExecution;
+  };
+
   return new Proxy(originalBuilder, {
     get(target, prop, receiver) {
       if (prop === 'then') {
-        const safePromise = makeSafePromise(target, `Query: ${name}`);
+        const safePromise = getExecutionPromise(target);
         return (onFulfilled: any, onRejected: any) => {
           return safePromise.then(onFulfilled, onRejected);
         };
       }
       if (prop === 'catch') {
-        const safePromise = makeSafePromise(target, `Query: ${name}`);
+        const safePromise = getExecutionPromise(target);
         return (onRejected: any) => {
           return safePromise.catch(onRejected);
         };
@@ -416,10 +434,13 @@ function createAuthProxy(originalAuth: any): any {
 
       const val = Reflect.get(target, prop, receiver);
       if (typeof val === 'function') {
+        const methodName = prop.toString();
+        const isReadOnlyAuth = methodName === 'getSession' || methodName === 'getUser';
         return (...args: any[]) => {
           return makeSafePromise(
-            val.apply(target, args),
-            `Auth: ${prop.toString()}`
+            () => val.apply(target, args),
+            `Auth: ${methodName}`,
+            isReadOnlyAuth ? 2 : 1
           );
         };
       }
@@ -452,30 +473,66 @@ function createStorageProxy(originalStorage: any): any {
   });
 }
 
-// Create the actual, raw configured client
+// Ensure strictly ONE GoTrueClient instance per browser context/URL (prevents HMR & chunk duplication locks)
+const RAW_CLIENT_CACHE_KEY = '__imatecRawSupabaseClient';
+const RAW_CLIENT_URL_KEY = '__imatecRawSupabaseUrl';
+
 const realClientInstance = supabaseStatus.configured
-  ? createClient(supabaseUrl, supabaseAnonKey, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true,
-        flowType: 'pkce'
-      },
-      global: {
-        headers: {
-          'x-client-info': 'erp-imatec-v3'
-        }
-      },
-      realtime: {
-        params: {
-          // Aumenta o intervalo de heartbeat para reduzir timeouts em redes lentas
-          heartbeatIntervalMs: 30000,
-          // Aumenta o timeout de reconexão para evitar CHANNEL_ERROR em falhas temporárias
-          reconnectAfterMs: (tries: number) => Math.min(1000 * Math.pow(2, tries), 30000),
-        }
+  ? (() => {
+      const g = globalThis as any;
+      if (isBrowser && g[RAW_CLIENT_CACHE_KEY] && g[RAW_CLIENT_URL_KEY] === supabaseUrl) {
+        return g[RAW_CLIENT_CACHE_KEY];
       }
-    })
+      const created = createClient(supabaseUrl, supabaseAnonKey, {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: true,
+          flowType: 'pkce'
+        },
+        global: {
+          headers: {
+            'x-client-info': 'erp-imatec-v3'
+          }
+        },
+        realtime: {
+          params: {
+            // Aumenta o intervalo de heartbeat para reduzir timeouts em redes lentas
+            heartbeatIntervalMs: 30000,
+            // Aumenta o timeout de reconexão para evitar CHANNEL_ERROR em falhas temporárias
+            reconnectAfterMs: (tries: number) => Math.min(1000 * Math.pow(2, tries), 30000),
+          }
+        }
+      });
+      if (isBrowser) {
+        g[RAW_CLIENT_CACHE_KEY] = created;
+        g[RAW_CLIENT_URL_KEY] = supabaseUrl;
+      }
+      return created;
+    })()
   : null;
+
+/**
+ * Creates a non-persisting, isolated auth client for password verification or secondary signUp
+ * so the active user session in the singleton client is never replaced or terminated.
+ */
+export function createEphemeralAuthClient() {
+  if (!supabaseStatus.configured) return null;
+  const memoryStore = new Map<string, string>();
+  return createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+      storageKey: `imatec-ephemeral-${Date.now()}`,
+      storage: {
+        getItem: (k: string) => memoryStore.get(k) ?? null,
+        setItem: (k: string, v: string) => { memoryStore.set(k, v); },
+        removeItem: (k: string) => { memoryStore.delete(k); }
+      }
+    }
+  });
+}
 
 // Wrap configured client or create recursive mock proxy
 export const supabase = realClientInstance
@@ -519,15 +576,15 @@ export const supabase = realClientInstance
                 return new SafeRealtimeChannel(nativeChannel, channelName, clientProxy);
               } catch (err) {
                 console.error(`[SafeSupabase] Error creating channel '${channelName}':`, err);
-                // Return fallback empty mock channel
-                return {
-                  on: () => this,
+                const fallbackChannel: any = {
+                  on: () => fallbackChannel,
                   subscribe: (cb: any) => {
                     if (cb) cb('CHANNEL_ERROR', err);
-                    return this;
+                    return fallbackChannel;
                   },
                   unsubscribe: () => {}
                 };
+                return fallbackChannel;
               }
             };
           }

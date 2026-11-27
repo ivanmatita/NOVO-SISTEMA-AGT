@@ -37,13 +37,12 @@ export const TopHeader = ({
 
   const loadFiscalYearsAndSelectActive = async () => {
     try {
-      const { supabase } = await import('../lib/supabase');
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
+      const { authService } = await import('../services/authService');
+      const session = await authService.getSessionSafe();
+      if (!session?.access_token) return;
 
-      const res = await fetch('/api/exercicios-fiscais', {
-        headers: { 'Authorization': `Bearer ${session.access_token}` }
-      });
+      const { fetchWithAuth } = await import('../lib/fetchWithAuth');
+      const res = await fetchWithAuth('/api/exercicios-fiscais');
       if (res.ok) {
         const data = await res.json();
         const years = data.map((x: any) => x.ano.toString());

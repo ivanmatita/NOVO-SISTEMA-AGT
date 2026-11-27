@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import { authService } from '../services/authService';
 
 export enum OperationType {
   CREATE = 'create',
@@ -19,7 +19,7 @@ export const handleSupabaseError = async (error: any, operationType: OperationTy
   const errorMessage = error?.message || String(error);
   
   // Get session info for debugging
-  const { data: { session } } = await supabase.auth.getSession();
+  const session = await authService.getSessionSafe();
   const userId = session?.user?.id || 'unauthenticated';
   
   const errInfo: SupabaseErrorInfo = {

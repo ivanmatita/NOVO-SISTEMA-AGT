@@ -429,7 +429,7 @@ export default async function handler(req, res) {
     }
   }
 
-  // ─── 4. /api/auth/login (Autenticação exclusiva por Username Login) ──────────
+  // ─── 4. /api/auth/login (Username Login ou Email) ─────────────────────────────
   if (pathname.includes('/login') || pathname.endsWith('login')) {
     try {
       const { username, password } = req.body || {};
@@ -440,37 +440,47 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Username Login e Palavra-passe são obrigatórios.' });
       }
 
-      if (cleanUsername.includes('@')) {
-        return res.status(400).json({ 
-          error: 'Acesso inválido: É proibido utilizar endereço de e-mail para login. Utilize exclusivamente o seu Username Login.' 
-        });
+      let targetEmail = cleanUsername.includes('@') ? cleanUsername : null;
+      let resolvedUrl = config.supabaseUrl;
+      let resolvedAnonKey = config.anonKey;
+
+      const findPerfil = async (url, serviceKey, uname) => {
+        for (const queryUrl of [
+          `${url}/rest/v1/perfis?username=eq.${encodeURIComponent(uname)}&select=email,username,ativo,is_active&limit=1`,
+          `${url}/rest/v1/perfis?username=ilike.${encodeURIComponent(uname)}&select=email,username,ativo,is_active&limit=1`,
+          `${url}/rest/v1/perfis?email=ilike.${encodeURIComponent(uname + '@%')}&select=email,username,ativo,is_active&limit=1`
+        ]) {
+          const r = await fetch(queryUrl, { headers: { 'apikey': serviceKey, 'Authorization': `Bearer ${serviceKey}` } });
+          const rows = await r.json().catch(() => []);
+          if (Array.isArray(rows) && rows.length > 0 && rows[0]?.email) {
+            return rows[0];
+          }
+        }
+        return null;
+      };
+
+      if (!targetEmail) {
+        const perfil = await findPerfil(config.supabaseUrl, config.serviceRoleKey, cleanUsername);
+        if (perfil?.email) {
+          if (perfil.ativo === false || perfil.is_active === false) {
+            return res.status(403).json({ error: 'O seu acesso foi bloqueado. Contacte o administrador da sua empresa.' });
+          }
+          targetEmail = perfil.email;
+        }
       }
 
-      // Procurar perfil do utilizador pelo username
-      const perfilRes = await fetch(
-        `${config.supabaseUrl}/rest/v1/perfis?username=ilike.${encodeURIComponent(cleanUsername)}&select=email,username,ativo,is_active&limit=1`,
-        { headers: { 'apikey': config.serviceRoleKey, 'Authorization': `Bearer ${config.serviceRoleKey}` } }
-      );
-      const perfis = await perfilRes.json();
-      const perfil = Array.isArray(perfis) && perfis.length > 0 ? perfis[0] : null;
-
-      if (!perfil || !perfil.email) {
+      if (!targetEmail) {
         return res.status(401).json({ error: 'Username Login ou Palavra-passe incorretos.' });
       }
 
-      if (perfil.ativo === false || perfil.is_active === false) {
-        return res.status(403).json({ error: 'O seu acesso foi bloqueado. Contacte o administrador da sua empresa.' });
-      }
-
-      // Autenticar com o Supabase Auth internamente
-      const loginRes = await fetch(`${config.supabaseUrl}/auth/v1/token?grant_type=password`, {
+      const loginRes = await fetch(`${resolvedUrl}/auth/v1/token?grant_type=password`, {
         method: 'POST',
         headers: {
-          'apikey': config.anonKey,
+          'apikey': resolvedAnonKey,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          email: perfil.email.toLowerCase(),
+          email: targetEmail.toLowerCase(),
           password: cleanPassword
         })
       });
@@ -497,9 +507,6 @@ export default async function handler(req, res) {
       return res.status(401).json({ success: false, error: auth.message || 'Nao autenticado' });
     }
 
-    // ── BLOQUEIO DE CONTA ─────────────────────────────────────────────────────
-    // Verificar ambos os campos: ativo (campo historico) e is_active (campo novo)
-    // Se qualquer um for explicitamente false, a conta esta bloqueada
     const perfilBloqueado = auth.perfil &&
       (auth.perfil.ativo === false || auth.perfil.is_active === false);
     if (perfilBloqueado) {
@@ -510,15 +517,13 @@ export default async function handler(req, res) {
       });
     }
 
-    // CRITICAL FIX: Fetch empresa object so authService.ts fast-path (line 334) works correctly.
-    // Without this, authService falls back to direct RLS queries which can be slow or return wrong data.
+    const activeCfg = auth.resolvedConfig || getEnvConfig(req);
     let empresa = null;
     if (auth.empresa_id) {
       try {
-        const config = getEnvConfig(req);
         const empRes = await fetch(
-          `${config.supabaseUrl}/rest/v1/empresas?id=eq.${auth.empresa_id}&select=*&limit=1`,
-          { headers: { 'apikey': config.serviceRoleKey, 'Authorization': `Bearer ${config.serviceRoleKey}` } }
+          `${activeCfg.supabaseUrl}/rest/v1/empresas?id=eq.${auth.empresa_id}&select=*&limit=1`,
+          { headers: { 'apikey': activeCfg.serviceRoleKey, 'Authorization': `Bearer ${activeCfg.serviceRoleKey}` } }
         );
         const empList = await empRes.json();
         empresa = Array.isArray(empList) && empList.length > 0 ? empList[0] : null;

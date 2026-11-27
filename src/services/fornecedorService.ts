@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { authService } from './authService';
+import { fetchWithAuth } from '../lib/fetchWithAuth';
 
 export interface Fornecedor {
   id?: number | string;
@@ -27,17 +28,6 @@ export interface Fornecedor {
   updated_at?: string;
   activo?: boolean;
   ativo?: boolean;
-}
-
-async function getToken(): Promise<string | null> {
-  try {
-    const session = await authService.getSessionSafe();
-    if (session?.access_token) return session.access_token;
-    const { data: { session: sbSession } } = await supabase.auth.getSession();
-    return sbSession?.access_token || null;
-  } catch {
-    return null;
-  }
 }
 
 function normalizeFornecedor(s: any): Fornecedor {
@@ -79,14 +69,31 @@ export const fornecedorService = {
   async getFornecedores(explicitEmpresaId?: string): Promise<Fornecedor[]> {
     let companyId = explicitEmpresaId;
     if (!companyId) {
-      const { data: { session } } = await supabase.auth.getSession();
-      companyId = session?.user?.user_metadata?.empresa_id;
+      const currUser = await authService.getCurrentUser().catch(() => null);
+      companyId = currUser?.empresa_id;
     }
 
-    // 1. Tentar leitura direta via Supabase Client
+    // 1. Preferência: API Serverless Segura (bypass RLS, isolamento estrito via JWT)
+    try {
+      const url = companyId
+        ? `/api/secure-fornecedores?empresa_id=${encodeURIComponent(companyId)}`
+        : '/api/secure-fornecedores';
+
+      const response = await fetchWithAuth(url);
+      if (response.ok) {
+        const apiData = await response.json();
+        if (Array.isArray(apiData)) {
+          return apiData.map(normalizeFornecedor);
+        }
+      }
+    } catch (err: any) {
+      console.warn('[FornecedorService] API falhou ao listar fornecedores, tentando Supabase direto...', err?.message || err);
+    }
+
+    // 2. Fallback direto via Supabase Client (quando sessão local está sincronizada)
     if (companyId) {
       try {
-        console.log(`[FornecedorService] Buscando fornecedores para empresa: ${companyId}`);
+        console.log(`[FornecedorService] Buscando fornecedores diretamente para empresa: ${companyId}`);
         const { data, error } = await supabase
           .from('fornecedores')
           .select('*')
@@ -97,29 +104,8 @@ export const fornecedorService = {
           return data.map(normalizeFornecedor);
         }
       } catch (err) {
-        console.warn('[FornecedorService] Leitura direta Supabase falhou, tentando fallback API...', err);
+        console.warn('[FornecedorService] Leitura direta Supabase falhou:', err);
       }
-    }
-
-    // 2. Fallback resiliente via API Serverless Segura
-    try {
-      const token = await getToken();
-      const headers: Record<string, string> = {};
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-
-      const url = companyId 
-        ? `/api/secure-fornecedores?empresa_id=${companyId}`
-        : '/api/secure-fornecedores';
-
-      const response = await fetch(url, { headers });
-      if (response.ok) {
-        const apiData = await response.json();
-        if (Array.isArray(apiData)) {
-          return apiData.map(normalizeFornecedor);
-        }
-      }
-    } catch (err: any) {
-      console.error('[FornecedorService] Erro no fallback API ao listar fornecedores:', err);
     }
 
     return [];
@@ -131,13 +117,10 @@ export const fornecedorService = {
    */
   async checkNIFDuplicate(nif: string, excludeId?: string | number): Promise<{ exists: boolean; fornecedor?: any }> {
     try {
-      const token = await getToken();
       const params = new URLSearchParams({ nif });
       if (excludeId) params.set('excludeId', String(excludeId));
-      const headers: Record<string, string> = {};
-      if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const response = await fetch(`/api/secure-fornecedores/check-nif?${params}`, { headers });
+      const response = await fetchWithAuth(`/api/secure-fornecedores/check-nif?${params}`);
       if (!response.ok) return { exists: false };
       return await response.json();
     } catch {
@@ -147,7 +130,6 @@ export const fornecedorService = {
 
   async createFornecedor(fornecedor: Omit<Fornecedor, 'id'>): Promise<Fornecedor> {
     try {
-      const token = await getToken();
       const nif = (fornecedor.nif || '').trim();
 
       // ── Verificação antecipada de NIF no frontend ──
@@ -197,12 +179,9 @@ export const fornecedorService = {
       }
 
       // 2. Fallback via API Serverless Segura
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-
-      const response = await fetch('/api/secure-fornecedores', {
+      const response = await fetchWithAuth('/api/secure-fornecedores', {
         method: 'POST',
-        headers,
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
 
@@ -217,7 +196,6 @@ export const fornecedorService = {
 
   async updateFornecedor(id: number | string, fornecedor: Partial<Fornecedor>): Promise<Fornecedor> {
     try {
-      const token = await getToken();
       const nif = (fornecedor.nif || '').trim();
 
       // ── Verificar conflito de NIF na edição ──
@@ -274,12 +252,9 @@ export const fornecedorService = {
       }
 
       // 2. Fallback via API Serverless Segura
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-
-      const response = await fetch(`/api/secure-fornecedores/${id}`, {
+      const response = await fetchWithAuth(`/api/secure-fornecedores/${id}`, {
         method: 'PUT',
-        headers,
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
 

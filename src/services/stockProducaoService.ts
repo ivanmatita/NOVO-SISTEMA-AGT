@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { authService } from './authService';
 import { fetchWithAuth } from '../lib/fetchWithAuth';
 import { clearTenantCache } from '../lib/tenantDataLoader';
 
@@ -131,8 +132,8 @@ export interface ProducaoUpsertPayload {
 
 async function getAccessToken(): Promise<string> {
   try {
-    const { data } = await supabase.auth.getSession();
-    return data?.session?.access_token || '';
+    const session = await authService.getSessionSafe();
+    return session?.access_token || '';
   } catch {
     return '';
   }

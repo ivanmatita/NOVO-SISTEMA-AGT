@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import toast from 'react-hot-toast';
-import { supabase } from '../lib/supabase';
+import { supabase, createEphemeralAuthClient } from '../lib/supabase';
 
 interface MiniSiteAdminProps {
   company: any;
@@ -52,7 +52,11 @@ export const MiniSiteAdmin: React.FC<MiniSiteAdminProps> = ({ company, user, onB
       if (!adminEmail) {
         throw new Error('E-mail do utilizador administrador não identificado.');
       }
-      const { error } = await supabase.auth.signInWithPassword({
+      const ephemeralClient = createEphemeralAuthClient();
+      if (!ephemeralClient) {
+        throw new Error('Serviço de autenticação indisponível.');
+      }
+      const { error } = await ephemeralClient.auth.signInWithPassword({
         email: adminEmail,
         password: passwordInput
       });

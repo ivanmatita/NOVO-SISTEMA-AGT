@@ -317,7 +317,10 @@ export default async function handler(req, res) {
           payment_method: body.payment_method,
           series_id: body.series_id,
           raw_cash_box: body.cash_box || null,
-          work_site_id: body.work_site_id,
+          work_site_id: body.work_site_id || body.local_trabalho_id || null,
+          local_trabalho_id: body.local_trabalho_id || body.work_site_id || null,
+          work_site_title: body.work_site_title || body.local_trabalho || null,
+          local_trabalho: body.local_trabalho || body.work_site_title || null,
           global_discount: body.global_discount,
           retencao_fonte_total: body.retencao_fonte_total,
           service_location: body.service_location

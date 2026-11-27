@@ -165,7 +165,10 @@ async function getAuthUserContext(req: express.Request) {
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
          return null;
     }
-    const token = authHeader.split(' ')[1];
+    const token = (authHeader.split(' ')[1] || '').trim();
+    if (!token || token === 'undefined' || token === 'null') {
+        return null;
+    }
     const adminClient = getActiveAdminClient(req);
     if (!adminClient) return null;
 
@@ -183,21 +186,32 @@ async function getAuthUserContext(req: express.Request) {
     try {
         // Use HTTP fetch directly to avoid JWKS caching issues with JWT kid rotation
         // Try primary environment first, then fallback if 401/403 (token from other env)
-        let authRes = await fetch(`${primaryUrl}/auth/v1/user`, {
-            headers: { 'apikey': primaryAnonKey, 'Authorization': `Bearer ${token}` }
-        });
+        let authRes: Response | null = null;
         let resolvedSupabaseUrl = primaryUrl;
-        
-        if (!authRes.ok) {
-            // Fallback: try opposite environment (handles staging token on prod server or vice versa)
-            authRes = await fetch(`${fallbackUrl}/auth/v1/user`, {
-                headers: { 'apikey': fallbackAnonKey, 'Authorization': `Bearer ${token}` }
+
+        try {
+            authRes = await fetch(`${primaryUrl}/auth/v1/user`, {
+                headers: { 'apikey': primaryAnonKey, 'Authorization': `Bearer ${token}` }
             });
-            resolvedSupabaseUrl = fallbackUrl;
+        } catch {
+            authRes = null;
         }
 
-        if (!authRes.ok) {
-            // Both environments rejected the token - truly invalid
+        if (!authRes || !authRes.ok) {
+            try {
+                const fbRes = await fetch(`${fallbackUrl}/auth/v1/user`, {
+                    headers: { 'apikey': fallbackAnonKey, 'Authorization': `Bearer ${token}` }
+                });
+                if (fbRes.ok || !authRes) {
+                    authRes = fbRes;
+                    resolvedSupabaseUrl = fallbackUrl;
+                }
+            } catch {
+                // Keep primary authRes if fallback network call fails
+            }
+        }
+
+        if (!authRes || !authRes.ok) {
             return null;
         }
         const user = await authRes.json();
@@ -210,18 +224,20 @@ async function getAuthUserContext(req: express.Request) {
             ? supabaseAdminStaging 
             : supabaseAdminProd;
 
+        const encodedEmail = user.email ? encodeURIComponent(user.email) : '';
+
         // 1. Search profile in 'perfis' table (by id, user_id, or email)
         let { data: perfil } = await resolvedAdminClient
             .from('perfis')
             .select('*')
-            .or(`id.eq.${user.id},user_id.eq.${user.id},email.eq.${user.email}`)
+            .or(encodedEmail ? `id.eq.${user.id},user_id.eq.${user.id},email.eq.${encodedEmail}` : `id.eq.${user.id},user_id.eq.${user.id}`)
             .maybeSingle();
 
         // 2. Load direct owner information from 'empresas'
         let { data: ownedCompany } = await resolvedAdminClient
             .from('empresas')
             .select('*')
-            .or(`auth_user_id.eq.${user.id},email.eq.${user.email}`)
+            .or(encodedEmail ? `auth_user_id.eq.${user.id},email.eq.${encodedEmail}` : `auth_user_id.eq.${user.id}`)
             .maybeSingle();
 
         const resolvedCompanyId = perfil?.empresa_id || perfil?.company_id || ownedCompany?.id;
@@ -286,14 +302,22 @@ async function getAuthUserContext(req: express.Request) {
 }
 
 // 🛡️ REFORÇO DE ISOLAMENTO MULTI-TENANT (GARANTE QUE NENHUM UTILIZADOR ACEDA A DADOS DE OUTRA EMPRESA)
-async function resolveTenantEmpresaId(req: express.Request, requestedEmpresaId?: string | null): Promise<{ empresaId: string | null; error?: string; status?: number }> {
-    const authCtx = await getAuthUserContext(req);
+async function resolveTenantEmpresaId(req: express.Request, requestedEmpresaId?: string | null, preAuthCtx?: any): Promise<{ empresaId: string | null; error?: string; status?: number }> {
+    const authCtx = preAuthCtx || await getAuthUserContext(req);
     if (!authCtx) {
-        // Se a requisição não tiver token válido, bloqueia o acesso por empresa não autenticada
-        if (requestedEmpresaId) {
-            return { empresaId: requestedEmpresaId };
-        }
-        return { empresaId: null };
+        return {
+            empresaId: null,
+            error: "Sessão expirada ou utilizador não autenticado.",
+            status: 401
+        };
+    }
+
+    if (authCtx.isBlocked) {
+        return {
+            empresaId: null,
+            error: "Conta suspensa ou revogada.",
+            status: 403
+        };
     }
 
     const isMaster = await isSuperAdmin(req);
@@ -896,7 +920,10 @@ app.use((req, res, next) => {
         return res.status(401).json({ error: "Missing token" });
       }
 
-      const token = authHeader.split(' ')[1];
+      const token = (authHeader.split(' ')[1] || '').trim();
+      if (!token || token === 'undefined' || token === 'null') {
+        return res.status(401).json({ error: "Missing or malformed token" });
+      }
 
       // Use HTTP fetch to avoid JWKS JWT kid rotation issues with Supabase SDK
       // Fallback to opposite environment if primary rejects token (env mismatch)
@@ -909,17 +936,41 @@ app.use((req, res, next) => {
       const meFallbackUrl = isStagingReq ? PROD_URL : STAGING_URL;
       const meFallbackAnon = isStagingReq ? PROD_ANON_KEY : STAGING_ANON_KEY;
 
-      let authFetch = await fetch(`${mePrimaryUrl}/auth/v1/user`, {
-        headers: { 'apikey': mePrimaryAnon, 'Authorization': `Bearer ${token}` }
-      });
+      let authFetch: Response | null = null;
       let meResolvedAdmin: any = isStagingReq ? supabaseAdminStaging : supabaseAdminProd;
-      if (!authFetch.ok) {
-        authFetch = await fetch(`${meFallbackUrl}/auth/v1/user`, {
-          headers: { 'apikey': meFallbackAnon, 'Authorization': `Bearer ${token}` }
+      let hadUpstreamOutage = false;
+
+      try {
+        authFetch = await fetch(`${mePrimaryUrl}/auth/v1/user`, {
+          headers: { 'apikey': mePrimaryAnon, 'Authorization': `Bearer ${token}` }
         });
-        meResolvedAdmin = isStagingReq ? supabaseAdminProd : supabaseAdminStaging;
+        if (authFetch.status >= 500) hadUpstreamOutage = true;
+      } catch {
+        hadUpstreamOutage = true;
+        authFetch = null;
       }
-      if (!authFetch.ok) {
+
+      if (!authFetch || !authFetch.ok) {
+        try {
+          const fbFetch = await fetch(`${meFallbackUrl}/auth/v1/user`, {
+            headers: { 'apikey': meFallbackAnon, 'Authorization': `Bearer ${token}` }
+          });
+          if (fbFetch.ok) {
+            authFetch = fbFetch;
+            meResolvedAdmin = isStagingReq ? supabaseAdminProd : supabaseAdminStaging;
+          } else {
+            if (fbFetch.status >= 500) hadUpstreamOutage = true;
+            if (!authFetch) authFetch = fbFetch;
+          }
+        } catch {
+          hadUpstreamOutage = true;
+        }
+      }
+
+      if (!authFetch || !authFetch.ok) {
+        if (hadUpstreamOutage && (!authFetch || authFetch.status >= 500)) {
+          return res.status(503).json({ error: "Serviço de autenticação temporariamente indisponível" });
+        }
         return res.status(401).json({ error: "Invalid token" });
       }
       const user = await authFetch.json();
@@ -929,10 +980,11 @@ app.use((req, res, next) => {
 
       // Use admin client for DB queries (bypass RLS)
       const client = meResolvedAdmin;
+      const encodedUserEmail = user.email ? encodeURIComponent(user.email) : '';
 
       // Fetch without RLS (check id, user_id, or email)
-      const perfilFilter = user.email
-        ? `id.eq.${user.id},user_id.eq.${user.id},email.eq.${user.email}`
+      const perfilFilter = encodedUserEmail
+        ? `id.eq.${user.id},user_id.eq.${user.id},email.eq.${encodedUserEmail}`
         : `id.eq.${user.id},user_id.eq.${user.id}`;
       const { data: perfil } = await client
         .from('perfis')
@@ -943,12 +995,21 @@ app.use((req, res, next) => {
       const companyId = perfil?.company_id || perfil?.empresa_id;
 
       if (companyId) {
-        const { data: empresa } = await client
+        let { data: empresa } = await client
           .from('empresas')
           .select('*')
           .eq('id', companyId)
           .maybeSingle();
-          
+
+        if (!empresa && encodedUserEmail) {
+          const { data: fallbackEmp } = await client
+            .from('empresas')
+            .select('*')
+            .or(`auth_user_id.eq.${user.id},email.eq.${encodedUserEmail}`)
+            .maybeSingle();
+          empresa = fallbackEmp || null;
+        }
+
         // Load permission_areas from system_users for normal user restriction
         let sysUser = null;
         try {
@@ -964,65 +1025,77 @@ app.use((req, res, next) => {
           return res.status(403).json({ error: "CONTA_BLOQUEADA", message: "O seu acesso foi bloqueado. Contacte o administrador da sua empresa para obter mais informações." });
         }
 
+        const effectiveCompanyId = empresa?.id || companyId;
         const enrichedPerfil = {
           ...perfil,
-          empresa_id: companyId,
-          company_id: companyId,
+          empresa_id: effectiveCompanyId,
+          company_id: effectiveCompanyId,
           permission_areas: perfil?.permission_areas || sysUser?.permission_areas || [],
           is_admin: perfil?.is_admin || perfil?.role === 'admin' || sysUser?.is_admin || false,
           level: perfil?.level || sysUser?.level || (perfil?.role === 'admin' ? 10 : 1)
         };
 
-        try {
-          await addAuditLog(
-            user.id,
-            user.email || null,
-            "Login efetuado / Sessão validada",
-            companyId,
-            (req.ip || req.headers['x-forwarded-for'] || '').toString(),
-            (req.headers['user-agent'] || '').toString(),
-            client
-          );
-        } catch (_) {}
-          
+        void addAuditLog(
+          user.id,
+          user.email || null,
+          "Login efetuado / Sessão validada",
+          effectiveCompanyId,
+          (req.ip || req.headers['x-forwarded-for'] || '').toString(),
+          (req.headers['user-agent'] || '').toString(),
+          client
+        ).catch(() => {});
+
+        const isMasterEmail = String(user.email || '').toLowerCase() === 'fffm333atitaifvan7@gmail.com' || String(user.email || '').toLowerCase().endsWith('@imatec.ao');
+        const roleLower = String(enrichedPerfil.role || '').toLowerCase();
+
         return res.json({
+          success: true,
           user: user,
           perfil: enrichedPerfil,
-          empresa: empresa
+          empresa: empresa,
+          empresa_id: effectiveCompanyId,
+          isSuperAdmin: isMasterEmail || ['superadmin', 'admin_master', 'super_admin'].includes(roleLower) || Boolean(perfil?.is_super_admin)
         });
       }
 
       // Fallback: look for empresa where user is owner
+      const ownerFilter = encodedUserEmail
+        ? `id.eq.${user.id},auth_user_id.eq.${user.id},email.eq.${encodedUserEmail}`
+        : `id.eq.${user.id},auth_user_id.eq.${user.id}`;
       const { data: legacyEmpresa } = await client
         .from('empresas')
         .select('*')
-        .or(`id.eq.${user.id},auth_user_id.eq.${user.id}`)
+        .or(ownerFilter)
         .maybeSingle();
-        
+
       if (legacyEmpresa) {
-        try {
-          await addAuditLog(
-            user.id,
-            user.email || null,
-            "Login efetuado / Sessão validada (Proprietário)",
-            legacyEmpresa.id,
-            (req.ip || req.headers['x-forwarded-for'] || '').toString(),
-            (req.headers['user-agent'] || '').toString(),
-            client
-          );
-        } catch (_) {}
+        void addAuditLog(
+          user.id,
+          user.email || null,
+          "Login efetuado / Sessão validada (Proprietário)",
+          legacyEmpresa.id,
+          (req.ip || req.headers['x-forwarded-for'] || '').toString(),
+          (req.headers['user-agent'] || '').toString(),
+          client
+        ).catch(() => {});
+
+        const isMasterEmail = String(user.email || '').toLowerCase() === 'fffm333atitaifvan7@gmail.com' || String(user.email || '').toLowerCase().endsWith('@imatec.ao');
 
         return res.json({
+          success: true,
           user: user,
-          perfil: { 
-            id: user.id, 
-            empresa_id: legacyEmpresa.id, 
-            role: 'admin', 
+          perfil: {
+            id: user.id,
+            empresa_id: legacyEmpresa.id,
+            company_id: legacyEmpresa.id,
+            role: 'admin',
             permission_areas: [],
             is_admin: true,
             level: 10
           },
-          empresa: legacyEmpresa
+          empresa: legacyEmpresa,
+          empresa_id: legacyEmpresa.id,
+          isSuperAdmin: isMasterEmail
         });
       }
 
@@ -2949,40 +3022,49 @@ app.use((req, res, next) => {
   });
   // Stats - Integrated with Supabase for Real-time SaaS data
   app.get("/api/stats", async (req, res) => {
-    const { empresa_id } = req.query;
-    const year = Number(req.query.year) || new Date().getFullYear();
-    if (!empresa_id) return res.status(400).json({ error: "empresa_id required" });
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) return res.status(401).json({ error: "Sessão expirada ou utilizador não autenticado." });
+    const tenantRes = await resolveTenantEmpresaId(req, (req.query.empresa_id as string) || null, authCtx);
+    if (tenantRes.error) return res.status(tenantRes.status || 403).json({ error: tenantRes.error });
 
+    const empresa_id = tenantRes.empresaId || authCtx.empresaId;
+    const year = Number(req.query.year) || new Date().getFullYear();
+    if (!empresa_id) return res.json({ totalInvoiced: 0, pendingCount: 0, clientCount: 0, totalExpenses: 0, cashBalance: 0, recentInvoices: [] });
+
+    const adminClient = authCtx.adminClient || getActiveAdminClient(req);
     // Use Supabase if Admin is available, otherwise fallback to memory
-    if (supabaseAdmin) {
+    if (adminClient) {
       try {
         const [docsRes, clientsRes, caixasRes, comprasRes] = await Promise.all([
-          supabaseAdmin.from('documentos_emitidos')
+          adminClient.from('documentos_emitidos')
             .select('*')
             .eq('empresa_id', empresa_id)
             .eq('ano', year),
-          supabaseAdmin.from('clientes')
+          adminClient.from('clientes')
             .select('id')
             .eq('empresa_id', empresa_id),
-          supabaseAdmin.from('caixas').select('current_balance').eq('empresa_id', empresa_id),
-          supabaseAdmin.from('compras')
-            .select('total')
+          adminClient.from('caixas').select('current_balance, saldo_actual, is_deleted').eq('empresa_id', empresa_id),
+          adminClient.from('compras')
+            .select('total, valor_total')
             .eq('empresa_id', empresa_id)
             .eq('ano', year)
         ]);
 
         const dbDocs = docsRes.data || [];
         const dbClientsCount = clientsRes.data?.length || 0;
-        const dbCaixasTotal = (caixasRes.data || []).reduce((acc, c) => acc + (Number(c.current_balance) || 0), 0);
-        const dbComprasTotal = (comprasRes.data || []).reduce((acc, c) => acc + (Number(c.total) || 0), 0);
+        const dbCaixasTotal = (caixasRes.data || [])
+          .filter((c: any) => c.is_deleted !== true)
+          .reduce((acc: number, c: any) => acc + (Number(c.current_balance ?? c.saldo_actual) || 0), 0);
+        const dbComprasTotal = (comprasRes.data || [])
+          .reduce((acc: number, c: any) => acc + (Number(c.valor_total ?? c.total) || 0), 0);
 
         return res.json({
-          totalInvoiced: dbDocs.reduce((acc, doc) => acc + (Number(doc.total) || 0), 0),
-          pendingCount: dbDocs.filter(d => (d.status || d.estado_documento || '').toLowerCase() === 'pendente' || d.payment_status === 'pending').length,
+          totalInvoiced: dbDocs.reduce((acc: number, doc: any) => acc + (Number(doc.total) || 0), 0),
+          pendingCount: dbDocs.filter((d: any) => (d.status || d.estado_documento || '').toLowerCase() === 'pendente' || d.payment_status === 'pending').length,
           clientCount: dbClientsCount,
           totalExpenses: dbComprasTotal,
           cashBalance: dbCaixasTotal,
-          recentInvoices: dbDocs.slice(-5).map(doc => ({
+          recentInvoices: dbDocs.slice(-5).map((doc: any) => ({
             id: doc.id,
             invoice_number: doc.numero_documento || doc.invoice_number,
             client_name: doc.cliente_nome || doc.client_name,
@@ -2992,7 +3074,6 @@ app.use((req, res, next) => {
         });
       } catch (err) {
         console.error("[SERVER-STATS] Error fetching from Supabase:", err);
-        // Fallback to memory
       }
     }
 
@@ -3262,6 +3343,286 @@ app.use((req, res, next) => {
     } catch (err: any) {
       console.error("[SERVER-CLIENTES] Erro ao remover cliente:", err);
       return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ── Conta Corrente de Cliente (Ligação direta ao Banco de Dados) ──
+  app.get("/api/clientes/:id/conta-corrente", async (req, res) => {
+    try {
+      const ctx = await getAuthUserContext(req);
+      if (!ctx) {
+        return res.status(401).json({ error: "Sessão expirada ou utilizador não autenticado." });
+      }
+      if (ctx.isBlocked) {
+        return res.status(403).json({ error: "Conta suspensa ou revogada." });
+      }
+
+      const tenantRes = await resolveTenantEmpresaId(req, (req.query.empresa_id as string) || null);
+      if (tenantRes.error) {
+        return res.status(tenantRes.status || 403).json({ error: tenantRes.error });
+      }
+      const empresaId = tenantRes.empresaId || ctx.empresaId;
+      if (!empresaId) {
+        return res.status(403).json({ error: "Utilizador não possui empresa associada." });
+      }
+
+      const adminClient = ctx.adminClient || getActiveAdminClient(req);
+      if (!adminClient) {
+        return res.status(500).json({ error: "Database client não inicializado no servidor." });
+      }
+
+      const clientId = String(req.params.id);
+      const startDate = req.query.startDate ? String(req.query.startDate).slice(0, 10) : '';
+      const endDate = req.query.endDate ? String(req.query.endDate).slice(0, 10) : '';
+      const docTypeFilter = req.query.docType ? String(req.query.docType).toUpperCase() : 'ALL';
+
+      const [empresaRes, clienteRes, docsRes, locaisRes] = await Promise.all([
+        adminClient.from('empresas').select('*').eq('id', empresaId).maybeSingle(),
+        adminClient.from('clientes').select('*').eq('id', clientId).eq('empresa_id', empresaId).maybeSingle(),
+        adminClient
+          .from('documentos_emitidos')
+          .select('*')
+          .eq('empresa_id', empresaId)
+          .order('data_emissao', { ascending: true }),
+        adminClient
+          .from('locais_trabalho')
+          .select('*')
+          .eq('empresa_id', empresaId)
+      ]);
+
+      const empresa = empresaRes.data || null;
+      const cliente = clienteRes.data || null;
+      if (!cliente) {
+        return res.status(404).json({ error: "Cliente não encontrado nesta empresa." });
+      }
+
+      const locaisList = Array.isArray(locaisRes.data) ? locaisRes.data : [];
+      const clientNif = String(cliente.contribuinte || cliente.nif || '').trim();
+      const clientNameNorm = String(cliente.nome || cliente.name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+      // Work site default for this client only if document doesn't have an explicit one
+      const clientWorkSite = locaisList.find((w: any) => String(w.client_id || '') === String(clientId));
+
+      const allDocs = Array.isArray(docsRes.data) ? docsRes.data : [];
+
+      // Filter documents belonging to this client
+      const clientDocs = allDocs.filter((d: any) => {
+        const dClientIdRaw = d.cliente_id ?? d.client_id ?? d.detalhes?.cliente_id ?? d.detalhes?.client_id;
+        const dClientIdStr = dClientIdRaw !== null && dClientIdRaw !== undefined ? String(dClientIdRaw).trim() : '';
+        const dClientId = (dClientIdStr.toLowerCase() === 'null' || dClientIdStr.toLowerCase() === 'undefined') ? '' : dClientIdStr;
+        if (dClientId !== '' && dClientId === String(clientId).trim()) {
+          return true;
+        }
+        const dNif = String(
+          d.client_nif || d.cliente_nif || d.nif || d.detalhes?.client_nif || d.detalhes?.cliente_nif || ''
+        ).trim();
+        if (clientNif && clientNif !== '999999999' && clientNif !== '0' && dNif === clientNif) {
+          return true;
+        }
+        const dName = String(
+          d.cliente_nome || d.client_name || d.detalhes?.cliente_nome || d.detalhes?.client_name || ''
+        ).trim().toLowerCase().replace(/\s+/g, ' ');
+        if (dClientId === '' && clientNameNorm && dName === clientNameNorm) {
+          return true;
+        }
+        return false;
+      });
+
+      const rawMovements: any[] = [];
+
+      for (const d of clientDocs) {
+        const statusStr = String(d.status || d.estado || d.estado_documento || '').toLowerCase();
+        if (statusStr === 'anulado' || d.documento_anulado === true || d.is_anulado === true) {
+          continue;
+        }
+
+        const rawType = String(d.tipo_documento || d.document_type || '').trim().toUpperCase();
+        const docNumberUpper = String(d.numero_documento || d.invoice_number || '').toUpperCase();
+        // Exclude drafts and non-financial documents (Proformas, Orçamentos, Guias)
+        if (
+          d.is_draft === true ||
+          rawType === 'FP' || rawType === 'PP' || rawType === 'OR' || rawType === 'DRAFT' || rawType === 'RASCUNHO' ||
+          rawType === 'GR' || rawType === 'GT' || rawType === 'GD' ||
+          rawType.includes('PROFORMA') || rawType.includes('ORÇAMENTO') || rawType.includes('ORCAMENTO') ||
+          rawType.includes('GUIA') || docNumberUpper.includes('RASCUNHO')
+        ) {
+          continue;
+        }
+
+        let tipoCodigo = 'FT';
+        let descricao = 'Fatura Emitida';
+        let isDebit = false;
+        let isCredit = false;
+
+        if (rawType === 'RC' || rawType === 'RE' || rawType === 'REC' || rawType === 'RECIBO' || rawType.includes('RECIBO DE VENDA') || (rawType.includes('RECIBO') && !rawType.includes('FATURA') && !rawType.includes('FACTURA'))) {
+          tipoCodigo = 'RC';
+          descricao = 'Recibo Emitido';
+          isCredit = true;
+        } else if (rawType === 'FR' || rawType.startsWith('FR ') || rawType.includes('FATURA RECIBO') || rawType.includes('FATURA-RECIBO') || rawType.includes('FACTURA RECIBO') || rawType.includes('FACTURA-RECIBO')) {
+          tipoCodigo = 'FR';
+          descricao = 'Fatura-Recibo Emitida';
+          isDebit = true;
+          isCredit = true;
+        } else if (rawType === 'FS' || rawType.includes('SIMPLIFICADA')) {
+          tipoCodigo = 'FS';
+          descricao = 'Fatura Simplificada';
+          isDebit = true;
+          isCredit = true;
+        } else if (rawType === 'NC' || rawType === 'NOTA_CREDITO' || rawType.includes('CRÉDITO') || rawType.includes('CREDITO')) {
+          tipoCodigo = 'NC';
+          descricao = 'Nota de Crédito Emitida';
+          isCredit = true;
+        } else if (rawType === 'ND' || rawType === 'NOTA_DEBITO' || rawType.includes('DÉBITO') || rawType.includes('DEBITO')) {
+          tipoCodigo = 'ND';
+          descricao = 'Nota de Débito Emitida';
+          isDebit = true;
+        } else if (rawType === 'VD' || rawType === 'VENDA') {
+          tipoCodigo = 'VD';
+          descricao = 'Venda a Dinheiro';
+          isDebit = true;
+          isCredit = true;
+        } else if (rawType === 'FT' || rawType === 'FAT' || rawType.startsWith('FT ') || rawType.startsWith('FAT ') || rawType.includes('FATURA') || rawType.includes('FACTURA')) {
+          tipoCodigo = 'FT';
+          descricao = 'Fatura Emitida';
+          isDebit = true;
+        } else {
+          continue;
+        }
+
+        const rawContravalor = Number(d.contravalor || d.counter_value || 0) || 0;
+        const rawTotal = Number(d.total ?? d.valor_total ?? 0) || 0;
+        const valor = rawContravalor > 0 ? rawContravalor : rawTotal;
+        const dataDoc = d.data_emissao || d.date || d.created_at || new Date().toISOString();
+
+        // Work site resolution from DB (locais_trabalho) & document details — NEVER hardcode 'Obra Generica'
+        const wsId = d.local_trabalho_id ?? d.work_site_id ?? d.detalhes?.work_site_id ?? d.detalhes?.local_trabalho_id;
+        const wsFound = (wsId !== null && wsId !== undefined && String(wsId).trim() !== '' && String(wsId).trim() !== '0')
+          ? locaisList.find((w: any) => String(w.id) === String(wsId))
+          : undefined;
+        let resolvedSiteName = wsFound?.nome || wsFound?.title || wsFound?.descricao || wsFound?.endereco || '';
+        if (!resolvedSiteName) {
+          const detailSite = d.detalhes?.work_site_title || d.detalhes?.local_trabalho || d.work_site_title || d.local_trabalho_nome || d.detalhes?.service_location || d.service_location || '';
+          if (detailSite && detailSite !== 'Obra Generica' && detailSite !== 'Obra Genérica') {
+            resolvedSiteName = detailSite;
+          }
+        }
+        if (!resolvedSiteName && clientWorkSite) {
+          resolvedSiteName = clientWorkSite.nome || clientWorkSite.title || '';
+        }
+        const fileInterno = (resolvedSiteName && resolvedSiteName !== 'Obra Generica' && resolvedSiteName !== 'Obra Genérica') 
+          ? String(resolvedSiteName).trim() 
+          : '-----';
+
+        const docNumero = d.numero_documento || d.invoice_number || `DOC-${d.id}`;
+        const originatingOn = d.numero_documento_origem || d.referencia_documento || d.reference_document || d.detalhes?.referencia_documento || d.detalhes?.documento_origem_numero || '-----';
+
+        rawMovements.push({
+          id: d.id,
+          data_valor: dataDoc,
+          data_documento: dataDoc,
+          date_iso: String(dataDoc).slice(0, 10),
+          file_interno: fileInterno,
+          file_cliente: d.detalhes?.file_cliente || wsFound?.code || cliente.codigo || '-----',
+          urn: d.detalhes?.urn || '',
+          end_service: d.detalhes?.end_service || '',
+          doc_numero: docNumero,
+          originating_on: originatingOn,
+          descricao,
+          doc_suporte: d.detalhes?.doc_suporte || d.forma_pagamento || d.payment_method || d.detalhes?.payment_method || '',
+          tipo_codigo: tipoCodigo,
+          debito: isDebit ? valor : 0,
+          credito: isCredit ? valor : 0,
+          created_at: d.created_at || dataDoc
+        });
+      }
+
+      // Sort strictly chronologically (oldest first) for accurate running balance calculation
+      rawMovements.sort((a, b) => {
+        const tA = new Date(a.data_valor).getTime() || 0;
+        const tB = new Date(b.data_valor).getTime() || 0;
+        if (tA !== tB) return tA - tB;
+        const cA = new Date(a.created_at).getTime() || 0;
+        const cB = new Date(b.created_at).getTime() || 0;
+        if (cA !== cB) return cA - cB;
+        return Number(a.id || 0) - Number(b.id || 0);
+      });
+
+      const saldoInicial = Number(cliente.saldo_inicial ?? cliente.initial_balance ?? 0) || 0;
+      let runningSaldo = saldoInicial;
+      const movementsWithBalance = rawMovements.map((m) => {
+        runningSaldo = runningSaldo + m.debito - m.credito;
+        return {
+          ...m,
+          saldo: runningSaldo
+        };
+      });
+
+      // Apply optional filters (startDate, endDate, docType)
+      const filtered = movementsWithBalance.filter((m) => {
+        if (docTypeFilter !== 'ALL' && m.tipo_codigo !== docTypeFilter) return false;
+        if (startDate && m.date_iso < startDate) return false;
+        if (endDate && m.date_iso > endDate) return false;
+        return true;
+      });
+
+      const totalDebitoPeriodo = filtered.reduce((acc, m) => acc + m.debito, 0);
+      const totalCreditoPeriodo = filtered.reduce((acc, m) => acc + m.credito, 0);
+
+      // Opening balance prior to startDate
+      const movimentosAntes = startDate
+        ? movementsWithBalance.filter((m) => m.date_iso < startDate)
+        : [];
+      const saldoAnterior = saldoInicial + movimentosAntes.reduce((acc, m) => acc + (m.debito - m.credito), 0);
+
+      // General accumulated balance of all movements (matches final running balance, or filtered ending balance if endDate set)
+      const saldoAcumuladoGeral = filtered.length > 0
+        ? filtered[filtered.length - 1].saldo
+        : saldoAnterior;
+
+      const periodoInicio = startDate || (movementsWithBalance[0]?.date_iso || new Date().toISOString().slice(0, 10));
+      const periodoFim = endDate || (movementsWithBalance[movementsWithBalance.length - 1]?.date_iso || new Date().toISOString().slice(0, 10));
+
+      // Display newest first (matching attached image layout)
+      const movementsDescending = [...filtered].reverse();
+
+      return res.json({
+        empresa: empresa ? {
+          id: empresa.id,
+          nome: empresa.nome_empresa || empresa.nome || 'Empresa',
+          nif: empresa.nif || '',
+          endereco: empresa.endereco || '',
+          telefone: empresa.telefone || '',
+          email: empresa.email || '',
+          logo_url: empresa.logo_url || '',
+          tipo_empresa: empresa.tipo_empresa || ''
+        } : null,
+        cliente: {
+          id: cliente.id,
+          nome: cliente.nome || cliente.name || '',
+          contribuinte: cliente.contribuinte || cliente.nif || '999999999',
+          morada: cliente.morada || cliente.endereco || cliente.address || '',
+          localidade: cliente.localidade || cliente.cidade || '',
+          municipio: cliente.municipio || '',
+          provincia: cliente.provincia || 'Luanda',
+          pais: cliente.pais || 'AO',
+          codigo_postal: cliente.codigo_postal || '',
+          saldo_inicial: saldoInicial
+        },
+        summary: {
+          saldo_inicial: saldoInicial,
+          saldo_anterior: saldoAnterior,
+          total_credito: totalCreditoPeriodo,
+          total_debito: totalDebitoPeriodo,
+          saldo_periodo: totalDebitoPeriodo - totalCreditoPeriodo,
+          saldo_acumulado_geral: saldoAcumuladoGeral,
+          periodo_inicio: periodoInicio,
+          periodo_fim: periodoFim
+        },
+        movements: movementsDescending
+      });
+    } catch (err: any) {
+      console.error("[SERVER-CONTA-CORRENTE] Erro ao carregar conta corrente do cliente:", err);
+      return res.status(500).json({ error: err.message || "Erro interno ao calcular conta corrente." });
     }
   });
 
@@ -3838,21 +4199,49 @@ app.use((req, res, next) => {
 
   // Products
   app.get("/api/products", async (req, res) => {
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) {
+      return res.status(401).json({ error: "Sessão expirada ou utilizador não autenticado." });
+    }
+    if (authCtx.isBlocked) {
+      return res.status(403).json({ error: "Conta suspensa ou revogada." });
+    }
     const tenantRes = await resolveTenantEmpresaId(req, req.query.empresa_id as string);
     if (tenantRes.error) {
       return res.status(tenantRes.status || 403).json({ error: tenantRes.error });
     }
-    const empresa_id = tenantRes.empresaId;
+    const empresa_id = tenantRes.empresaId || authCtx.empresaId;
     if (!empresa_id) return res.json([]);
 
-    if (supabaseAdmin) {
+    const tipo = req.query.tipo ? String(req.query.tipo).toLowerCase() : 'all';
+    const adminClient = authCtx.adminClient || getActiveAdminClient(req);
+
+    if (adminClient) {
       try {
-        const { data, error } = await supabaseAdmin
+        let query = adminClient
           .from('produtos')
           .select('*')
-          .eq('empresa_id', empresa_id)
-          .order('name');
-        if (!error && Array.isArray(data) && data.length > 0) {
+          .eq('empresa_id', empresa_id);
+
+        if (tipo === 'servico') {
+          query = query.in('tipo', ['servico', 'service', 'serviço']);
+        } else if (tipo === 'produto') {
+          query = query.not('tipo', 'in', '("servico","service","serviço")');
+        }
+
+        let { data, error } = await query.order('name');
+        if (error) {
+          let fallbackQ = adminClient.from('produtos').select('*').eq('empresa_id', empresa_id);
+          if (tipo === 'servico') {
+            fallbackQ = fallbackQ.in('tipo', ['servico', 'service', 'serviço']);
+          } else if (tipo === 'produto') {
+            fallbackQ = fallbackQ.not('tipo', 'in', '("servico","service","serviço")');
+          }
+          const retry = await fallbackQ;
+          data = retry.data;
+          error = retry.error;
+        }
+        if (!error && Array.isArray(data)) {
           return res.json(data);
         }
       } catch (err) {
@@ -3888,8 +4277,8 @@ app.use((req, res, next) => {
   app.get("/api/invoices", async (req, res) => {
     let { year } = req.query as any;
 
-    // Resolução segura de isolamento multiempresa (bloqueia consulta a outras empresas)
-    const tenantRes = await resolveTenantEmpresaId(req, req.query.empresa_id as string);
+    const authCtx = await getAuthUserContext(req);
+    const tenantRes = await resolveTenantEmpresaId(req, req.query.empresa_id as string, authCtx);
     if (tenantRes.error) {
       return res.status(tenantRes.status || 403).json({ error: tenantRes.error });
     }
@@ -3897,15 +4286,16 @@ app.use((req, res, next) => {
     if (!empresa_id) return res.json([]);
 
     const numYear = year && !isNaN(Number(year)) ? Number(year) : null;
+    const activeAdmin = authCtx?.adminClient || getActiveAdminClient(req);
 
-    if (supabaseAdmin) {
+    if (activeAdmin) {
       try {
-        let query = supabaseAdmin
+        let query = activeAdmin
           .from('documentos_emitidos')
           .select('*')
           .eq('empresa_id', empresa_id)
           .in('tipo_documento', [
-            'FT', 'FR', 'RC', 'REC', 'RE', 'NC', 'ND', 'FS', 'DRAFT', 'GR', 'GT', 'GD',
+            'FT', 'FAT', 'FR', 'RC', 'REC', 'RE', 'NC', 'ND', 'FS', 'DRAFT', 'GR', 'GT', 'GD',
             'NOTA_CREDITO', 'NOTA_DEBITO', 'RECIBO',
             'Fatura', 'Factura', 'Fatura Recibo', 'Factura Recibo',
             'Fatura Simplificada', 'Factura Simplificada',
@@ -3921,11 +4311,20 @@ app.use((req, res, next) => {
           query = query.or(`ano.eq.${numYear},and(ano.is.null,data_emissao.gte.${numYear}-01-01T00:00:00,data_emissao.lte.${numYear}-12-31T23:59:59)`);
         }
 
-        const { data, error } = await query.order('created_at', { ascending: false });
+        const [{ data, error }, locaisRes] = await Promise.all([
+          query.order('created_at', { ascending: false }),
+          activeAdmin.from('locais_trabalho').select('id, nome, title, descricao, endereco, code').eq('empresa_id', empresa_id)
+        ]);
+        const locaisList = Array.isArray(locaisRes.data) ? locaisRes.data : [];
 
         if (!error && data) {
           let formatted = data.map((d: any) => {
             const docYear = d.ano || (d.data_emissao ? new Date(d.data_emissao).getFullYear() : (d.created_at ? new Date(d.created_at).getFullYear() : null));
+            const wsId = d.local_trabalho_id ?? d.work_site_id ?? d.detalhes?.work_site_id ?? d.detalhes?.local_trabalho_id ?? null;
+            const wsFound = (wsId !== null && wsId !== undefined && String(wsId).trim() !== '')
+              ? locaisList.find((w: any) => String(w.id) === String(wsId))
+              : undefined;
+            const resolvedWsTitle = wsFound?.nome || wsFound?.title || d.detalhes?.work_site_title || d.detalhes?.local_trabalho || d.detalhes?.service_location || null;
             return {
               ...d,
               id: d.id,
@@ -3933,6 +4332,11 @@ app.use((req, res, next) => {
               client_name: d.cliente_nome || d.client_name || 'Desconhecido',
               client_nif: d.client_nif || d.detalhes?.client_nif || d.detalhes?.cliente_nif || '999999999',
               client_address: d.client_address || d.detalhes?.client_address || d.detalhes?.cliente_morada || d.detalhes?.cliente_endereco || 'Consumidor Final',
+              work_site_id: wsId,
+              local_trabalho_id: wsId,
+              work_site_title: resolvedWsTitle,
+              local_trabalho: resolvedWsTitle,
+              service_location: d.detalhes?.service_location || null,
               invoice_number: d.numero_documento || d.invoice_number,
               date: d.data_emissao || d.created_at,
               due_date: d.data_vencimento || d.due_date,
@@ -4043,8 +4447,8 @@ app.use((req, res, next) => {
   app.get("/api/issued-documents", async (req, res) => {
     let { year } = req.query as any;
 
-    // Resolução segura de isolamento multiempresa (bloqueia consulta a outras empresas)
-    const tenantRes = await resolveTenantEmpresaId(req, req.query.empresa_id as string);
+    const authCtx = await getAuthUserContext(req);
+    const tenantRes = await resolveTenantEmpresaId(req, req.query.empresa_id as string, authCtx);
     if (tenantRes.error) {
       return res.status(tenantRes.status || 403).json({ error: tenantRes.error });
     }
@@ -4052,15 +4456,16 @@ app.use((req, res, next) => {
     if (!empresa_id) return res.json([]);
 
     const numYear = year && !isNaN(Number(year)) ? Number(year) : null;
+    const activeAdmin = authCtx?.adminClient || getActiveAdminClient(req);
 
-    if (supabaseAdmin) {
+    if (activeAdmin) {
       try {
-        let query = supabaseAdmin
+        let query = activeAdmin
           .from('documentos_emitidos')
           .select('*')
           .eq('empresa_id', empresa_id)
           .in('tipo_documento', [
-            'FT', 'FR', 'RC', 'REC', 'RE', 'NC', 'ND', 'FS', 'DRAFT', 'GR', 'GT', 'GD',
+            'FT', 'FAT', 'FR', 'RC', 'REC', 'RE', 'NC', 'ND', 'FS', 'DRAFT', 'GR', 'GT', 'GD',
             'NOTA_CREDITO', 'NOTA_DEBITO', 'RECIBO',
             'Fatura', 'Factura', 'Fatura Recibo', 'Factura Recibo',
             'Fatura Simplificada', 'Factura Simplificada',
@@ -4075,39 +4480,55 @@ app.use((req, res, next) => {
           query = query.or(`ano.eq.${numYear},and(ano.is.null,data_emissao.gte.${numYear}-01-01T00:00:00,data_emissao.lte.${numYear}-12-31T23:59:59)`);
         }
 
-        const { data, error } = await query.order('created_at', { ascending: false });
+        const [{ data, error }, locaisRes] = await Promise.all([
+          query.order('created_at', { ascending: false }),
+          activeAdmin.from('locais_trabalho').select('id, nome, title, descricao, endereco, code').eq('empresa_id', empresa_id)
+        ]);
+        const locaisList = Array.isArray(locaisRes.data) ? locaisRes.data : [];
 
         if (!error && data) {
-          const formatted = data.map((d: any) => ({
-            ...d,
-            id: d.id,
-            client_id: d.cliente_id || d.client_id,
-            client_name: d.cliente_nome || d.client_name || 'Desconhecido',
-            client_nif: d.client_nif || d.detalhes?.client_nif || d.detalhes?.cliente_nif || '999999999',
-            client_address: d.client_address || d.detalhes?.client_address || d.detalhes?.cliente_morada || d.detalhes?.cliente_endereco || 'Consumidor Final',
-            invoice_number: d.numero_documento || d.invoice_number,
-            date: d.data_emissao || d.created_at,
-            due_date: d.data_vencimento || d.due_date,
-            status: (d.status || d.estado || 'ativo').toLowerCase(),
-            total: Number(d.total || 0),
-            imposto: Number(d.imposto || 0),
-            items: d.detalhes?.items || d.items || d.itens || [],
-            client_email: d.cliente_email || d.client_email,
-            document_type: d.tipo_documento || d.document_type,
-            is_certified: d.is_certified,
-            hash: d.hash_documento || d.hash,
-            ano: d.ano,
-            reference_document: d.reference_document || d.numero_documento_origem || d.associated_document,
-            payment_method: d.forma_pagamento || d.detalhes?.payment_method,
-            currency: d.detalhes?.currency || d.moeda || 'AOA',
-            exchange_rate: d.detalhes?.exchange_rate || d.taxa_cambio || 1,
-            paid_amount: Number(d.valor_pago || d.paid_amount || 0),
-            valor_pago: Number(d.valor_pago || d.paid_amount || 0),
-            payment_status: d.payment_status || d.estado_pagamento || d.status_pagamento,
-            estado_pagamento: d.estado_pagamento || d.status_pagamento || d.payment_status,
-            recibo_emitido: d.recibo_emitido || false,
-            saldo_pendente: Number(d.saldo_pendente || 0),
-          }));
+          const formatted = data.map((d: any) => {
+            const wsId = d.local_trabalho_id ?? d.work_site_id ?? d.detalhes?.work_site_id ?? d.detalhes?.local_trabalho_id ?? null;
+            const wsFound = (wsId !== null && wsId !== undefined && String(wsId).trim() !== '')
+              ? locaisList.find((w: any) => String(w.id) === String(wsId))
+              : undefined;
+            const resolvedWsTitle = wsFound?.nome || wsFound?.title || d.detalhes?.work_site_title || d.detalhes?.local_trabalho || d.detalhes?.service_location || null;
+            return {
+              ...d,
+              id: d.id,
+              client_id: d.cliente_id || d.client_id,
+              client_name: d.cliente_nome || d.client_name || 'Desconhecido',
+              client_nif: d.client_nif || d.detalhes?.client_nif || d.detalhes?.cliente_nif || '999999999',
+              client_address: d.client_address || d.detalhes?.client_address || d.detalhes?.cliente_morada || d.detalhes?.cliente_endereco || 'Consumidor Final',
+              work_site_id: wsId,
+              local_trabalho_id: wsId,
+              work_site_title: resolvedWsTitle,
+              local_trabalho: resolvedWsTitle,
+              service_location: d.detalhes?.service_location || null,
+              invoice_number: d.numero_documento || d.invoice_number,
+              date: d.data_emissao || d.created_at,
+              due_date: d.data_vencimento || d.due_date,
+              status: (d.status || d.estado || 'ativo').toLowerCase(),
+              total: Number(d.total || 0),
+              imposto: Number(d.imposto || 0),
+              items: d.detalhes?.items || d.items || d.itens || [],
+              client_email: d.cliente_email || d.client_email,
+              document_type: d.tipo_documento || d.document_type,
+              is_certified: d.is_certified,
+              hash: d.hash_documento || d.hash,
+              ano: d.ano,
+              reference_document: d.reference_document || d.numero_documento_origem || d.associated_document,
+              payment_method: d.forma_pagamento || d.detalhes?.payment_method,
+              currency: d.detalhes?.currency || d.moeda || 'AOA',
+              exchange_rate: d.detalhes?.exchange_rate || d.taxa_cambio || 1,
+              paid_amount: Number(d.valor_pago || d.paid_amount || 0),
+              valor_pago: Number(d.valor_pago || d.paid_amount || 0),
+              payment_status: d.payment_status || d.estado_pagamento || d.status_pagamento,
+              estado_pagamento: d.estado_pagamento || d.status_pagamento || d.payment_status,
+              recibo_emitido: d.recibo_emitido || false,
+              saldo_pendente: Number(d.saldo_pendente || 0),
+            };
+          });
           return res.json(formatted);
         }
       } catch (err) {
@@ -4248,6 +4669,12 @@ app.use((req, res, next) => {
 
         if (existingDoc) {
           const totalValue = Number(req.body.total ?? existingDoc.total);
+          const reqWsId = req.body.work_site_id ?? req.body.local_trabalho_id ?? existingDoc.detalhes?.work_site_id ?? null;
+          let resolvedWsTitle = req.body.work_site_title || req.body.local_trabalho || existingDoc.detalhes?.work_site_title || null;
+          if (reqWsId && !resolvedWsTitle) {
+            const { data: wsRow } = await supabaseAdmin.from('locais_trabalho').select('nome, title').eq('id', reqWsId).maybeSingle();
+            if (wsRow) resolvedWsTitle = wsRow.nome || wsRow.title || null;
+          }
           const updatePayload: any = {
             cliente_id: req.body.cliente_id ?? existingDoc.cliente_id,
             cliente_nome: req.body.client_name ?? req.body.cliente_nome ?? existingDoc.cliente_nome,
@@ -4266,11 +4693,20 @@ app.use((req, res, next) => {
               currency: req.body.currency ?? existingDoc.detalhes?.currency,
               client_nif: req.body.client_nif ?? req.body.cliente_nif ?? existingDoc.detalhes?.client_nif,
               client_address: req.body.client_address ?? req.body.cliente_morada ?? req.body.cliente_endereco ?? existingDoc.detalhes?.client_address,
+<<<<<<< HEAD
               work_site_id: req.body.work_site_id ?? existingDoc.detalhes?.work_site_id,
               work_site_title: req.body.work_site_title ?? req.body.local_trabalho ?? existingDoc.detalhes?.work_site_title,
               local_trabalho: req.body.local_trabalho ?? req.body.work_site_title ?? existingDoc.detalhes?.local_trabalho,
               file_interno: req.body.file_interno ?? req.body.work_site_title ?? existingDoc.detalhes?.file_interno,
               file_cliente: req.body.file_cliente ?? req.body.client_name ?? existingDoc.detalhes?.file_cliente
+=======
+              work_site_id: reqWsId,
+              local_trabalho_id: reqWsId,
+              work_site_title: resolvedWsTitle,
+              local_trabalho: resolvedWsTitle,
+              service_location: req.body.service_location ?? existingDoc.detalhes?.service_location ?? null,
+              service_date: req.body.service_date ?? existingDoc.detalhes?.service_date ?? null
+>>>>>>> origin/main
             }
           };
 
@@ -5334,6 +5770,12 @@ app.use((req, res, next) => {
       const hash = crypto.createHash('sha256').update(hashContent).digest('hex');
 
       const authUser = await getAuthUserContext(req);
+      const reqWorkSiteId = req.body.work_site_id ?? req.body.local_trabalho_id ?? null;
+      let resolvedWorkSiteTitle = req.body.work_site_title || req.body.local_trabalho || null;
+      if (supabaseAdmin && reqWorkSiteId && !resolvedWorkSiteTitle) {
+        const { data: wsRow } = await supabaseAdmin.from('locais_trabalho').select('nome, title').eq('id', reqWorkSiteId).maybeSingle();
+        if (wsRow) resolvedWorkSiteTitle = wsRow.nome || wsRow.title || null;
+      }
 
       const dbPayload = {
         empresa_id: companyId,
@@ -5356,11 +5798,20 @@ app.use((req, res, next) => {
           documento_origem_id: req.body.documento_origem_id,
           client_nif: req.body.client_nif || req.body.cliente_nif,
           client_address: req.body.client_address || req.body.cliente_morada || req.body.cliente_endereco,
+<<<<<<< HEAD
           work_site_id: req.body.work_site_id,
           work_site_title: req.body.work_site_title || req.body.local_trabalho,
           local_trabalho: req.body.local_trabalho || req.body.work_site_title,
           file_interno: req.body.file_interno || req.body.work_site_title || req.body.local_trabalho || '',
           file_cliente: req.body.file_cliente || req.body.client_name || req.body.cliente_nome || ''
+=======
+          work_site_id: reqWorkSiteId,
+          local_trabalho_id: reqWorkSiteId,
+          work_site_title: resolvedWorkSiteTitle,
+          local_trabalho: resolvedWorkSiteTitle,
+          service_location: req.body.service_location || null,
+          service_date: req.body.service_date || null
+>>>>>>> origin/main
         },
         serie: seriesRef,
         ano: year,
@@ -5678,10 +6129,46 @@ app.use((req, res, next) => {
   });
 
   // Fiscal Series
-  app.get("/api/fiscal-series", (req, res) => {
-    const { empresa_id } = req.query;
-    if (empresa_id) return res.json(fiscalSeries.filter(s => String(s.empresa_id) === String(empresa_id)));
-    res.json([]);
+  app.get("/api/fiscal-series", async (req, res) => {
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) return res.status(401).json({ error: "Sessão expirada ou utilizador não autenticado." });
+    const tenantRes = await resolveTenantEmpresaId(req, (req.query.empresa_id as string) || null, authCtx);
+    if (tenantRes.error) return res.status(tenantRes.status || 403).json({ error: tenantRes.error });
+
+    const empresa_id = tenantRes.empresaId || authCtx.empresaId;
+    if (!empresa_id) return res.json([]);
+
+    const adminClient = authCtx.adminClient || getActiveAdminClient(req);
+    if (adminClient) {
+      try {
+        const [{ data: sfData, error }, { data: sfUsersData }] = await Promise.all([
+          adminClient.from('series_fiscais').select('*').eq('empresa_id', empresa_id),
+          adminClient.from('series_fiscais_usuarios').select('*').eq('empresa_id', empresa_id)
+        ]);
+        if (!error && Array.isArray(sfData)) {
+          return res.json(sfData.map((s: any) => {
+            const seriesUsers = (sfUsersData || [])
+              .filter((su: any) => String(su.serie_id).toLowerCase() === String(s.id).toLowerCase() && su.activo)
+              .map((su: any) => String(su.usuario_id).toLowerCase());
+            return {
+              ...s,
+              id: s.id,
+              reference: s.serie,
+              description: s.descricao,
+              type: s.tipo,
+              is_active: s.ativo,
+              user_id: s.utilizador_id,
+              name: s.descricao,
+              user_ids: seriesUsers
+            };
+          }));
+        }
+      } catch (e: any) {
+        console.warn("[SERVER] Erro ao carregar series_fiscais:", e.message);
+      }
+    }
+
+    return res.json(fiscalSeries.filter(s => String(s.empresa_id) === String(empresa_id)));
   });
   app.post("/api/fiscal-series", (req, res) => {
     const newSeries = { ...req.body, id: generateId(), created_at: new Date().toISOString() };
@@ -5691,10 +6178,32 @@ app.use((req, res, next) => {
   });
 
   // POS Endpoints
-  app.get("/api/cost-centers", (req, res) => {
-    const { empresa_id } = req.query;
-    if (empresa_id) return res.json(costCenters.filter(c => String(c.empresa_id) === String(empresa_id)));
-    res.json([]);
+  app.get("/api/cost-centers", async (req, res) => {
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) return res.status(401).json({ error: "Sessão expirada ou utilizador não autenticado." });
+    const tenantRes = await resolveTenantEmpresaId(req, (req.query.empresa_id as string) || null, authCtx);
+    if (tenantRes.error) return res.status(tenantRes.status || 403).json({ error: tenantRes.error });
+
+    const empresa_id = tenantRes.empresaId || authCtx.empresaId;
+    if (!empresa_id) return res.json([]);
+
+    const adminClient = authCtx.adminClient || getActiveAdminClient(req);
+    if (adminClient) {
+      try {
+        const { data, error } = await adminClient
+          .from('locais_trabalho')
+          .select('id, nome, codigo, code, endereco, telefone')
+          .eq('empresa_id', empresa_id);
+        if (!error && Array.isArray(data) && data.length > 0) {
+          return res.json(data.map((l: any) => ({ id: l.id, name: l.nome, code: l.codigo || l.code || 'CC-01' })));
+        }
+      } catch (e: any) {
+        console.warn("[SERVER] Erro ao buscar cost-centers:", e.message);
+      }
+    }
+
+    const mem = costCenters.filter(c => String(c.empresa_id) === String(empresa_id));
+    return res.json(mem.length > 0 ? mem : [{ id: 'cc-1', name: 'Centro de Custo Geral', code: 'CC-GERAL' }]);
   });
 
   // ===== POS AUTHENTICATION ENDPOINT (validates password/username against Supabase Auth & system_users) =====
@@ -5832,10 +6341,37 @@ app.use((req, res, next) => {
     }
   });
 
-  app.get("/api/pos-points", (req, res) => {
-    const { empresa_id } = req.query;
-    if (empresa_id) return res.json(posPoints.filter(p => String(p.empresa_id) === String(empresa_id)));
-    res.json([]);
+  app.get("/api/pos-points", async (req, res) => {
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) return res.status(401).json({ error: "Sessão expirada ou utilizador não autenticado." });
+    const tenantRes = await resolveTenantEmpresaId(req, (req.query.empresa_id as string) || null, authCtx);
+    if (tenantRes.error) return res.status(tenantRes.status || 403).json({ error: tenantRes.error });
+
+    const empresa_id = tenantRes.empresaId || authCtx.empresaId;
+    if (!empresa_id) return res.json([]);
+
+    const adminClient = authCtx.adminClient || getActiveAdminClient(req);
+    if (adminClient) {
+      try {
+        const { data, error } = await adminClient
+          .from('pos_user_configs')
+          .select('*')
+          .eq('empresa_id', empresa_id);
+        if (!error && Array.isArray(data) && data.length > 0) {
+          return res.json(data.map((p: any, idx: number) => ({
+            id: p.id || `pos-${idx + 1}`,
+            name: p.workplace || `Terminal POS ${idx + 1}`,
+            location: p.workplace || 'Balcão Principal',
+            is_active: p.allow_pos !== false
+          })));
+        }
+      } catch (e: any) {
+        console.warn("[SERVER] Erro ao buscar pos-points:", e.message);
+      }
+    }
+
+    const mem = posPoints.filter(p => !p.empresa_id || String(p.empresa_id) === String(empresa_id));
+    return res.json(mem.length > 0 ? mem : [{ id: 'pos-1', name: 'Terminal POS Principal', location: 'Loja Principal', is_active: true }]);
   });
 
   // Endpoints para Configurações do POS por Utilizador
@@ -5958,13 +6494,16 @@ app.use((req, res, next) => {
       res.status(500).json({ error: err.message });
     }
   });
-  app.get("/api/cash/sessions", (req, res) => {
-    const { empresa_id } = req.query;
-    if (empresa_id) {
-      const list = sessions.filter(s => !s.empresa_id || String(s.empresa_id) === String(empresa_id));
-      return res.json(list.length > 0 ? list : sessions);
-    }
-    res.json(sessions);
+  app.get("/api/cash/sessions", async (req, res) => {
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) return res.status(401).json({ error: "Sessão expirada ou utilizador não autenticado." });
+    const tenantRes = await resolveTenantEmpresaId(req, (req.query.empresa_id as string) || null, authCtx);
+    if (tenantRes.error) return res.status(tenantRes.status || 403).json({ error: tenantRes.error });
+
+    const empresa_id = tenantRes.empresaId || authCtx.empresaId;
+    if (!empresa_id) return res.json([]);
+
+    return res.json(sessions.filter(s => String(s.empresa_id) === String(empresa_id)));
   });
   
   app.post("/api/pos-points", (req, res) => {
@@ -6200,10 +6739,32 @@ app.use((req, res, next) => {
   });
 
   // Caixas
-  app.get("/api/caixas", (req, res) => {
-    const { empresa_id } = req.query;
-    if (empresa_id) return res.json(caixas.filter(c => String(c.empresa_id) === String(empresa_id)));
-    res.json([]);
+  app.get("/api/caixas", async (req, res) => {
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) return res.status(401).json({ error: "Sessão expirada ou utilizador não autenticado." });
+    if (authCtx.isBlocked) return res.status(403).json({ error: "Conta suspensa ou revogada." });
+
+    const tenantRes = await resolveTenantEmpresaId(req, (req.query.empresa_id as string) || null);
+    if (tenantRes.error) return res.status(tenantRes.status || 403).json({ error: tenantRes.error });
+    const empresa_id = tenantRes.empresaId || authCtx.empresaId;
+    if (!empresa_id) return res.json([]);
+
+    const adminClient = authCtx.adminClient || getActiveAdminClient(req);
+    if (adminClient) {
+      try {
+        const { data, error } = await adminClient
+          .from('caixas')
+          .select('*')
+          .eq('empresa_id', empresa_id);
+        if (!error && Array.isArray(data)) {
+          return res.json(data.filter((c: any) => c.is_deleted !== true));
+        }
+      } catch (err) {
+        console.warn("[SERVER] Erro ao buscar caixas do Supabase:", err);
+      }
+    }
+
+    return res.json(caixas.filter(c => String(c.empresa_id) === String(empresa_id)));
   });
   app.post("/api/caixas", (req, res) => {
     const newCaixa = { ...req.body, id: generateId() };
@@ -6252,10 +6813,18 @@ app.use((req, res, next) => {
     );
     res.json(siteMovements);
   });
-  app.get("/api/work-site-movements", (req, res) => {
-    const { company_id } = req.query;
-    const siteMovements = workSiteMovements.filter(m => 
-      !company_id || m.company_id?.toString() === company_id.toString()
+  app.get("/api/work-site-movements", async (req, res) => {
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) return res.status(401).json({ error: "Sessão expirada ou utilizador não autenticado." });
+    const reqEmpId = (req.query.empresa_id || req.query.company_id) as string | undefined;
+    const tenantRes = await resolveTenantEmpresaId(req, reqEmpId || null, authCtx);
+    if (tenantRes.error) return res.status(tenantRes.status || 403).json({ error: tenantRes.error });
+
+    const empresa_id = tenantRes.empresaId || authCtx.empresaId;
+    if (!empresa_id) return res.json([]);
+
+    const siteMovements = workSiteMovements.filter(m =>
+      String(m.empresa_id || m.company_id) === String(empresa_id)
     );
     res.json(siteMovements);
   });
@@ -6268,30 +6837,36 @@ app.use((req, res, next) => {
 
   // Transactions
   app.get("/api/transactions", async (req, res) => {
-    const { empresa_id } = req.query;
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) return res.status(401).json({ error: "Sessão expirada ou utilizador não autenticado." });
+    const tenantRes = await resolveTenantEmpresaId(req, (req.query.empresa_id as string) || null, authCtx);
+    if (tenantRes.error) return res.status(tenantRes.status || 403).json({ error: tenantRes.error });
+
+    const empresa_id = tenantRes.empresaId || authCtx.empresaId;
     const year = Number(req.query.year) || new Date().getFullYear();
-    
-    if (supabaseAdmin && empresa_id) {
-       try {
-           const { data } = await supabaseAdmin.from('compras').select('*').eq('empresa_id', empresa_id).eq('ano', year);
-           if (data) {
-              const mapped = data.map((c: any) => ({
-                 id: c.id,
-                 date: c.data_emissao || c.created_at,
-                 amount: c.total || 0,
-                 type: 'expense',
-                 category: c.tipo === 'Serviços' ? 'Serviços' : 'Fornecedores',
-                 description: c.fornecedor_nome || c.descricao || 'Despesa'
-              }));
-              return res.json(mapped.filter((t: any) => !t.date || new Date(t.date).getFullYear() === year));
-           }
-       } catch (err) {
-           console.error('Error fetching transactions from compras', err);
-       }
+    if (!empresa_id) return res.json([]);
+
+    const adminClient = authCtx.adminClient || getActiveAdminClient(req);
+    if (adminClient) {
+      try {
+        const { data } = await adminClient.from('compras').select('*').eq('empresa_id', empresa_id).eq('ano', year);
+        if (data) {
+          const mapped = data.map((c: any) => ({
+            id: c.id,
+            date: c.data_emissao || c.data_compra || c.created_at,
+            amount: Number(c.valor_total ?? c.total ?? 0),
+            type: 'expense',
+            category: c.tipo === 'Serviços' ? 'Serviços' : 'Fornecedores',
+            description: c.fornecedor_nome || c.descricao || 'Despesa'
+          }));
+          return res.json(mapped.filter((t: any) => !t.date || new Date(t.date).getFullYear() === year));
+        }
+      } catch (err) {
+        console.error('Error fetching transactions from compras', err);
+      }
     }
-    
-    if (empresa_id) return res.json(transactions.filter(t => String(t.empresa_id) === String(empresa_id) && (!t.date || new Date(t.date).getFullYear() === year)));
-    res.json([]);
+
+    return res.json(transactions.filter(t => String(t.empresa_id) === String(empresa_id) && (!t.date || new Date(t.date).getFullYear() === year)));
   });
   app.post("/api/transactions", (req, res) => {
     const newTrans = { ...req.body, id: generateId(), date: new Date().toISOString() };
@@ -6313,28 +6888,40 @@ app.use((req, res, next) => {
     res.json(newSupplier);
   });
   app.get("/api/purchases", async (req, res) => {
-    const { empresa_id, ano } = req.query;
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) return res.status(401).json({ error: "Sessão expirada ou utilizador não autenticado." });
+    if (authCtx.isBlocked) return res.status(403).json({ error: "Conta suspensa ou revogada." });
+
+    const tenantRes = await resolveTenantEmpresaId(req, (req.query.empresa_id as string) || null);
+    if (tenantRes.error) return res.status(tenantRes.status || 403).json({ error: tenantRes.error });
+    const empresa_id = tenantRes.empresaId || authCtx.empresaId;
     if (!empresa_id) return res.json([]);
-    
-    if (supabaseAdmin) {
-      let query = supabaseAdmin
-        .from('compras')
-        .select('*')
-        .eq('empresa_id', empresa_id);
 
-      if (ano) {
-        query = query.eq('ano', Number(ano));
-      }
+    const { ano } = req.query;
+    const adminClient = authCtx.adminClient || getActiveAdminClient(req);
+    if (adminClient) {
+      try {
+        let query = adminClient
+          .from('compras')
+          .select('*')
+          .eq('empresa_id', empresa_id);
 
-      const { data, error } = await query;
-      
-      if (error) {
-        console.error('[SERVER] Erro ao buscar compras no Supabase:', error);
-        return res.json([]);
+        if (ano && !isNaN(Number(ano))) {
+          query = query.eq('ano', Number(ano));
+        }
+
+        const { data, error } = await query.order('created_at', { ascending: false });
+        if (!error && Array.isArray(data)) {
+          return res.json(data);
+        }
+        if (error) {
+          console.error('[SERVER] Erro ao buscar compras no Supabase:', error.message);
+        }
+      } catch (err) {
+        console.warn('[SERVER] Excepção ao buscar compras:', err);
       }
-      return res.json(data);
     }
-    
+
     // Fallback to local
     const combined = [...purchases, ...issuedDocuments.filter((d: any) => d.document_type === 'Recibo')];
     return res.json(combined.filter(p => String(p.empresa_id) === String(empresa_id)));
@@ -7850,20 +8437,21 @@ app.use((req, res, next) => {
 
   // Company info
   app.get("/api/company/:id", async (req, res) => {
-    const id = req.params.id;
-    if (supabaseAdmin) {
-      try {
-        const { data: dbComp } = await supabaseAdmin
-          .from('empresas')
-          .select('*')
-          .eq('id', id)
-          .maybeSingle();
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) return res.status(401).json({ error: "Sessão expirada ou utilizador não autenticado." });
+    const tenantRes = await resolveTenantEmpresaId(req, req.params.id, authCtx);
+    if (tenantRes.error) return res.status(tenantRes.status || 403).json({ error: tenantRes.error });
 
-        const { data: configComp } = await supabaseAdmin
-          .from('config_empresa')
-          .select('*')
-          .eq('empresa_id', id)
-          .maybeSingle();
+    const id = tenantRes.empresaId || authCtx.empresaId;
+    if (!id) return res.status(404).json({ error: "Empresa não identificada." });
+
+    const adminClient = authCtx.adminClient || getActiveAdminClient(req);
+    if (adminClient) {
+      try {
+        const [{ data: dbComp }, { data: configComp }] = await Promise.all([
+          adminClient.from('empresas').select('*').eq('id', id).maybeSingle(),
+          adminClient.from('config_empresa').select('*').eq('empresa_id', id).maybeSingle()
+        ]);
 
         if (dbComp || configComp) {
           const merged = {
@@ -7886,11 +8474,17 @@ app.use((req, res, next) => {
       }
     }
 
+<<<<<<< HEAD
     const comp = companies.find(c => c.id === id);
     if (comp) {
       return res.json(comp);
     }
     return res.status(404).json({ error: "Empresa não encontrada" });
+=======
+    const comp = companies.find(c => String(c.id) === String(id)) || null;
+    if (!comp) return res.status(404).json({ error: "Empresa não encontrada." });
+    res.json(comp);
+>>>>>>> origin/main
   });
   app.put("/api/company/:id", (req, res) => {
     const id = req.params.id;
@@ -7907,10 +8501,68 @@ app.use((req, res, next) => {
     }
   });
 
-  // Metrics — safe on Vercel (read-only serverless filesystem)
-  app.get("/api/metrics", (req, res) => {
+  // Impostos (authenticated server proxy to avoid browser PostgREST timeouts)
+  app.get("/api/impostos", async (req, res) => {
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) return res.status(401).json({ error: "Sessão expirada ou utilizador não autenticado." });
+    if (authCtx.isBlocked) return res.status(403).json({ error: "Conta suspensa ou revogada." });
+
+    const tenantRes = await resolveTenantEmpresaId(req, (req.query.empresa_id as string) || null);
+    if (tenantRes.error) return res.status(tenantRes.status || 403).json({ error: tenantRes.error });
+    const empresa_id = tenantRes.empresaId || authCtx.empresaId;
+    if (!empresa_id) return res.json([]);
+
+    const adminClient = authCtx.adminClient || getActiveAdminClient(req);
+    if (adminClient) {
+      try {
+        const { data, error } = await adminClient
+          .from('impostos')
+          .select('*')
+          .eq('empresa_id', empresa_id);
+        if (!error && Array.isArray(data)) {
+          return res.json(data);
+        }
+      } catch (err) {
+        console.warn("[SERVER] Erro ao buscar impostos:", err);
+      }
+    }
+    return res.json([]);
+  });
+
+  // Metrics — safe on Vercel & Supabase backed
+  app.get("/api/metrics", async (req, res) => {
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) return res.status(401).json({ error: "Sessão expirada ou utilizador não autenticado." });
+    if (authCtx.isBlocked) return res.status(403).json({ error: "Conta suspensa ou revogada." });
+
+    const tenantRes = await resolveTenantEmpresaId(req, (req.query.empresa_id as string) || null);
+    if (tenantRes.error) return res.status(tenantRes.status || 403).json({ error: tenantRes.error });
+    const empresa_id = tenantRes.empresaId || authCtx.empresaId;
+    if (!empresa_id) return res.json([]);
+
+    const adminClient = authCtx.adminClient || getActiveAdminClient(req);
+    if (adminClient) {
+      try {
+        let { data, error } = await adminClient
+          .from('metrics')
+          .select('*')
+          .eq('empresa_id', empresa_id)
+          .or('activo.is.null,activo.eq.true')
+          .order('created_at', { ascending: false });
+        if (error) {
+          const retry = await adminClient.from('metrics').select('*').eq('empresa_id', empresa_id);
+          data = retry.data;
+          error = retry.error;
+        }
+        if (!error && Array.isArray(data)) {
+          return res.json(data);
+        }
+      } catch (err) {
+        console.warn("[SERVER] Erro ao buscar métricas no Supabase:", err);
+      }
+    }
+
     try {
-      const { empresa_id } = req.query;
       if (empresa_id && fs.existsSync(DB_FILE)) {
         const records = JSON.parse(fs.readFileSync(DB_FILE, 'utf-8')).metrics || [];
         return res.json(records.filter((m: any) => String(m.empresa_id) === String(empresa_id)));
@@ -8400,11 +9052,45 @@ app.use((req, res, next) => {
     warehouses.push(newWh);
     res.json(newWh);
   });
-  app.get("/api/caixa-movements", (req, res) => {
-    const { empresa_id } = req.query;
-    const year = Number(req.query.year) || new Date().getFullYear();
-    if (empresa_id) return res.json(caixaMovements.filter(m => String(m.empresa_id) === String(empresa_id) && (!m.date || new Date(m.date).getFullYear() === year || !m.created_at || new Date(m.created_at).getFullYear() === year)));
-    res.json([]);
+  app.get("/api/caixa-movements", async (req, res) => {
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) return res.status(401).json({ error: "Sessão expirada ou utilizador não autenticado." });
+    if (authCtx.isBlocked) return res.status(403).json({ error: "Conta suspensa ou revogada." });
+
+    const tenantRes = await resolveTenantEmpresaId(req, (req.query.empresa_id as string) || null);
+    if (tenantRes.error) return res.status(tenantRes.status || 403).json({ error: tenantRes.error });
+    const empresa_id = tenantRes.empresaId || authCtx.empresaId;
+    if (!empresa_id) return res.json([]);
+
+    const adminClient = authCtx.adminClient || getActiveAdminClient(req);
+    if (adminClient) {
+      try {
+        let { data, error } = await adminClient
+          .from('caixa_movimentacoes')
+          .select('*')
+          .eq('empresa_id', empresa_id)
+          .order('created_at', { ascending: false })
+          .limit(200);
+        if (error && error.code === 'PGRST205') {
+          const retry = await adminClient
+            .from('caixa_movements')
+            .select('*')
+            .eq('empresa_id', empresa_id)
+            .order('created_at', { ascending: false })
+            .limit(200);
+          data = retry.data;
+          error = retry.error;
+        }
+        if (!error && Array.isArray(data)) {
+          return res.json(data);
+        }
+      } catch (err) {
+        console.warn("[SERVER] Erro ao buscar movimentos de caixa no Supabase:", err);
+      }
+    }
+
+    const year = req.query.year ? Number(req.query.year) : null;
+    return res.json(caixaMovements.filter(m => String(m.empresa_id) === String(empresa_id) && (!year || !m.date || new Date(m.date).getFullYear() === year || !m.created_at || new Date(m.created_at).getFullYear() === year)));
   });
   app.post("/api/caixa-movements", async (req, res) => {
     const authCtx = await getAuthUserContext(req);
@@ -8437,15 +9123,21 @@ app.use((req, res, next) => {
   });
   app.get("/api/stock/movements", async (req, res) => {
     const authCtx = await getAuthUserContext(req);
-    const empresa_id = (authCtx?.empresaId || req.query.empresa_id || '').toString();
+    if (!authCtx) return res.status(401).json({ error: "Sessão expirada ou utilizador não autenticado." });
+    if (authCtx.isBlocked) return res.status(403).json({ error: "Conta suspensa ou revogada." });
+
+    const tenantRes = await resolveTenantEmpresaId(req, (req.query.empresa_id as string) || null);
+    if (tenantRes.error) return res.status(tenantRes.status || 403).json({ error: tenantRes.error });
+    const empresa_id = (tenantRes.empresaId || authCtx.empresaId || '').toString();
     const year = Number(req.query.year) || new Date().getFullYear();
     const warehouse_id = req.query.warehouse_id ? req.query.warehouse_id.toString() : null;
 
     if (!empresa_id) return res.json([]);
 
+    const adminClient = authCtx.adminClient || getActiveAdminClient(req);
     try {
-      if (supabaseAdmin) {
-        let query = supabaseAdmin
+      if (adminClient) {
+        let query = adminClient
           .from('movimentacoes_stock')
           .select('*')
           .eq('empresa_id', empresa_id)
@@ -8702,11 +9394,17 @@ app.use((req, res, next) => {
   const securityGuards: any[] = [];
 
   app.get("/api/security/guards", async (req, res) => {
-    const { empresa_id } = req.query;
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) return res.status(401).json({ error: "Sessão expirada ou utilizador não autenticado." });
+    const tenantRes = await resolveTenantEmpresaId(req, (req.query.empresa_id as string) || null, authCtx);
+    if (tenantRes.error) return res.status(tenantRes.status || 403).json({ error: tenantRes.error });
+
+    const empresa_id = tenantRes.empresaId || authCtx.empresaId;
     if (!empresa_id) return res.json([]);
+    const adminClient = authCtx.adminClient || getActiveAdminClient(req);
     try {
-      if (supabaseAdmin) {
-        const { data, error } = await supabaseAdmin.from('sgp_vigilantes').select('*').eq('empresa_id', empresa_id).order('created_at', { ascending: false });
+      if (adminClient) {
+        const { data, error } = await adminClient.from('sgp_vigilantes').select('*').eq('empresa_id', empresa_id).order('created_at', { ascending: false });
         if (!error && data) return res.json(data);
       }
     } catch (e) {}
@@ -8714,10 +9412,18 @@ app.use((req, res, next) => {
   });
 
   app.post("/api/security/guards", async (req, res) => {
-    const item = { ...req.body, id: req.body.id || crypto.randomUUID(), created_at: new Date().toISOString() };
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) return res.status(401).json({ error: "Sessão expirada ou utilizador não autenticado." });
+    const tenantRes = await resolveTenantEmpresaId(req, req.body?.empresa_id || null, authCtx);
+    if (tenantRes.error) return res.status(tenantRes.status || 403).json({ error: tenantRes.error });
+
+    const empresa_id = tenantRes.empresaId || authCtx.empresaId;
+    if (!empresa_id) return res.status(400).json({ error: "Empresa não identificada." });
+    const adminClient = authCtx.adminClient || getActiveAdminClient(req);
+    const item = { ...req.body, empresa_id, id: req.body.id || crypto.randomUUID(), created_at: new Date().toISOString() };
     try {
-      if (supabaseAdmin && item.empresa_id) {
-        const { data, error } = await supabaseAdmin.from('sgp_vigilantes').insert(item).select().single();
+      if (adminClient) {
+        const { data, error } = await adminClient.from('sgp_vigilantes').insert(item).select().single();
         if (!error && data) return res.json(data);
       }
     } catch (e) {}
@@ -8726,25 +9432,42 @@ app.use((req, res, next) => {
   });
 
   app.put("/api/security/guards/:id", async (req, res) => {
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) return res.status(401).json({ error: "Sessão expirada ou utilizador não autenticado." });
+    const tenantRes = await resolveTenantEmpresaId(req, req.body?.empresa_id || null, authCtx);
+    if (tenantRes.error) return res.status(tenantRes.status || 403).json({ error: tenantRes.error });
+
+    const empresa_id = tenantRes.empresaId || authCtx.empresaId;
+    if (!empresa_id) return res.status(403).json({ error: "Empresa não identificada." });
+    const adminClient = authCtx.adminClient || getActiveAdminClient(req);
     const { id } = req.params;
-    const updates = { ...req.body, updated_at: new Date().toISOString() };
+    const { empresa_id: _ignoredEmp, ...bodyRest } = req.body || {};
+    const updates = { ...bodyRest, updated_at: new Date().toISOString() };
     try {
-      if (supabaseAdmin) {
-        const { data, error } = await supabaseAdmin.from('sgp_vigilantes').update(updates).eq('id', id).select().single();
+      if (adminClient) {
+        const { data, error } = await adminClient.from('sgp_vigilantes').update(updates).eq('id', id).eq('empresa_id', empresa_id).select().single();
         if (!error && data) return res.json(data);
       }
     } catch (e) {}
-    const idx = securityGuards.findIndex(g => String(g.id) === String(id));
+    const idx = securityGuards.findIndex(g => String(g.id) === String(id) && String(g.empresa_id) === String(empresa_id));
     if (idx !== -1) { securityGuards[idx] = { ...securityGuards[idx], ...updates }; return res.json(securityGuards[idx]); }
     return res.status(404).json({ error: 'Not found' });
   });
 
   app.delete("/api/security/guards/:id", async (req, res) => {
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) return res.status(401).json({ error: "Sessão expirada ou utilizador não autenticado." });
+    const tenantRes = await resolveTenantEmpresaId(req, (req.query.empresa_id as string) || null, authCtx);
+    if (tenantRes.error) return res.status(tenantRes.status || 403).json({ error: tenantRes.error });
+
+    const empresa_id = tenantRes.empresaId || authCtx.empresaId;
+    if (!empresa_id) return res.status(403).json({ error: "Empresa não identificada." });
+    const adminClient = authCtx.adminClient || getActiveAdminClient(req);
     const { id } = req.params;
     try {
-      if (supabaseAdmin) { await supabaseAdmin.from('sgp_vigilantes').delete().eq('id', id); }
+      if (adminClient) { await adminClient.from('sgp_vigilantes').delete().eq('id', id).eq('empresa_id', empresa_id); }
     } catch (e) {}
-    const idx = securityGuards.findIndex(g => String(g.id) === String(id));
+    const idx = securityGuards.findIndex(g => String(g.id) === String(id) && String(g.empresa_id) === String(empresa_id));
     if (idx !== -1) securityGuards.splice(idx, 1);
     return res.json({ success: true });
   });
@@ -8753,11 +9476,17 @@ app.use((req, res, next) => {
   const securitySites: any[] = [];
 
   app.get("/api/security/sites", async (req, res) => {
-    const { empresa_id } = req.query;
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) return res.status(401).json({ error: "Sessão expirada ou utilizador não autenticado." });
+    const tenantRes = await resolveTenantEmpresaId(req, (req.query.empresa_id as string) || null, authCtx);
+    if (tenantRes.error) return res.status(tenantRes.status || 403).json({ error: tenantRes.error });
+
+    const empresa_id = tenantRes.empresaId || authCtx.empresaId;
     if (!empresa_id) return res.json([]);
+    const adminClient = authCtx.adminClient || getActiveAdminClient(req);
     try {
-      if (supabaseAdmin) {
-        const { data, error } = await supabaseAdmin.from('sgp_postos').select('*').eq('empresa_id', empresa_id).order('created_at', { ascending: false });
+      if (adminClient) {
+        const { data, error } = await adminClient.from('sgp_postos').select('*').eq('empresa_id', empresa_id).order('created_at', { ascending: false });
         if (!error && data) return res.json(data);
       }
     } catch (e) {}
@@ -8765,10 +9494,18 @@ app.use((req, res, next) => {
   });
 
   app.post("/api/security/sites", async (req, res) => {
-    const item = { ...req.body, id: req.body.id || crypto.randomUUID(), created_at: new Date().toISOString() };
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) return res.status(401).json({ error: "Sessão expirada ou utilizador não autenticado." });
+    const tenantRes = await resolveTenantEmpresaId(req, req.body?.empresa_id || null, authCtx);
+    if (tenantRes.error) return res.status(tenantRes.status || 403).json({ error: tenantRes.error });
+
+    const empresa_id = tenantRes.empresaId || authCtx.empresaId;
+    if (!empresa_id) return res.status(400).json({ error: "Empresa não identificada." });
+    const adminClient = authCtx.adminClient || getActiveAdminClient(req);
+    const item = { ...req.body, empresa_id, id: req.body.id || crypto.randomUUID(), created_at: new Date().toISOString() };
     try {
-      if (supabaseAdmin && item.empresa_id) {
-        const { data, error } = await supabaseAdmin.from('sgp_postos').insert(item).select().single();
+      if (adminClient) {
+        const { data, error } = await adminClient.from('sgp_postos').insert(item).select().single();
         if (!error && data) return res.json(data);
       }
     } catch (e) {}
@@ -8777,62 +9514,62 @@ app.use((req, res, next) => {
   });
 
   app.put("/api/security/sites/:id", async (req, res) => {
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) return res.status(401).json({ error: "Sessão expirada ou utilizador não autenticado." });
+    const tenantRes = await resolveTenantEmpresaId(req, req.body?.empresa_id || null, authCtx);
+    if (tenantRes.error) return res.status(tenantRes.status || 403).json({ error: tenantRes.error });
+
+    const empresa_id = tenantRes.empresaId || authCtx.empresaId;
+    if (!empresa_id) return res.status(403).json({ error: "Empresa não identificada." });
+    const adminClient = authCtx.adminClient || getActiveAdminClient(req);
     const { id } = req.params;
-    const updates = { ...req.body, updated_at: new Date().toISOString() };
+    const { empresa_id: _ignoredEmp, ...bodyRest } = req.body || {};
+    const updates = { ...bodyRest, updated_at: new Date().toISOString() };
     try {
-      if (supabaseAdmin) {
-        const { data, error } = await supabaseAdmin.from('sgp_postos').update(updates).eq('id', id).select().single();
+      if (adminClient) {
+        const { data, error } = await adminClient.from('sgp_postos').update(updates).eq('id', id).eq('empresa_id', empresa_id).select().single();
         if (!error && data) return res.json(data);
       }
     } catch (e) {}
-    const idx = securitySites.findIndex(s => String(s.id) === String(id));
+    const idx = securitySites.findIndex(s => String(s.id) === String(id) && String(s.empresa_id) === String(empresa_id));
     if (idx !== -1) { securitySites[idx] = { ...securitySites[idx], ...updates }; return res.json(securitySites[idx]); }
     return res.status(404).json({ error: 'Not found' });
   });
 
   app.delete("/api/security/sites/:id", async (req, res) => {
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) return res.status(401).json({ error: "Sessão expirada ou utilizador não autenticado." });
+    const tenantRes = await resolveTenantEmpresaId(req, (req.query.empresa_id as string) || null, authCtx);
+    if (tenantRes.error) return res.status(tenantRes.status || 403).json({ error: tenantRes.error });
+
+    const empresa_id = tenantRes.empresaId || authCtx.empresaId;
+    if (!empresa_id) return res.status(403).json({ error: "Empresa não identificada." });
+    const adminClient = authCtx.adminClient || getActiveAdminClient(req);
     const { id } = req.params;
     try {
-      if (supabaseAdmin) { await supabaseAdmin.from('sgp_postos').delete().eq('id', id); }
+      if (adminClient) { await adminClient.from('sgp_postos').delete().eq('id', id).eq('empresa_id', empresa_id); }
     } catch (e) {}
-    const idx = securitySites.findIndex(s => String(s.id) === String(id));
+    const idx = securitySites.findIndex(s => String(s.id) === String(id) && String(s.empresa_id) === String(empresa_id));
     if (idx !== -1) securitySites.splice(idx, 1);
     return res.json({ success: true });
   });
 
   // ── PUT for ROSTER ────────────────────────────────────────────────────────────
   app.put("/api/security/roster/:id", async (req, res) => {
-    const { id } = req.params;
-    const updates = { ...req.body, updated_at: new Date().toISOString() };
-    try {
-      if (supabaseAdmin) {
-        const { data, error } = await supabaseAdmin.from('sgp_escalas').update(updates).eq('id', id).select().single();
-        if (!error && data) return res.json(data);
-      }
-    } catch (e) {}
-    return res.json({ ...updates, id });
-  });
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) return res.status(401).json({ error: "Sessão expirada ou utilizador não autenticado." });
+    const tenantRes = await resolveTenantEmpresaId(req, req.body?.empresa_id || null, authCtx);
+    if (tenantRes.error) return res.status(tenantRes.status || 403).json({ error: tenantRes.error });
 
-  // ── PUT for ARMORY ────────────────────────────────────────────────────────────
-  app.put("/api/security/armory/:id", async (req, res) => {
+    const empresa_id = tenantRes.empresaId || authCtx.empresaId;
+    if (!empresa_id) return res.status(403).json({ error: "Empresa não identificada." });
+    const adminClient = authCtx.adminClient || getActiveAdminClient(req);
     const { id } = req.params;
-    const updates = { ...req.body, updated_at: new Date().toISOString() };
+    const { empresa_id: _ignoredEmp, ...bodyRest } = req.body || {};
+    const updates = { ...bodyRest, updated_at: new Date().toISOString() };
     try {
-      if (supabaseAdmin) {
-        const { data, error } = await supabaseAdmin.from('sgp_armaria').update(updates).eq('id', id).select().single();
-        if (!error && data) return res.json(data);
-      }
-    } catch (e) {}
-    return res.json({ ...updates, id });
-  });
-
-  // ── PUT for OCCURRENCES ───────────────────────────────────────────────────────
-  app.put("/api/security/occurrences/:id", async (req, res) => {
-    const { id } = req.params;
-    const updates = { ...req.body, updated_at: new Date().toISOString() };
-    try {
-      if (supabaseAdmin) {
-        const { data, error } = await supabaseAdmin.from('sgp_ocorrencias').update(updates).eq('id', id).select().single();
+      if (adminClient) {
+        const { data, error } = await adminClient.from('sgp_escalas').update(updates).eq('id', id).eq('empresa_id', empresa_id).select().single();
         if (!error && data) return res.json(data);
       }
     } catch (e) {}
@@ -8841,11 +9578,17 @@ app.use((req, res, next) => {
 
   // 1. OCORRÊNCIAS
   app.get("/api/security/occurrences", async (req, res) => {
-    const { empresa_id } = req.query;
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) return res.status(401).json({ error: "Sessão expirada ou utilizador não autenticado." });
+    const tenantRes = await resolveTenantEmpresaId(req, (req.query.empresa_id as string) || null, authCtx);
+    if (tenantRes.error) return res.status(tenantRes.status || 403).json({ error: tenantRes.error });
+
+    const empresa_id = tenantRes.empresaId || authCtx.empresaId;
     if (!empresa_id) return res.json([]);
+    const adminClient = authCtx.adminClient || getActiveAdminClient(req);
     try {
-      if (supabaseAdmin) {
-        const { data, error } = await supabaseAdmin.from('sgp_ocorrencias').select('*').eq('empresa_id', empresa_id).order('created_at', { ascending: false });
+      if (adminClient) {
+        const { data, error } = await adminClient.from('sgp_ocorrencias').select('*').eq('empresa_id', empresa_id).order('created_at', { ascending: false });
         if (!error && data) return res.json(data);
       }
     } catch (e) {}
@@ -8853,10 +9596,19 @@ app.use((req, res, next) => {
   });
 
   app.post("/api/security/occurrences", async (req, res) => {
-    const item = { ...req.body, id: req.body.id || crypto.randomUUID(), created_at: new Date().toISOString() };
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) return res.status(401).json({ error: "Sessão expirada ou utilizador não autenticado." });
+    const tenantRes = await resolveTenantEmpresaId(req, req.body?.empresa_id || null, authCtx);
+    if (tenantRes.error) return res.status(tenantRes.status || 403).json({ error: tenantRes.error });
+
+    const empresa_id = tenantRes.empresaId || authCtx.empresaId;
+    if (!empresa_id) return res.status(400).json({ error: "Empresa não identificada." });
+    const adminClient = authCtx.adminClient || getActiveAdminClient(req);
+    const item = { ...req.body, empresa_id, id: req.body.id || crypto.randomUUID(), created_at: new Date().toISOString() };
     try {
-      if (supabaseAdmin && item.empresa_id) {
-        await supabaseAdmin.from('sgp_ocorrencias').insert(item);
+      if (adminClient) {
+        const { data, error } = await adminClient.from('sgp_ocorrencias').insert(item).select().single();
+        if (!error && data) return res.json(data);
       }
     } catch (e) {}
     securityOccurrences.unshift(item);
@@ -8864,36 +9616,61 @@ app.use((req, res, next) => {
   });
 
   app.put("/api/security/occurrences/:id", async (req, res) => {
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) return res.status(401).json({ error: "Sessão expirada ou utilizador não autenticado." });
+    const tenantRes = await resolveTenantEmpresaId(req, req.body?.empresa_id || null, authCtx);
+    if (tenantRes.error) return res.status(tenantRes.status || 403).json({ error: tenantRes.error });
+
+    const empresa_id = tenantRes.empresaId || authCtx.empresaId;
+    if (!empresa_id) return res.status(403).json({ error: "Empresa não identificada." });
+    const adminClient = authCtx.adminClient || getActiveAdminClient(req);
     const { id } = req.params;
+    const { empresa_id: _ignoredEmp, ...bodyRest } = req.body || {};
+    const updates = { ...bodyRest, updated_at: new Date().toISOString() };
     try {
-      if (supabaseAdmin) {
-        await supabaseAdmin.from('sgp_ocorrencias').update(req.body).eq('id', id);
+      if (adminClient) {
+        const { data, error } = await adminClient.from('sgp_ocorrencias').update(updates).eq('id', id).eq('empresa_id', empresa_id).select().single();
+        if (!error && data) return res.json(data);
       }
     } catch (e) {}
-    const idx = securityOccurrences.findIndex(o => String(o.id) === String(id));
-    if (idx !== -1) securityOccurrences[idx] = { ...securityOccurrences[idx], ...req.body };
+    const idx = securityOccurrences.findIndex(o => String(o.id) === String(id) && String(o.empresa_id) === String(empresa_id));
+    if (idx !== -1) securityOccurrences[idx] = { ...securityOccurrences[idx], ...updates };
     return res.json({ success: true });
   });
 
   app.delete("/api/security/occurrences/:id", async (req, res) => {
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) return res.status(401).json({ error: "Sessão expirada ou utilizador não autenticado." });
+    const tenantRes = await resolveTenantEmpresaId(req, (req.query.empresa_id as string) || null, authCtx);
+    if (tenantRes.error) return res.status(tenantRes.status || 403).json({ error: tenantRes.error });
+
+    const empresa_id = tenantRes.empresaId || authCtx.empresaId;
+    if (!empresa_id) return res.status(403).json({ error: "Empresa não identificada." });
+    const adminClient = authCtx.adminClient || getActiveAdminClient(req);
     const { id } = req.params;
     try {
-      if (supabaseAdmin) {
-        await supabaseAdmin.from('sgp_ocorrencias').delete().eq('id', id);
+      if (adminClient) {
+        await adminClient.from('sgp_ocorrencias').delete().eq('id', id).eq('empresa_id', empresa_id);
       }
     } catch (e) {}
-    const idx = securityOccurrences.findIndex(o => String(o.id) === String(id));
+    const idx = securityOccurrences.findIndex(o => String(o.id) === String(id) && String(o.empresa_id) === String(empresa_id));
     if (idx !== -1) securityOccurrences.splice(idx, 1);
     return res.json({ success: true });
   });
 
   // 2. ARMARIA
   app.get("/api/security/armory", async (req, res) => {
-    const { empresa_id } = req.query;
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) return res.status(401).json({ error: "Sessão expirada ou utilizador não autenticado." });
+    const tenantRes = await resolveTenantEmpresaId(req, (req.query.empresa_id as string) || null, authCtx);
+    if (tenantRes.error) return res.status(tenantRes.status || 403).json({ error: tenantRes.error });
+
+    const empresa_id = tenantRes.empresaId || authCtx.empresaId;
     if (!empresa_id) return res.json([]);
+    const adminClient = authCtx.adminClient || getActiveAdminClient(req);
     try {
-      if (supabaseAdmin) {
-        const { data, error } = await supabaseAdmin.from('sgp_armaria').select('*').eq('empresa_id', empresa_id).order('created_at', { ascending: false });
+      if (adminClient) {
+        const { data, error } = await adminClient.from('sgp_armaria').select('*').eq('empresa_id', empresa_id).order('created_at', { ascending: false });
         if (!error && data) return res.json(data);
       }
     } catch (e) {}
@@ -8901,10 +9678,19 @@ app.use((req, res, next) => {
   });
 
   app.post("/api/security/armory", async (req, res) => {
-    const item = { ...req.body, id: req.body.id || crypto.randomUUID(), created_at: new Date().toISOString() };
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) return res.status(401).json({ error: "Sessão expirada ou utilizador não autenticado." });
+    const tenantRes = await resolveTenantEmpresaId(req, req.body?.empresa_id || null, authCtx);
+    if (tenantRes.error) return res.status(tenantRes.status || 403).json({ error: tenantRes.error });
+
+    const empresa_id = tenantRes.empresaId || authCtx.empresaId;
+    if (!empresa_id) return res.status(400).json({ error: "Empresa não identificada." });
+    const adminClient = authCtx.adminClient || getActiveAdminClient(req);
+    const item = { ...req.body, empresa_id, id: req.body.id || crypto.randomUUID(), created_at: new Date().toISOString() };
     try {
-      if (supabaseAdmin && item.empresa_id) {
-        await supabaseAdmin.from('sgp_armaria').insert(item);
+      if (adminClient) {
+        const { data, error } = await adminClient.from('sgp_armaria').insert(item).select().single();
+        if (!error && data) return res.json(data);
       }
     } catch (e) {}
     securityArmory.unshift(item);
@@ -8912,36 +9698,61 @@ app.use((req, res, next) => {
   });
 
   app.put("/api/security/armory/:id", async (req, res) => {
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) return res.status(401).json({ error: "Sessão expirada ou utilizador não autenticado." });
+    const tenantRes = await resolveTenantEmpresaId(req, req.body?.empresa_id || null, authCtx);
+    if (tenantRes.error) return res.status(tenantRes.status || 403).json({ error: tenantRes.error });
+
+    const empresa_id = tenantRes.empresaId || authCtx.empresaId;
+    if (!empresa_id) return res.status(403).json({ error: "Empresa não identificada." });
+    const adminClient = authCtx.adminClient || getActiveAdminClient(req);
     const { id } = req.params;
+    const { empresa_id: _ignoredEmp, ...bodyRest } = req.body || {};
+    const updates = { ...bodyRest, updated_at: new Date().toISOString() };
     try {
-      if (supabaseAdmin) {
-        await supabaseAdmin.from('sgp_armaria').update(req.body).eq('id', id);
+      if (adminClient) {
+        const { data, error } = await adminClient.from('sgp_armaria').update(updates).eq('id', id).eq('empresa_id', empresa_id).select().single();
+        if (!error && data) return res.json(data);
       }
     } catch (e) {}
-    const idx = securityArmory.findIndex(a => String(a.id) === String(id));
-    if (idx !== -1) securityArmory[idx] = { ...securityArmory[idx], ...req.body };
+    const idx = securityArmory.findIndex(a => String(a.id) === String(id) && String(a.empresa_id) === String(empresa_id));
+    if (idx !== -1) securityArmory[idx] = { ...securityArmory[idx], ...updates };
     return res.json({ success: true });
   });
 
   app.delete("/api/security/armory/:id", async (req, res) => {
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) return res.status(401).json({ error: "Sessão expirada ou utilizador não autenticado." });
+    const tenantRes = await resolveTenantEmpresaId(req, (req.query.empresa_id as string) || null, authCtx);
+    if (tenantRes.error) return res.status(tenantRes.status || 403).json({ error: tenantRes.error });
+
+    const empresa_id = tenantRes.empresaId || authCtx.empresaId;
+    if (!empresa_id) return res.status(403).json({ error: "Empresa não identificada." });
+    const adminClient = authCtx.adminClient || getActiveAdminClient(req);
     const { id } = req.params;
     try {
-      if (supabaseAdmin) {
-        await supabaseAdmin.from('sgp_armaria').delete().eq('id', id);
+      if (adminClient) {
+        await adminClient.from('sgp_armaria').delete().eq('id', id).eq('empresa_id', empresa_id);
       }
     } catch (e) {}
-    const idx = securityArmory.findIndex(a => String(a.id) === String(id));
+    const idx = securityArmory.findIndex(a => String(a.id) === String(id) && String(a.empresa_id) === String(empresa_id));
     if (idx !== -1) securityArmory.splice(idx, 1);
     return res.json({ success: true });
   });
 
   // 3. ESCALAS
   app.get("/api/security/roster", async (req, res) => {
-    const { empresa_id } = req.query;
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) return res.status(401).json({ error: "Sessão expirada ou utilizador não autenticado." });
+    const tenantRes = await resolveTenantEmpresaId(req, (req.query.empresa_id as string) || null, authCtx);
+    if (tenantRes.error) return res.status(tenantRes.status || 403).json({ error: tenantRes.error });
+
+    const empresa_id = tenantRes.empresaId || authCtx.empresaId;
     if (!empresa_id) return res.json([]);
+    const adminClient = authCtx.adminClient || getActiveAdminClient(req);
     try {
-      if (supabaseAdmin) {
-        const { data, error } = await supabaseAdmin.from('sgp_escalas').select('*').eq('empresa_id', empresa_id).order('created_at', { ascending: false });
+      if (adminClient) {
+        const { data, error } = await adminClient.from('sgp_escalas').select('*').eq('empresa_id', empresa_id).order('created_at', { ascending: false });
         if (!error && data) return res.json(data);
       }
     } catch (e) {}
@@ -8949,10 +9760,19 @@ app.use((req, res, next) => {
   });
 
   app.post("/api/security/roster", async (req, res) => {
-    const item = { ...req.body, id: req.body.id || crypto.randomUUID(), created_at: new Date().toISOString() };
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) return res.status(401).json({ error: "Sessão expirada ou utilizador não autenticado." });
+    const tenantRes = await resolveTenantEmpresaId(req, req.body?.empresa_id || null, authCtx);
+    if (tenantRes.error) return res.status(tenantRes.status || 403).json({ error: tenantRes.error });
+
+    const empresa_id = tenantRes.empresaId || authCtx.empresaId;
+    if (!empresa_id) return res.status(400).json({ error: "Empresa não identificada." });
+    const adminClient = authCtx.adminClient || getActiveAdminClient(req);
+    const item = { ...req.body, empresa_id, id: req.body.id || crypto.randomUUID(), created_at: new Date().toISOString() };
     try {
-      if (supabaseAdmin && item.empresa_id) {
-        await supabaseAdmin.from('sgp_escalas').insert(item);
+      if (adminClient) {
+        const { data, error } = await adminClient.from('sgp_escalas').insert(item).select().single();
+        if (!error && data) return res.json(data);
       }
     } catch (e) {}
     securityRoster.unshift(item);
@@ -8960,31 +9780,47 @@ app.use((req, res, next) => {
   });
 
   app.delete("/api/security/roster/:id", async (req, res) => {
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) return res.status(401).json({ error: "Sessão expirada ou utilizador não autenticado." });
+    const tenantRes = await resolveTenantEmpresaId(req, (req.query.empresa_id as string) || null, authCtx);
+    if (tenantRes.error) return res.status(tenantRes.status || 403).json({ error: tenantRes.error });
+
+    const empresa_id = tenantRes.empresaId || authCtx.empresaId;
+    if (!empresa_id) return res.status(403).json({ error: "Empresa não identificada." });
+    const adminClient = authCtx.adminClient || getActiveAdminClient(req);
     const { id } = req.params;
     try {
-      if (supabaseAdmin) {
-        await supabaseAdmin.from('sgp_escalas').delete().eq('id', id);
+      if (adminClient) {
+        await adminClient.from('sgp_escalas').delete().eq('id', id).eq('empresa_id', empresa_id);
       }
     } catch (e) {}
-    const idx = securityRoster.findIndex(r => String(r.id) === String(id));
+    const idx = securityRoster.findIndex(r => String(r.id) === String(id) && String(r.empresa_id) === String(empresa_id));
     if (idx !== -1) securityRoster.splice(idx, 1);
     return res.json({ success: true });
   });
 
   // 4. MOVIMENTOS DE ARMARIA
   app.post("/api/security/armory-logs", async (req, res) => {
-    const log = { ...req.body, id: req.body.id || crypto.randomUUID(), data_hora: new Date().toISOString() };
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) return res.status(401).json({ error: "Sessão expirada ou utilizador não autenticado." });
+    const tenantRes = await resolveTenantEmpresaId(req, req.body?.empresa_id || null, authCtx);
+    if (tenantRes.error) return res.status(tenantRes.status || 403).json({ error: tenantRes.error });
+
+    const empresa_id = tenantRes.empresaId || authCtx.empresaId;
+    if (!empresa_id) return res.status(400).json({ error: "Empresa não identificada." });
+    const adminClient = authCtx.adminClient || getActiveAdminClient(req);
+    const log = { ...req.body, empresa_id, id: req.body.id || crypto.randomUUID(), data_hora: new Date().toISOString() };
     try {
-      if (supabaseAdmin && log.empresa_id) {
-        await supabaseAdmin.from('sgp_armaria_movimentos').insert(log);
+      if (adminClient) {
+        await adminClient.from('sgp_armaria_movimentos').insert(log);
         // Atualizar estado do item na armaria
         const newStatus = log.action === 'OUT' ? 'em_uso' : 'disponivel';
-        await supabaseAdmin.from('sgp_armaria').update({ status: newStatus }).eq('id', log.item_id);
+        await adminClient.from('sgp_armaria').update({ status: newStatus }).eq('id', log.item_id).eq('empresa_id', empresa_id);
       }
     } catch (e) {}
     
     // Fallback em memória
-    const armItem = securityArmory.find(a => String(a.id) === String(log.item_id));
+    const armItem = securityArmory.find(a => String(a.id) === String(log.item_id) && String(a.empresa_id) === String(empresa_id));
     if (armItem) {
       armItem.status = log.action === 'OUT' ? 'em_uso' : 'disponivel';
     }
@@ -9266,7 +10102,7 @@ app.use((req, res, next) => {
         .order('created_at', { ascending: false });
 
       if (empresaId) {
-        query = query.or(`empresa_id.eq.${empresaId},company_id.eq.${empresaId}`);
+        query = query.eq('empresa_id', empresaId);
       }
 
       const { data: profiles, error } = await query;
@@ -10436,44 +11272,67 @@ app.use((req, res, next) => {
     const authCtx = await getAuthUserContext(req);
     if (!authCtx) return res.status(401).json({ error: "Sessão inválida" });
 
-    const empresa_id = authCtx.empresaId;
+    const tenantRes = await resolveTenantEmpresaId(req, (req.query.empresa_id as string) || null, authCtx);
+    if (tenantRes.error) return res.status(tenantRes.status || 403).json({ error: tenantRes.error });
+
+    const empresa_id = tenantRes.empresaId || authCtx.empresaId;
     if (!empresa_id) return res.status(400).json({ error: "ID da empresa não encontrado no perfil" });
 
-    if (supabaseAdmin) {
-      // 1. Get official registry from 'empresas'
-      const { data: companyRegistry } = await supabaseAdmin
-        .from('empresas')
-        .select('*')
-        .eq('id', empresa_id)
-        .maybeSingle();
+    const adminClient = authCtx.adminClient || getActiveAdminClient(req);
+    if (adminClient) {
+      const [{ data: companyRegistry }, { data: configSettings }, { data: licData }] = await Promise.all([
+        adminClient.from('empresas').select('*').eq('id', empresa_id).maybeSingle(),
+        adminClient.from('config_empresa').select('*').eq('empresa_id', empresa_id).maybeSingle(),
+        adminClient.from('licencas_empresas').select('*').eq('empresa_id', empresa_id).maybeSingle()
+      ]);
 
-      // 2. Get settings from 'config_empresa'
-      const { data: configSettings } = await supabaseAdmin
-        .from('config_empresa')
-        .select('*')
-        .eq('empresa_id', empresa_id)
-        .maybeSingle();
+      const rawStatus = String(licData?.status_licenca || licData?.estado || companyRegistry?.status_licenca || '').toUpperCase();
+      const isSuspendedOrDeactivated = ['SUSPENSA', 'BLOQUEADA', 'DESATIVADA', 'INATIVA', 'CANCELADA', 'EXPIRADA', 'VENCIDA'].includes(rawStatus) ||
+        licData?.licenca_ativa === false ||
+        licData?.ativo === false ||
+        companyRegistry?.licenca_ativa === false ||
+        companyRegistry?.ativo === false;
+      const isExplicitlyActive = ['ACTIVA', 'ACTIVE', 'ATIVA', 'ATIVO'].includes(rawStatus) && !isSuspendedOrDeactivated;
+      const expiryDateStr = licData?.data_fim || licData?.data_validade || companyRegistry?.data_expiracao_licenca || licData?.trial_fim || companyRegistry?.trial_fim || null;
+      const expiryDate = expiryDateStr ? new Date(expiryDateStr) : null;
+      const isExpiredByDate = Boolean(expiryDate && !isNaN(expiryDate.getTime()) && expiryDate.getTime() < Date.now());
+      const isAtiva = isExplicitlyActive && !isExpiredByDate;
+      const planoFinal = licData?.plano || companyRegistry?.plano || configSettings?.plano || 'Light';
 
-      // Ensure data is merged, prioritizing the core 'empresas' table for "real" info
       const consolidated = {
-        ...configSettings, // Start with settings
-        id: configSettings?.id || companyRegistry?.id, // Use config PK if available, else registry
-        empresa_id: empresa_id,
-        // Override with registry data to ensure it's "real" and matches Supabase table
-        nome_empresa: companyRegistry?.nome_empresa || configSettings?.nome_empresa || '',
+        ...configSettings,
+        id: configSettings?.id || companyRegistry?.id || empresa_id,
+        empresa_id,
+        nome_empresa: companyRegistry?.nome_empresa || companyRegistry?.nome || configSettings?.nome_empresa || '',
+        nome: companyRegistry?.nome || companyRegistry?.nome_empresa || configSettings?.nome_empresa || '',
         nif: companyRegistry?.nif || configSettings?.nif || '',
         email: companyRegistry?.email || configSettings?.email || '',
         telefone: companyRegistry?.telefone || configSettings?.telefone || '',
-        endereco: companyRegistry?.endereco || companyRegistry?.localizacao || configSettings?.endereco || '',
+        endereco: companyRegistry?.endereco || companyRegistry?.localizacao || companyRegistry?.morada || configSettings?.endereco || '',
+        morada: companyRegistry?.morada || companyRegistry?.endereco || configSettings?.endereco || '',
         provincia: companyRegistry?.provincia || configSettings?.provincia || '',
         municipio: companyRegistry?.municipio || configSettings?.municipio || '',
-        plano: companyRegistry?.plano || configSettings?.plano || 'Light',
-        status_licenca: companyRegistry?.status_licenca || configSettings?.status_licenca || 'TRIAL',
-        licenca_ativa: companyRegistry?.licenca_ativa ?? configSettings?.licenca_ativa ?? true,
-        trial_inicio: companyRegistry?.trial_inicio || configSettings?.trial_inicio || null,
-        trial_fim: companyRegistry?.trial_fim || configSettings?.trial_fim || null,
-        data_expiracao_licenca: companyRegistry?.data_expiracao_licenca || configSettings?.data_expiracao_licenca || companyRegistry?.trial_fim || null,
-        logo_url: companyRegistry?.logo_url || configSettings?.logo_url || companyRegistry?.logo || null
+        responsavel: companyRegistry?.nome_administrador || configSettings?.responsavel || '',
+        nome_administrador: companyRegistry?.nome_administrador || configSettings?.responsavel || '',
+        plano: planoFinal,
+        status_licenca: companyRegistry?.status_licenca || licData?.status_licenca || configSettings?.status_licenca || 'TRIAL',
+        licenca_ativa: companyRegistry?.licenca_ativa ?? licData?.licenca_ativa ?? configSettings?.licenca_ativa ?? true,
+        trial_inicio: companyRegistry?.trial_inicio || licData?.trial_inicio || configSettings?.trial_inicio || null,
+        trial_fim: companyRegistry?.trial_fim || licData?.trial_fim || configSettings?.trial_fim || null,
+        data_expiracao_licenca: expiryDateStr,
+        logo_url: companyRegistry?.logo_url || configSettings?.logo_url || companyRegistry?.logo || null,
+        footer_image_url: companyRegistry?.footer_image_url || configSettings?.footer_image_url || '',
+        licenca: {
+          status: isAtiva ? 'ATIVA' : 'EXPIRADA',
+          ativo: isAtiva,
+          licenca_ativa: isAtiva,
+          estado: isAtiva ? 'ativa' : 'suspensa',
+          descricao: isAtiva ? 'LICENÇA ACTIVA' : 'LICENÇA EXPIRADA',
+          plano: planoFinal,
+          data_inicio: licData?.data_inicio || companyRegistry?.data_inicio || null,
+          data_fim: expiryDateStr,
+          data_expiracao: expiryDateStr
+        }
       };
 
       return res.json(consolidated);
@@ -10488,24 +11347,34 @@ app.use((req, res, next) => {
     const empresa_id = authCtx.empresaId;
     if (!empresa_id) return res.status(400).json({ error: "ID da empresa não encontrado" });
 
-    const payload = { ...req.body, empresa_id, updated_at: new Date().toISOString() };
-    delete payload.id; // Gerido pelo DB ou UPSERT
+    const body = req.body || {};
+    const payload: Record<string, any> = {
+      ...body,
+      empresa_id,
+      updated_at: new Date().toISOString()
+    };
+    delete payload.id;
+    delete payload.licenca;
+    delete payload.nome_administrador;
 
-    if (supabaseAdmin) {
-      const { data, error } = await supabaseAdmin
+    const adminClient = authCtx.adminClient || getActiveAdminClient(req);
+    if (adminClient) {
+      const { data, error } = await adminClient
         .from('config_empresa')
         .upsert(payload, { onConflict: 'empresa_id' })
         .select()
         .single();
-      
+
       if (error) return res.status(500).json({ error: error.message });
 
-      // Opcional: Sincronizar dados básicos de volta para a tabela empresas
-      await supabaseAdmin.from('empresas').update({
-        nome_empresa: payload.nome_empresa,
-        nif: payload.nif,
-        email: payload.email
-      }).eq('id', empresa_id);
+      const empresaUpdate: Record<string, any> = { updated_at: new Date().toISOString() };
+      if (payload.nome_empresa !== undefined) empresaUpdate.nome_empresa = payload.nome_empresa;
+      if (payload.nif !== undefined) empresaUpdate.nif = payload.nif;
+      if (payload.email !== undefined) empresaUpdate.email = payload.email;
+      if (payload.telefone !== undefined) empresaUpdate.telefone = payload.telefone;
+      if (payload.endereco !== undefined) empresaUpdate.endereco = payload.endereco;
+      if (payload.logo_url !== undefined) empresaUpdate.logo_url = payload.logo_url;
+      await adminClient.from('empresas').update(empresaUpdate).eq('id', empresa_id);
 
       return res.json(data);
     }

@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import { authService } from '../services/authService';
 import { realtimeManager } from '../lib/realtimeManager';
 
 export interface MediaArquivo {
@@ -31,7 +32,7 @@ export const useMedia = () => {
   const fetchMedia = useCallback(async () => {
     try {
       setLoading(true);
-      const { data: { session } } = await supabase.auth.getSession();
+      const session = await authService.getSessionSafe();
       const user = session?.user;
       if (!user) return;
 

@@ -15,6 +15,7 @@ import {
   Paperclip, ExternalLink, FileText, Check, User, Building, Layers, ShoppingBag
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { fetchWithAuth } from '../../lib/fetchWithAuth';
 import { useAuth } from '../../contexts/AuthContext';
 import { toast } from 'react-hot-toast';
 
@@ -568,12 +569,10 @@ export const GestaoComprasForm: React.FC<Props> = ({
   const processStockMovements = async (doc: any, itens: LineItem[], empresaId: string, isUpdate: boolean) => {
     // 1. Tentar sincronização atómica e idempotente via Servidor (SupabaseAdmin + RLS bypass seguro)
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const syncRes = await fetch('/api/stock/sync-purchase', {
+      const syncRes = await fetchWithAuth('/api/stock/sync-purchase', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session?.access_token || ''}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           empresa_id: empresaId,

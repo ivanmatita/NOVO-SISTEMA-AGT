@@ -431,67 +431,64 @@ export const ContaCorrenteClienteView: React.FC<ContaCorrenteClienteViewProps> =
 
   return (
     <div className="min-h-screen bg-zinc-100 p-4 md:p-6 space-y-4">
-      {/* Barra de Controlo (Não Impressa) */}
-      <div className="max-w-[1160px] mx-auto bg-white border border-zinc-300 rounded-none p-4 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 no-print shadow-xs">
-        <div className="flex items-center gap-3">
+      {/* Barra de Controlo (Não Impressa) — Compacta e Limpa */}
+      <div className="max-w-[1160px] mx-auto bg-white border border-zinc-300 rounded-none px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 no-print shadow-xs">
+        <div className="flex items-center gap-2.5">
           <button
             type="button"
             onClick={onBack}
-            className="px-3 py-2 border border-zinc-300 bg-zinc-50 hover:bg-zinc-200 text-zinc-800 rounded-none text-xs font-bold uppercase flex items-center gap-1.5 transition-colors cursor-pointer"
+            className="px-2.5 py-1 border border-zinc-300 bg-zinc-50 hover:bg-zinc-200 text-zinc-800 rounded-none text-[11px] font-bold uppercase flex items-center gap-1 transition-colors cursor-pointer"
           >
-            <ArrowLeft size={15} /> Voltar
+            <ArrowLeft size={13} /> Voltar
           </button>
           <div>
-            <h2 className="text-sm font-black text-[#003366] uppercase tracking-wider">
-              Extrato de Conta Corrente de Cliente
+            <h2 className="text-xs font-black text-[#003366] uppercase tracking-wider">
+              Extrato de Conta Corrente
             </h2>
-            <p className="text-[11px] text-zinc-500 font-medium">
+            <p className="text-[10px] text-zinc-500 font-medium">
               {displayClientName} • NIF: <span className="font-mono font-bold text-zinc-700">{displayClientNif}</span>
             </p>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-end gap-2">
-          <div>
-            <label className="block text-[9px] font-bold text-zinc-500 uppercase mb-0.5">De</label>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1">
+            <span className="text-[9px] font-bold text-zinc-500 uppercase">De:</span>
             <input
               type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              className="border border-zinc-300 bg-zinc-50 rounded-none px-2.5 py-1.5 text-xs focus:outline-none focus:border-[#003366]"
+              className="border border-zinc-300 bg-zinc-50 rounded-none px-2 py-1 text-[11px] focus:outline-none focus:border-[#003366]"
             />
           </div>
-          <div>
-            <label className="block text-[9px] font-bold text-zinc-500 uppercase mb-0.5">Até</label>
+          <div className="flex items-center gap-1">
+            <span className="text-[9px] font-bold text-zinc-500 uppercase">Até:</span>
             <input
               type="date"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
-              className="border border-zinc-300 bg-zinc-50 rounded-none px-2.5 py-1.5 text-xs focus:outline-none focus:border-[#003366]"
+              className="border border-zinc-300 bg-zinc-50 rounded-none px-2 py-1 text-[11px] focus:outline-none focus:border-[#003366]"
             />
           </div>
-          <div>
-            <label className="block text-[9px] font-bold text-zinc-500 uppercase mb-0.5">Documento</label>
-            <select
-              value={docTypeFilter}
-              onChange={(e) => setDocTypeFilter(e.target.value)}
-              className="border border-zinc-300 bg-zinc-50 rounded-none px-2.5 py-1.5 text-xs font-bold focus:outline-none focus:border-[#003366]"
-            >
-              <option value="ALL">Todos</option>
-              <option value="FT">Faturas (FT)</option>
-              <option value="FR">Fatura-Recibo (FR)</option>
-              <option value="RC">Recibos (RC)</option>
-              <option value="NC">Nota de Crédito (NC)</option>
-              <option value="ND">Nota de Débito (ND)</option>
-            </select>
-          </div>
+          <select
+            value={docTypeFilter}
+            onChange={(e) => setDocTypeFilter(e.target.value)}
+            className="border border-zinc-300 bg-zinc-50 rounded-none px-2 py-1 text-[11px] font-bold focus:outline-none focus:border-[#003366]"
+          >
+            <option value="ALL">Todos os Docs</option>
+            <option value="FT">Faturas (FT)</option>
+            <option value="FR">Fatura-Recibo (FR)</option>
+            <option value="RC">Recibos (RC)</option>
+            <option value="NC">Nota de Crédito (NC)</option>
+            <option value="ND">Nota de Débito (ND)</option>
+          </select>
           <button
             type="button"
             onClick={loadContaCorrente}
-            className="px-3 py-1.5 bg-[#003366] hover:bg-[#002244] text-white rounded-none text-xs font-bold uppercase flex items-center gap-1.5 cursor-pointer"
+            className="px-2.5 py-1 bg-[#003366] hover:bg-[#002244] text-white rounded-none text-[11px] font-bold uppercase flex items-center gap-1 cursor-pointer"
           >
-            {loading ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
-            Pesquisar
+            {loading ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
+            Filtrar
           </button>
           <button
             type="button"
@@ -500,24 +497,24 @@ export const ContaCorrenteClienteView: React.FC<ContaCorrenteClienteViewProps> =
               setEndDate('');
               setDocTypeFilter('ALL');
             }}
-            className="px-2.5 py-1.5 border border-zinc-300 bg-white hover:bg-zinc-100 text-zinc-700 rounded-none text-xs font-bold flex items-center gap-1 cursor-pointer"
+            className="p-1 border border-zinc-300 bg-white hover:bg-zinc-100 text-zinc-700 rounded-none text-[11px]"
             title="Repor Filtros"
           >
-            <RefreshCw size={13} />
+            <RefreshCw size={12} />
           </button>
           <button
             type="button"
             onClick={handleExportCSV}
-            className="px-3 py-1.5 border border-zinc-300 bg-white hover:bg-zinc-100 text-zinc-800 rounded-none text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+            className="px-2.5 py-1 border border-zinc-300 bg-white hover:bg-zinc-100 text-zinc-800 rounded-none text-[11px] font-bold flex items-center gap-1 cursor-pointer"
           >
-            <FileSpreadsheet size={14} /> XLSX / CSV
+            <FileSpreadsheet size={12} /> CSV
           </button>
           <button
             type="button"
             onClick={() => window.print()}
-            className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-none text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+            className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded-none text-[11px] font-bold flex items-center gap-1 cursor-pointer"
           >
-            <Printer size={14} /> Imprimir PDF
+            <Printer size={12} /> PDF
           </button>
         </div>
       </div>

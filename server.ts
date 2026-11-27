@@ -4693,20 +4693,12 @@ app.use((req, res, next) => {
               currency: req.body.currency ?? existingDoc.detalhes?.currency,
               client_nif: req.body.client_nif ?? req.body.cliente_nif ?? existingDoc.detalhes?.client_nif,
               client_address: req.body.client_address ?? req.body.cliente_morada ?? req.body.cliente_endereco ?? existingDoc.detalhes?.client_address,
-<<<<<<< HEAD
-              work_site_id: req.body.work_site_id ?? existingDoc.detalhes?.work_site_id,
-              work_site_title: req.body.work_site_title ?? req.body.local_trabalho ?? existingDoc.detalhes?.work_site_title,
-              local_trabalho: req.body.local_trabalho ?? req.body.work_site_title ?? existingDoc.detalhes?.local_trabalho,
-              file_interno: req.body.file_interno ?? req.body.work_site_title ?? existingDoc.detalhes?.file_interno,
-              file_cliente: req.body.file_cliente ?? req.body.client_name ?? existingDoc.detalhes?.file_cliente
-=======
               work_site_id: reqWsId,
               local_trabalho_id: reqWsId,
               work_site_title: resolvedWsTitle,
               local_trabalho: resolvedWsTitle,
               service_location: req.body.service_location ?? existingDoc.detalhes?.service_location ?? null,
               service_date: req.body.service_date ?? existingDoc.detalhes?.service_date ?? null
->>>>>>> origin/main
             }
           };
 
@@ -5798,20 +5790,12 @@ app.use((req, res, next) => {
           documento_origem_id: req.body.documento_origem_id,
           client_nif: req.body.client_nif || req.body.cliente_nif,
           client_address: req.body.client_address || req.body.cliente_morada || req.body.cliente_endereco,
-<<<<<<< HEAD
-          work_site_id: req.body.work_site_id,
-          work_site_title: req.body.work_site_title || req.body.local_trabalho,
-          local_trabalho: req.body.local_trabalho || req.body.work_site_title,
-          file_interno: req.body.file_interno || req.body.work_site_title || req.body.local_trabalho || '',
-          file_cliente: req.body.file_cliente || req.body.client_name || req.body.cliente_nome || ''
-=======
           work_site_id: reqWorkSiteId,
           local_trabalho_id: reqWorkSiteId,
           work_site_title: resolvedWorkSiteTitle,
           local_trabalho: resolvedWorkSiteTitle,
           service_location: req.body.service_location || null,
           service_date: req.body.service_date || null
->>>>>>> origin/main
         },
         serie: seriesRef,
         ano: year,
@@ -8474,17 +8458,9 @@ app.use((req, res, next) => {
       }
     }
 
-<<<<<<< HEAD
-    const comp = companies.find(c => c.id === id);
-    if (comp) {
-      return res.json(comp);
-    }
-    return res.status(404).json({ error: "Empresa não encontrada" });
-=======
     const comp = companies.find(c => String(c.id) === String(id)) || null;
     if (!comp) return res.status(404).json({ error: "Empresa não encontrada." });
     res.json(comp);
->>>>>>> origin/main
   });
   app.put("/api/company/:id", (req, res) => {
     const id = req.params.id;

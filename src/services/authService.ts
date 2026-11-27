@@ -840,55 +840,15 @@ export const authService = {
         empresa = data;
       }
 
-      // Se perfil foi encontrado mas empresa não retornou (ex: restrição RLS na tabela empresas para não-proprietários)
-      if (perfil && parsedCompanyId && !empresa) {
-        console.log('[AuthService] Perfil identificado com empresa_id, resolvendo dados da empresa...');
-        empresa = {
-          id: parsedCompanyId,
-          nome_empresa: perfil.nome_empresa || perfil.company_name || 'Minha Empresa'
-        };
-      }
-
-      if (!perfil) {
-        console.warn('[AuthService] Perfil não encontrado via lookup simples. Tentando via lookup amplo em perfis...');
+      if (!perfil || !empresa) {
+        console.warn('[AuthService] Perfil ou empresa não encontrados via lookup simples. Tentando via lookup direto em empresas...');
         
-        // Tentativa 1: Buscar perfil por user_id ou id com todos os campos necessários
-        const { data: profileOnly } = await supabase
-          .from('perfis')
-          .select('*')
-          .or(`id.eq.${session?.user?.id},user_id.eq.${session?.user?.id}`)
-          .maybeSingle();
-
-        const resolvedCompId = profileOnly?.empresa_id || profileOnly?.company_id;
-        if (profileOnly && resolvedCompId) {
-          const { data: companyData } = await supabase
-            .from('empresas')
-            .select('*')
-            .eq('id', resolvedCompId)
-            .maybeSingle();
-
-          const activeComp = companyData || { id: resolvedCompId, nome_empresa: profileOnly.nome_empresa || 'Minha Empresa' };
-          
-          return {
-            id: session?.user?.id,
-            username: profileOnly.nome || profileOnly.username || activeComp.nome_empresa || session?.user?.email?.split('@')[0] || 'Usuário',
-            email: session?.user?.email || '',
-            empresa_id: resolvedCompId,
-            role: profileOnly.role || 'user',
-            is_admin: profileOnly.is_admin || profileOnly.role === 'admin' || false,
-            level: profileOnly.level || 1,
-            created_at: activeComp.created_at || session?.user?.created_at,
-            company: activeComp,
-            permission_areas: profileOnly.permission_areas || []
-          };
-        }
-
-        // Tentativa 2: Buscar empresa onde o utilizador é expressamente o proprietário (auth_user_id)
-        const pt3 = createTimeout(15000);
+        // Tentativa 1: Buscar empresa onde o utilizador é o dono
+        const pt3 = createTimeout(30000);
         const legacyQuery = supabase
           .from('empresas')
           .select('*')
-          .or(`auth_user_id.eq.${session?.user?.id},id.eq.${session?.user?.id}`)
+          .or(`id.eq.${session?.user?.id},auth_user_id.eq.${session?.user?.id}`)
           .maybeSingle();
           
         const { data: legacyEmpresa, error: legacyError } = await Promise.race([
@@ -905,7 +865,7 @@ export const authService = {
         if (legacyError) console.error('[AuthService] Erro no fallback legacy query:', legacyError);
 
         if (legacyEmpresa) {
-          console.log('[AuthService] Empresa proprietária encontrada via fallback:', legacyEmpresa.id);
+          console.log('[AuthService] Empresa encontrada via fallback:', legacyEmpresa.id);
           return {
             id: session?.user?.id,
             username: legacyEmpresa.nome_empresa || session?.user?.email?.split('@')[0] || 'Usuário',
@@ -914,18 +874,35 @@ export const authService = {
             role: 'admin',
             is_admin: true,
             level: 10,
-<<<<<<< HEAD
-=======
             permission_areas: null,
->>>>>>> origin/main
             created_at: legacyEmpresa.created_at || session?.user?.created_at,
-            company: legacyEmpresa,
-            permission_areas: []
+            company: legacyEmpresa
           };
         }
+
+        // Tentativa 2: Buscar QUALQUER perfil deste utilizador (caso o lookup anterior tenha falhado)
+        const { data: profileOnly } = await supabase.from('perfis').select('empresa_id, role, permission_areas, is_admin, level').eq('id', session?.user?.id).maybeSingle();
+        const fallbackCompanyId = profileOnly?.empresa_id;
+        if (fallbackCompanyId) {
+           const { data: companyOnly } = await supabase.from('empresas').select('*').eq('id', fallbackCompanyId).maybeSingle();
+           if (companyOnly) {
+              return {
+                id: session?.user?.id,
+                username: profileOnly.nome || profileOnly.username || companyOnly.nome_empresa || session?.user?.email?.split('@')[0] || 'Usuário',
+                email: session?.user?.email || '',
+                empresa_id: companyOnly.id,
+                role: profileOnly.role || 'user',
+                is_admin: profileOnly.is_admin || false,
+                level: profileOnly.level || 1,
+                created_at: companyOnly.created_at || session?.user?.created_at,
+                company: companyOnly,
+                permission_areas: profileOnly.permission_areas || []
+              };
+           }
+        }
         
-        console.error('[AuthService] Falha total na identificação do perfil/empresa para o user:', session?.user?.id);
-        return null;
+        console.error('[AuthService] Falha total na identificação da empresa para o user:', session?.user?.id);
+        return null; // Don't return a half-baked user if we can't find their company
       }
 
       return {

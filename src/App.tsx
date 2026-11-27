@@ -24,6 +24,7 @@ import CalculosImpostoModule from './components/accounting/CalculosImpostoModule
 import GestaoFinanceiraModule from './components/GestaoFinanceiraModule';
 import { PurchaseDocumentScannerModal } from './components/purchases/PurchaseDocumentScannerModal';
 import { GestaoComprasList, CompraDoc } from './components/purchases/GestaoComprasList';
+import { ListaOrdenadaDocModule } from './components/purchases/ListaOrdenadaDocModule';
 import { GestaoComprasForm } from './components/purchases/GestaoComprasForm';
 import { StockAtualModule } from './components/stock/StockAtualModule';
 import { StockProductPicker } from './components/stock/StockProductPicker';
@@ -656,32 +657,32 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack, employ
         </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-0 border border-zinc-200 divide-x divide-zinc-200">
-        <div className="p-8 bg-zinc-50/50">
-          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Facturado</p>
-          <p className="text-xl font-black text-[#003366]">{formatCurrency(totalInvoiced)}</p>
-          <div className="flex items-center gap-2 mt-2">
-            <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5">PAGO: {formatCurrency(totalPaid)}</span>
+      {/* Summary Cards — Compactos e Leves */}
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-0 border border-zinc-200 divide-x divide-zinc-200 text-xs">
+        <div className="p-4 bg-zinc-50/50">
+          <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Facturado</p>
+          <p className="text-base font-black text-[#003366]">{formatCurrency(totalInvoiced)}</p>
+          <div className="flex items-center gap-1 mt-1">
+            <span className="text-[8px] font-bold text-emerald-600 bg-emerald-50 px-1 py-0.2">PAGO: {formatCurrency(totalPaid)}</span>
           </div>
         </div>
-        <div className="p-8 bg-zinc-50/50">
-          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Anulados</p>
-          <p className="text-xl font-black text-red-400">{formatCurrency(totalVoided)}</p>
-          <p className="text-[9px] text-zinc-400 font-bold mt-1 uppercase tracking-tighter">S/ Impacto Financeiro</p>
+        <div className="p-4 bg-zinc-50/50">
+          <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Anulados</p>
+          <p className="text-base font-black text-red-400">{formatCurrency(totalVoided)}</p>
+          <p className="text-[8px] text-zinc-400 font-bold mt-0.5 uppercase tracking-tighter">S/ Impacto</p>
         </div>
-        <div className="p-8">
-          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Débito (Custos)</p>
-          <p className="text-xl font-black text-red-600">{formatCurrency(actualDebit)}</p>
+        <div className="p-4">
+          <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Débito (Custos)</p>
+          <p className="text-base font-black text-red-600">{formatCurrency(actualDebit)}</p>
         </div>
-        <div className="p-8">
-          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Crédito</p>
-          <p className="text-xl font-black text-emerald-600">{formatCurrency(actualCredit)}</p>
+        <div className="p-4">
+          <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Crédito</p>
+          <p className="text-base font-black text-emerald-600">{formatCurrency(actualCredit)}</p>
         </div>
-        <div className="p-8 bg-[#003366] text-white">
-          <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-2">Saldo Obra</p>
-          <p className="text-xl font-black">{formatCurrency(actualBalance)}</p>
-          <p className="text-[9px] text-white/40 mt-1 font-bold italic uppercase tracking-tighter">Pendente: {formatCurrency(totalPending)}</p>
+        <div className="p-4 bg-[#003366] text-white">
+          <p className="text-[9px] font-bold text-white/60 uppercase tracking-widest mb-1">Saldo Obra</p>
+          <p className="text-base font-black">{formatCurrency(actualBalance)}</p>
+          <p className="text-[8px] text-white/40 mt-0.5 font-bold uppercase tracking-tighter">Pendente: {formatCurrency(totalPending)}</p>
         </div>
       </div>
 
@@ -5736,7 +5737,7 @@ const HRModule = ({
                   <div className="flex justify-between items-start mb-8 border-b border-zinc-200 pb-6">
                     <div>
                       <h2 className="text-xl font-black text-[#003366] uppercase tracking-tighter">Procedimento de Processamento de Salário</h2>
-                      <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">{companyName || "Empresa"} - Recursos Humanos</p>
+                      <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Grupo TecnoSys - Recursos Humanos</p>
                     </div>
                     <div className="text-right text-[10px] font-bold uppercase">
                       <p>Data: {new Date().toLocaleDateString()}</p>
@@ -6550,7 +6551,7 @@ const HRModule = ({
                     <div className="flex items-center gap-3">
                       <div className="w-12 h-12 bg-[#003366] flex items-center justify-center text-white font-black text-xl">TS</div>
                       <div>
-                        <h1 className="text-2xl font-black text-[#003366] uppercase tracking-tighter">{companyName || "Empresa"}</h1>
+                        <h1 className="text-2xl font-black text-[#003366] uppercase tracking-tighter">Grupo TecnoSys</h1>
                         <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Soluções Tecnológicas & Gestão</p>
                       </div>
                     </div>
@@ -7717,7 +7718,7 @@ const HRModule = ({
                 <div className="min-w-[200px]">
                   <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Empresa:</label>
                   <select className="w-full border border-zinc-200 px-4 py-2 text-xs focus:outline-none focus:border-[#003366] font-bold text-[#003366]">
-                    <option>{companyName || "Empresa"}</option>
+                    <option>Grupo TecnoSys</option>
                   </select>
                 </div>
                 <div className="min-w-[200px]">
@@ -7974,7 +7975,7 @@ const HRModule = ({
                     <tbody className="divide-y divide-zinc-100">
                       <tr className="bg-zinc-50/80 text-[8.5px] font-black text-zinc-500 uppercase border-b border-zinc-200">
                         <td className="px-2 py-1.5 text-center"></td>
-                        <td className="px-2 py-1.5" colSpan={9}>Empresa: {companyName || "Empresa"} • Caixa: {selectedPaymentCaixa ? selectedPaymentCaixa.replace('_', ' ').toUpperCase() : 'NÃƒO SELECIONADO'}</td>
+                        <td className="px-2 py-1.5" colSpan={9}>Empresa: Grupo TecnoSys • Caixa: {selectedPaymentCaixa ? selectedPaymentCaixa.replace('_', ' ').toUpperCase() : 'NÃƒO SELECIONADO'}</td>
                       </tr>
                       {payrollFiltered.map(emp => {
                       const baseInputs = payrollInputs[`${emp.id}_${selectedMonth}`] || { 
@@ -11667,12 +11668,12 @@ const HRModule = ({
               <div className="flex justify-between items-start mb-8 border-b-2 border-[#003366] pb-6">
                 <div className="flex items-center gap-4">
                   <div className="w-16 h-16 bg-[#003366] flex items-center justify-center text-white font-black text-2xl">
-                    {(companyData?.name || companyData?.nome_empresa || companyName || companyName || "").substring(0, 2).toUpperCase()}
+                    {(companyData?.name || companyData?.nome_empresa || companyName || "Grupo TecnoSys").substring(0, 2).toUpperCase()}
                   </div>
                   <div>
                     <h1 className="text-xl font-black text-[#003366] uppercase tracking-tighter">{companyData?.name || companyData?.nome_empresa || companyName || "Grupo TecnoSys"}</h1>
                     <p className="text-[10px] text-zinc-500 uppercase font-bold">{companyData?.activity || companyData?.regime || "Soluções Tecnológicas Integradas"}</p>
-                    <p className="text-[9px] text-zinc-400 mt-1">{companyData?.address || companyData?.localizacao || "Luanda, Angola"} • NIF: {companyData?.nif || companyNif || ""}</p>
+                    <p className="text-[9px] text-zinc-400 mt-1">{companyData?.address || companyData?.localizacao || "Luanda, Angola"} • NIF: {companyData?.nif || "5417283940"}</p>
                   </div>
                 </div>
                 <div className="text-right">
@@ -26726,9 +26727,6 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
 
     const currentEmpresaId = user?.empresa_id || user?.company_id || '11111111-0000-0000-0000-000000000001';
 
-    const selectedWorkSite = (workSites || []).find(ws => String(ws.id) === String(workSiteId));
-    const workSiteTitle = selectedWorkSite?.title || selectedWorkSite?.name || '';
-
     const res = await fetchWithAuth(url, {
       method,
       headers: { 
@@ -26743,9 +26741,6 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
         items,
         document_type: documentType,
         work_site_id: workSiteId,
-        work_site_title: workSiteTitle,
-        local_trabalho: workSiteTitle,
-        file_interno: workSiteTitle,
         vat_withholding: parseFloat(vatWithholding),
         exchange_rate: parseFloat(exchangeRate),
         currency,
@@ -29263,8 +29258,9 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
     { id: 'historico', label: 'Gestão de Compras', icon: History },
     { id: 'pendentes', label: 'Compras Pendentes', icon: Clock },
     { id: 'fornecedores', label: 'Fornecedores', icon: Users },
+    { id: 'lista_ordenada', label: 'Lista Ordenada de Doc', icon: FileText },
     { id: 'lista_documentos', label: 'Lista de Documentos Compras', icon: FileText },
-    { id: 'antiguidades', label: 'Antiguidades de DÃ­vidas', icon: FileClock },
+    { id: 'antiguidades', label: 'Antiguidades de Dívidas', icon: FileClock },
     { id: 'movimentos', label: 'Contas Correntes Fornecedores', icon: ArrowRightLeft },
     { id: 'relatorio_compras', label: 'Relatório da Gestão de Compras', icon: FileSpreadsheet },
   ];
@@ -29305,6 +29301,35 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
           </button>
         ))}
       </div>
+
+      {activeSubTab === 'lista_ordenada' && (
+        <ListaOrdenadaDocModule
+          purchases={purchases}
+          suppliers={suppliers}
+          companyData={companyData}
+          fiscalYear={fiscalYear}
+          onRefresh={() => fetchPurchases()}
+          onViewPurchase={(doc) => {
+            supabase
+              .from('compras')
+              .select('*')
+              .eq('id', doc.id)
+              .single()
+              .then(({ data, error }) => {
+                if (error || !data) {
+                  toast.error('Erro ao carregar dados detalhados.');
+                  return;
+                }
+                const normalized = {
+                  ...data,
+                  supplier_name: data.fornecedor_nome || data.supplier_name || 'Fornecedor',
+                  items: typeof data.itens === 'string' ? JSON.parse(data.itens) : (data.itens || data.items || [])
+                };
+                setShowReportModal(normalized);
+              });
+          }}
+        />
+      )}
 
       {activeSubTab === 'historico' && (
         <GestaoComprasList
@@ -33690,9 +33715,9 @@ export default function App() {
   const setFiscalYear = (year: string | number) => {
     setContextFiscalYear(year);
   };
-  const [companyName, setCompanyName] = useState('');
-  const [companyNif, setCompanyNif] = useState('');
-  const [companyAddress, setCompanyAddress] = useState('');
+  const [companyName, setCompanyName] = useState('Empresa');
+  const [companyNif, setCompanyNif] = useState('500123456');
+  const [companyAddress, setCompanyAddress] = useState('EndereÃ§o da Empresa');
   const [companyLogo, setCompanyLogo] = useState('');
   const [companyFooter, setCompanyFooter] = useState('Processado por computador');
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -33812,21 +33837,14 @@ export default function App() {
   const activeFetchDocYearRef = useRef<string>('');
 
   useEffect(() => {
-    // Com o AuthContext sincronizado, apenas iniciamos quando o utilizador E a sua empresa_id estiverem validados
-    if (user && user.empresa_id) {
-      console.log('[App] Utilizador autenticado detetado. Empresa:', user.empresa_id);
+    // Com o AuthContext sincronizado, apenas precisamos garantir que o App saiba quando pode começar
+    if (user !== undefined && user !== null) {
+      console.log('[App] Utilize autenticado detetado. Empresa:', user.empresa_id);
       setAuthReady(true);
     } else if (user === null) {
-<<<<<<< HEAD
-      console.log('[App] Utilizador não autenticado. Limpando estado da empresa.');
-=======
       console.log('[App] Utilizador não autenticado.');
       clearTenantCache();
->>>>>>> origin/main
       setAuthReady(false);
-      setCompanyData(null);
-      setCompanyName('');
-      setCompanyNif('');
     }
   }, [user]);
 
@@ -34843,7 +34861,7 @@ export default function App() {
         const { data: profileCheck, error: profileErr } = await supabase
           .from('perfis')
           .select('empresa_id')
-          .or(`id.eq.${session?.user?.id},user_id.eq.${session?.user?.id}`)
+          .eq('id', session?.user?.id)
           .maybeSingle();
         
         if (profileErr) console.error('[DEBUG-SYNC] Erro ao buscar perfil:', profileErr);
@@ -34852,9 +34870,9 @@ export default function App() {
 
       if (!targetCompanyId && session?.user?.id) {
         console.error('[DEBUG-SYNC] ERRO CRÃTICO: Não foi possível determinar o Tenant ID do utilizador.');
-        console.warn('[DEBUG-SYNC] Tenant ID ausente. Abortando carregamento para garantir isolamento multiempresa.');
-        return;
-
+        // Tentativa de Ãºltimo recurso via conta Ã³rfÃ£ (o user ID como empresa_id)
+        targetCompanyId = session?.user?.id;
+        console.warn('[DEBUG-SYNC] Usando UserID as fallback de EmpresaID:', targetCompanyId);
       }
 
       console.log('[DEBUG-SYNC] Sincronizando dados para o Tenant:', targetCompanyId);
@@ -35084,10 +35102,10 @@ export default function App() {
       // setPurchases(Array.isArray(pur) ? pur : []); // DO NOT OVERWRITE SUPABASE DATA
       // setStockMovements(Array.isArray(sm) ? sm : []); // DO NOT OVERWRITE SUPABASE DATA
       
-      if (!compSupabase && comp && (String(comp.id) === String(targetCompanyId) || String(comp.empresa_id) === String(targetCompanyId))) {
+      if (!compSupabase && comp) {
         setCompanyData(comp);
-        setCompanyName(comp.nome_empresa || comp.name || '');
-        setCompanyNif(comp.nif || '');
+        setCompanyName(comp.nome_empresa || comp.name || 'Empresa');
+        setCompanyNif(comp.nif || '500123456');
         setCompanyAddress(comp.localizacao || comp.address || 'EndereÃ§o da Empresa');
         setCompanyLogo(comp.logo_url || comp.logo || '');
         setCompanyFooter(comp.footer_image_url || comp.footer || 'Processado por computador');

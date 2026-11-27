@@ -4265,7 +4265,12 @@ app.use((req, res, next) => {
               exchange_rate: req.body.exchange_rate ?? existingDoc.detalhes?.exchange_rate,
               currency: req.body.currency ?? existingDoc.detalhes?.currency,
               client_nif: req.body.client_nif ?? req.body.cliente_nif ?? existingDoc.detalhes?.client_nif,
-              client_address: req.body.client_address ?? req.body.cliente_morada ?? req.body.cliente_endereco ?? existingDoc.detalhes?.client_address
+              client_address: req.body.client_address ?? req.body.cliente_morada ?? req.body.cliente_endereco ?? existingDoc.detalhes?.client_address,
+              work_site_id: req.body.work_site_id ?? existingDoc.detalhes?.work_site_id,
+              work_site_title: req.body.work_site_title ?? req.body.local_trabalho ?? existingDoc.detalhes?.work_site_title,
+              local_trabalho: req.body.local_trabalho ?? req.body.work_site_title ?? existingDoc.detalhes?.local_trabalho,
+              file_interno: req.body.file_interno ?? req.body.work_site_title ?? existingDoc.detalhes?.file_interno,
+              file_cliente: req.body.file_cliente ?? req.body.client_name ?? existingDoc.detalhes?.file_cliente
             }
           };
 
@@ -5350,7 +5355,12 @@ app.use((req, res, next) => {
           currency: req.body.currency,
           documento_origem_id: req.body.documento_origem_id,
           client_nif: req.body.client_nif || req.body.cliente_nif,
-          client_address: req.body.client_address || req.body.cliente_morada || req.body.cliente_endereco
+          client_address: req.body.client_address || req.body.cliente_morada || req.body.cliente_endereco,
+          work_site_id: req.body.work_site_id,
+          work_site_title: req.body.work_site_title || req.body.local_trabalho,
+          local_trabalho: req.body.local_trabalho || req.body.work_site_title,
+          file_interno: req.body.file_interno || req.body.work_site_title || req.body.local_trabalho || '',
+          file_cliente: req.body.file_cliente || req.body.client_name || req.body.cliente_nome || ''
         },
         serie: seriesRef,
         ano: year,
@@ -7876,8 +7886,11 @@ app.use((req, res, next) => {
       }
     }
 
-    const comp = companies.find(c => c.id === id) || companies[0];
-    res.json(comp);
+    const comp = companies.find(c => c.id === id);
+    if (comp) {
+      return res.json(comp);
+    }
+    return res.status(404).json({ error: "Empresa não encontrada" });
   });
   app.put("/api/company/:id", (req, res) => {
     const id = req.params.id;

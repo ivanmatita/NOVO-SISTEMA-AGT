@@ -12,17 +12,19 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
   const { user, loading } = useAuth();
   const [showHelper, setShowHelper] = useState(false);
 
+  const isSyncing = loading || (user && !user.empresa_id);
+
   useEffect(() => {
     let timer: any;
-    if (loading) {
+    if (isSyncing) {
       timer = setTimeout(() => {
         setShowHelper(true);
       }, 5000); // Show helper if loading more than 5s
     }
     return () => clearTimeout(timer);
-  }, [loading]);
+  }, [isSyncing]);
 
-  if (loading) {
+  if (isSyncing) {
     return (
       <div className="min-h-screen bg-zinc-50 flex items-center justify-center p-6 text-center">
         <div className="flex flex-col items-center gap-4 max-w-sm">

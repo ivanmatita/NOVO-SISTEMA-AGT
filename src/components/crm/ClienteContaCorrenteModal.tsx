@@ -79,6 +79,7 @@ export const ClienteContaCorrenteModal: React.FC<ClienteContaCorrenteModalProps>
   const [dataFim, setDataFim] = useState<string>(() => new Date().toISOString().split('T')[0]);
   const [filtroDescricao, setFiltroDescricao] = useState<string>('');
   const [rawMovimentos, setRawMovimentos] = useState<any[]>([]);
+  const [locaisTrabalhoMap, setLocaisTrabalhoMap] = useState<Record<string, string>>({});
   const printRef = useRef<HTMLDivElement>(null);
 
   const clienteNome = cliente?.nome || cliente?.nome_empresa || 'Cliente';
@@ -147,6 +148,24 @@ export const ClienteContaCorrenteModal: React.FC<ClienteContaCorrenteModalProps>
       }
 
       let { data: docs, error } = await query;
+      // Buscar locais de trabalho para resolver nomes reais a partir do banco de dados
+      try {
+        let locQuery = supabase.from('locais_trabalho').select('id, nome, client_id, client_name');
+        if (empresaId) locQuery = locQuery.eq('empresa_id', empresaId);
+        const { data: locaisData } = await locQuery;
+        if (locaisData && locaisData.length > 0) {
+          const map: Record<string, string> = {};
+          locaisData.forEach((loc: any) => {
+            if (loc.id && loc.nome) {
+              map[String(loc.id)] = loc.nome;
+            }
+          });
+          setLocaisTrabalhoMap(map);
+        }
+      } catch (locErr) {
+        console.warn('[ContaCorrente] Não foi possível carregar tabela locais_trabalho:', locErr);
+      }
+
 
       if (error) {
         console.warn('[ContaCorrente] Erro na query inicial, tentando fallback sem empresa_id:', error.message);
@@ -249,12 +268,24 @@ export const ClienteContaCorrenteModal: React.FC<ClienteContaCorrenteModalProps>
       const docNum = d.numero_documento || d.documento_formatado || d.numero_fiscal || `${tp} #${d.id}`;
       const docOrigem = d.numero_documento_origem || d.documento_origem_numero || d.detalhes?.documento_origem_id || '—';
 
+      // Resolver nome do Local de Trabalho selecionado / vinculado no banco de dados
+      const workSiteId = d.detalhes?.work_site_id || d.work_site_id || d.detalhes?.centro_custo_id || d.local_trabalho_id;
+      const resolvedFromMap = workSiteId ? locaisTrabalhoMap[String(workSiteId)] : '';
+
+      const rawFileInterno = d.detalhes?.file_interno || d.detalhes?.local_trabalho || d.detalhes?.work_site_title || d.work_site_title || d.local_trabalho || resolvedFromMap || '';
+      // Garantir que NUNCA apareça "Obra Generica"
+      const cleanFileInterno = (rawFileInterno && !rawFileInterno.toLowerCase().includes('obra generica')) 
+        ? rawFileInterno 
+        : (resolvedFromMap || cliente?.nome || clienteNome || 'Sede');
+
+      const rawFileCliente = d.detalhes?.file_cliente || d.cliente_nome || clienteNome || '—';
+
       return {
         id: String(d.id),
         dataValor: dataFmt,
         dataDocumento: dataFmt,
-        fileInterno: d.detalhes?.file_interno || 'Obra Generica',
-        fileCliente: d.detalhes?.file_cliente || '—',
+        fileInterno: cleanFileInterno,
+        fileCliente: rawFileCliente,
         urn: '',
         endService: '',
         docNumero: docNum,
@@ -266,7 +297,7 @@ export const ClienteContaCorrenteModal: React.FC<ClienteContaCorrenteModalProps>
         saldo: runningSaldo
       };
     });
-  }, [rawMovimentos, cliente?.saldo_inicial]);
+  }, [rawMovimentos, cliente?.saldo_inicial, locaisTrabalhoMap, clienteNome, cliente?.nome]);
 
   // Filtrar movimentos por intervalo de datas e pesquisa textual
   const movimentosFiltrados = useMemo(() => {

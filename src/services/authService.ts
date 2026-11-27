@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import { supabase, supabaseStatus } from '../lib/supabase';
 import { User } from '../types';
 import { clearTenantCache } from '../lib/tenantDataLoader';
 
@@ -35,11 +35,75 @@ async function safeApiFetch(url: string, options: RequestInit = {}, maxAttempts 
 
 const FALLBACK_SESSION_KEY = 'imatec_fallback_session';
 
+function decodeJwtExpMs(token: string): number | null {
+  try {
+    if (!token || typeof token !== 'string') return null;
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+    const json = typeof atob === 'function' ? atob(padded) : '';
+    if (!json) return null;
+    const payload = JSON.parse(json);
+    if (typeof payload?.exp === 'number' && isFinite(payload.exp)) {
+      return payload.exp * 1000;
+    }
+  } catch {}
+  return null;
+}
+
+function getSessionExpiryMs(session: any): number | null {
+  if (!session) return null;
+  if (session.expires_at !== undefined && session.expires_at !== null) {
+    const num = Number(session.expires_at);
+    if (!isNaN(num) && num > 0) {
+      return num < 1e12 ? num * 1000 : num;
+    }
+  }
+  return decodeJwtExpMs(session.access_token);
+}
+
+function isSessionStrictlyValid(session: any, minRemainingMs = 0): boolean {
+  const token = session?.access_token;
+  if (!token || typeof token !== 'string' || token === 'undefined' || token === 'null') return false;
+  if (token.split('.').length !== 3) return false;
+  const expMs = getSessionExpiryMs(session);
+  if (expMs !== null && expMs <= Date.now() + minRemainingMs) {
+    return false;
+  }
+  return true;
+}
+
+function getSupabaseStorageKey(): string | null {
+  try {
+    const url = supabaseStatus?.url || '';
+    const match = url.match(/^https?:\/\/([a-z0-9-]+)\.supabase\.co/i);
+    if (match?.[1]) {
+      return `sb-${match[1]}-auth-token`;
+    }
+  } catch {}
+  return null;
+}
+
+function readSupabaseStoredSession(): any {
+  try {
+    if (typeof localStorage === 'undefined') return null;
+    const storageKey = getSupabaseStorageKey();
+    if (!storageKey) return null;
+    const raw = localStorage.getItem(storageKey);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed?.access_token) return parsed;
+    if (parsed?.currentSession?.access_token) return parsed.currentSession;
+  } catch {}
+  return null;
+}
+
 function saveFallbackSession(session: any) {
-  sessionCache = session;
+  sessionCache = session && isSessionStrictlyValid(session, 0) ? session : null;
   try {
     if (typeof sessionStorage !== 'undefined') {
-      if (session?.access_token) {
+      if (session?.access_token && isSessionStrictlyValid(session, 0)) {
         sessionStorage.setItem(FALLBACK_SESSION_KEY, JSON.stringify(session));
       } else {
         sessionStorage.removeItem(FALLBACK_SESSION_KEY);
@@ -49,18 +113,14 @@ function saveFallbackSession(session: any) {
 }
 
 function getFallbackSession(): any {
-  const isNotExpired = (s: any) => {
-    if (!s?.access_token) return false;
-    if (s.expires_at && Number(s.expires_at) * 1000 < Date.now() - 5000) return false;
-    return true;
-  };
-  if (isNotExpired(sessionCache)) return sessionCache;
+  if (isSessionStrictlyValid(sessionCache, 5000)) return sessionCache;
+  sessionCache = null;
   try {
     if (typeof sessionStorage !== 'undefined') {
       const raw = sessionStorage.getItem(FALLBACK_SESSION_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (isNotExpired(parsed)) {
+        if (isSessionStrictlyValid(parsed, 5000)) {
           sessionCache = parsed;
           return parsed;
         }
@@ -71,47 +131,209 @@ function getFallbackSession(): any {
   return null;
 }
 
+let inFlightSessionPromise: Promise<any> | null = null;
+let inFlightRefreshPromise: Promise<any> | null = null;
+
+function readStoredFallbackRaw(): any {
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      const raw = sessionStorage.getItem(FALLBACK_SESSION_KEY);
+      if (raw) return JSON.parse(raw);
+    }
+  } catch {}
+  return sessionCache || null;
+}
+
+async function clearDeadLocalSession() {
+  saveFallbackSession(null);
+  try {
+    await Promise.race([
+      supabase.auth.signOut({ scope: 'local' } as any),
+      new Promise(r => setTimeout(r, 2000))
+    ]);
+  } catch {}
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const storageKey = getSupabaseStorageKey();
+      if (storageKey) {
+        const raw = localStorage.getItem(storageKey);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          const sess = parsed?.access_token ? parsed : parsed?.currentSession;
+          if (!isSessionStrictlyValid(sess, 0)) {
+            localStorage.removeItem(storageKey);
+          }
+        }
+      }
+    }
+  } catch {}
+}
+
 export const authService = {
+  async refreshSessionSafe(): Promise<any> {
+    if (inFlightRefreshPromise) {
+      return inFlightRefreshPromise;
+    }
+
+    inFlightRefreshPromise = (async () => {
+      try {
+        // Prefer GoTrue's own rotated refresh_token from localStorage; only pass explicit
+        // refresh_token if GoTrue storage has no refresh_token at all.
+        const supaStored = readSupabaseStoredSession();
+        const fallbackRaw = readStoredFallbackRaw();
+        const useNoArgRefresh = Boolean(supaStored?.refresh_token);
+        const refreshArg = !useNoArgRefresh && fallbackRaw?.refresh_token
+          ? { refresh_token: fallbackRaw.refresh_token }
+          : undefined;
+
+        let timeoutId: any;
+        const timeoutPromise = new Promise((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error('Timeout on refreshSession')), 12000);
+        });
+        timeoutPromise.catch(() => {});
+
+        const refreshPromise = refreshArg
+          ? (supabase.auth.refreshSession as any)(refreshArg)
+          : supabase.auth.refreshSession();
+
+        const { data, error } = await Promise.race([
+          refreshPromise.then((r: any) => {
+            clearTimeout(timeoutId);
+            return r;
+          }),
+          timeoutPromise
+        ]) as any;
+
+        if (!error && data?.session && isSessionStrictlyValid(data.session, 5000)) {
+          saveFallbackSession(data.session);
+          return data.session;
+        }
+
+        const msg = String(error?.message || '').toLowerCase();
+        const status = Number(error?.status || 0);
+        const isHardAuthFailure =
+          status === 400 ||
+          status === 401 ||
+          status === 403 ||
+          msg.includes('invalid') ||
+          msg.includes('expired') ||
+          msg.includes('revoked') ||
+          msg.includes('already used') ||
+          msg.includes('not found') ||
+          msg.includes('session missing');
+
+        if (isHardAuthFailure) {
+          await clearDeadLocalSession();
+        }
+        return null;
+      } catch (err) {
+        console.warn('[AuthService] Erro ao renovar sessão:', err);
+        return null;
+      } finally {
+        inFlightRefreshPromise = null;
+      }
+    })();
+
+    return inFlightRefreshPromise;
+  },
+
   async getSessionSafe() {
-    if (sessionLoading) {
-      // Pequeno delay para evitar múltiplas chamadas simultâneas se já estiver a carregar
-      await new Promise(r => setTimeout(r, 200));
+    // Fast-path: return strictly valid cached session immediately to avoid parallel Supabase auth lock contention
+    if (isSessionStrictlyValid(sessionCache, 60000)) {
+      return sessionCache;
+    }
+
+    if (inFlightSessionPromise) {
+      return inFlightSessionPromise;
     }
 
     sessionLoading = true;
-    try {
-      let timeoutId: any;
-      const timeoutPromise = new Promise((_, reject) => {
-        timeoutId = setTimeout(() => reject(new Error('Timeout on getSession')), 15000);
-      });
-      timeoutPromise.catch(() => {}); // Prevent unhandled promise rejection
-      const getSessionPromise = supabase.auth.getSession();
-      
-      const res = await Promise.race([
-        getSessionPromise.then(res => {
-          clearTimeout(timeoutId);
-          return res;
-        }), 
-        timeoutPromise
-      ]) as any;
-      
-      if (res.error) {
-        console.error('Error getting session:', res.error);
-        return getFallbackSession();
+    inFlightSessionPromise = (async () => {
+      try {
+        let timeoutId: any;
+        const timeoutPromise = new Promise((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error('Timeout on getSession')), 10000);
+        });
+        timeoutPromise.catch(() => {}); // Prevent unhandled promise rejection
+        const getSessionPromise = supabase.auth.getSession();
+
+        const res = await Promise.race([
+          getSessionPromise.then(r => {
+            clearTimeout(timeoutId);
+            return r;
+          }),
+          timeoutPromise
+        ]) as any;
+
+        if (res?.error) {
+          console.warn('[AuthService] getSession returned error:', res.error?.message || res.error);
+          const fb = getFallbackSession();
+          if (fb) return fb;
+          const supaStored = readSupabaseStoredSession();
+          if (isSessionStrictlyValid(supaStored, 10000)) {
+            saveFallbackSession(supaStored);
+            return supaStored;
+          }
+          if (supaStored?.refresh_token || readStoredFallbackRaw()?.refresh_token) {
+            return await this.refreshSessionSafe();
+          }
+          return null;
+        }
+
+        const session = res?.data?.session;
+        if (session?.access_token) {
+          if (isSessionStrictlyValid(session, 60000)) {
+            saveFallbackSession(session);
+            return session;
+          }
+          if (session.refresh_token) {
+            const refreshed = await this.refreshSessionSafe();
+            if (refreshed?.access_token) return refreshed;
+          }
+          // Only preserve if the token is genuinely still valid right now
+          if (isSessionStrictlyValid(session, 5000)) {
+            saveFallbackSession(session);
+            return session;
+          }
+          // Token is expired and refresh failed: do NOT leak expired JWTs to callers
+          await clearDeadLocalSession();
+          return null;
+        }
+
+        const fb = getFallbackSession();
+        if (fb) return fb;
+
+        const supaStored = readSupabaseStoredSession();
+        if (isSessionStrictlyValid(supaStored, 10000)) {
+          saveFallbackSession(supaStored);
+          return supaStored;
+        }
+
+        if (supaStored?.refresh_token || readStoredFallbackRaw()?.refresh_token) {
+          const refreshed = await this.refreshSessionSafe();
+          if (refreshed?.access_token) return refreshed;
+        }
+        return null;
+      } catch (err) {
+        console.warn('[AuthService] getSessionSafe timeout/recovery:', (err as any)?.message || err);
+        const fb = getFallbackSession();
+        if (fb) return fb;
+        const supaStored = readSupabaseStoredSession();
+        if (isSessionStrictlyValid(supaStored, 10000)) {
+          saveFallbackSession(supaStored);
+          return supaStored;
+        }
+        if (supaStored?.refresh_token || readStoredFallbackRaw()?.refresh_token) {
+          return await this.refreshSessionSafe();
+        }
+        return null;
+      } finally {
+        sessionLoading = false;
+        inFlightSessionPromise = null;
       }
-      
-      const session = res.data.session;
-      if (session) {
-        sessionCache = session;
-        return session;
-      }
-      return getFallbackSession();
-    } catch (err) {
-      console.error('getSessionSafe timeout/error:', err);
-      return getFallbackSession();
-    } finally {
-      sessionLoading = false;
-    }
+    })();
+
+    return inFlightSessionPromise;
   },
 
   async registerCompany(formData: any): Promise<User> {
@@ -256,8 +478,7 @@ export const authService = {
 
       // Validação Estrita de Bloqueio de Acesso
       if (perfil && (perfil.ativo === false || perfil.is_active === false)) {
-        await supabase.auth.signOut();
-        sessionCache = null;
+        await clearDeadLocalSession();
         throw new Error("O seu acesso foi bloqueado. Contacte o administrador da sua empresa para obter mais informações.");
       }
 
@@ -291,7 +512,7 @@ export const authService = {
               const repairResult = await repairResponse.json();
               if (repairResult.success) {
                 console.log('[AuthService] Onboarding reparado com sucesso pelo servidor:', repairResult.message);
-                sessionCache = session;
+                saveFallbackSession(session);
                 const repairedUser = await this.getCurrentUser();
                 if (repairedUser) return repairedUser;
               }
@@ -442,34 +663,49 @@ export const authService = {
   async _doGetCurrentUser(): Promise<User | null> {
     try {
       const session = await this.getSessionSafe();
-      if (!session) {
-        console.log('[AuthService] Nenhuma sessão encontrada em getCurrentUser.');
+      if (!session || !isSessionStrictlyValid(session, 0)) {
+        console.log('[AuthService] Nenhuma sessão válida encontrada em getCurrentUser.');
         return null;
       }
 
       console.log('[AuthService] Recuperando perfil para o utilizador:', session?.user?.id);
 
       // Try fetching via backend API to bypass RLS recursion timeouts
+      let allowDirectSupabaseFallback = false;
       try {
-        const token = session.access_token;
-        const res = await fetch('/api/auth/me', {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-        
+        const fetchMe = async (bearer: string) =>
+          fetch('/api/auth/me', {
+            headers: { 'Authorization': `Bearer ${bearer}` }
+          });
+
+        let token = session.access_token;
+        let res = await fetchMe(token);
+
         if (res.status === 401) {
-          saveFallbackSession(null);
+          const refreshed = await this.refreshSessionSafe();
+          if (refreshed?.access_token && isSessionStrictlyValid(refreshed, 0)) {
+            token = refreshed.access_token;
+            res = await fetchMe(token);
+          } else {
+            await clearDeadLocalSession();
+            return null;
+          }
+        }
+
+        if (res.status === 401) {
+          console.warn('[AuthService] /api/auth/me confirmou 401 após tentativa de refresh. Sessão encerrada localmente.');
+          await clearDeadLocalSession();
+          return null;
         }
 
         if (res.status === 403) {
           const errData = await res.json().catch(() => ({}));
           if (errData.error === 'CONTA_BLOQUEADA') {
             console.warn('[AuthService] Utilizador bloqueado detetado via API. Efetuando logout...');
-            await supabase.auth.signOut();
-            saveFallbackSession(null);
-            alert('O seu acesso foi bloqueado. Contacte o administrador da sua empresa para obter mais informações.');
-            window.location.reload();
+            await clearDeadLocalSession();
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('auth_account_blocked', { detail: errData.message }));
+            }
             return null;
           }
         }
@@ -512,9 +748,18 @@ export const authService = {
               level: perfil.level || (perfil.role === 'admin' ? 10 : 1)
             };
           }
+          allowDirectSupabaseFallback = true;
+        } else {
+          // Only allow direct fallback when /api/auth/me failed due to 404/5xx (NOT 401/403)
+          allowDirectSupabaseFallback = res.status === 404 || res.status >= 500;
         }
       } catch(e) {
         console.warn('[AuthService] Fallback to direct supabase query, API failed:', e);
+        allowDirectSupabaseFallback = true;
+      }
+
+      if (!allowDirectSupabaseFallback) {
+        return null;
       }
 
       const createTimeout = (ms: number) => {
@@ -556,13 +801,18 @@ export const authService = {
 
       if (error) {
         console.error('[AuthService] Erro ao recuperar perfil:', error);
+        const errCode = String(error?.code || '');
+        const errMsg = String(error?.message || '').toLowerCase();
+        if (errCode === 'PGRST301' || Number(error?.status) === 401 || errMsg.includes('jwt expired') || errMsg.includes('invalid jwt')) {
+          await clearDeadLocalSession();
+          return null;
+        }
       }
 
       // Se o perfil do utilizador foi desativado/bloqueado pelo CRM
       if (perfil && (perfil.ativo === false || perfil.is_active === false)) {
         console.warn('[AuthService] Utilizador com conta bloqueada detetado em getCurrentUser. Efetuando logout...');
-        await supabase.auth.signOut();
-        saveFallbackSession(null);
+        await clearDeadLocalSession();
         return null;
       }
 
@@ -622,6 +872,9 @@ export const authService = {
             email: session?.user?.email || '',
             empresa_id: legacyEmpresa.id,
             role: 'admin',
+            is_admin: true,
+            level: 10,
+            permission_areas: null,
             created_at: legacyEmpresa.created_at || session?.user?.created_at,
             company: legacyEmpresa
           };
@@ -727,10 +980,19 @@ export const authService = {
     return supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_OUT') {
         saveFallbackSession(null);
-      } else if (session) {
-        sessionCache = session;
+        callback(event, null);
+        return;
       }
-      callback(event, session || getFallbackSession());
+
+      if (session?.access_token && isSessionStrictlyValid(session, 0)) {
+        saveFallbackSession(session);
+        callback(event, session);
+        return;
+      }
+
+      // Do not propagate expired tokens or revive expired fallback sessions
+      const validFallback = getFallbackSession();
+      callback(event, isSessionStrictlyValid(validFallback, 5000) ? validFallback : null);
     });
   }
 };

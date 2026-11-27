@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import { supabase, createEphemeralAuthClient } from '../lib/supabase';
 import { SystemUser } from '../types';
 import { authService } from './authService';
 
@@ -171,15 +171,18 @@ export const systemUsersService = {
       const isAdm = Boolean(payload.is_admin);
       const cleanEmail = payload.email.trim().toLowerCase();
 
-      // 1. Tentar criar no Supabase Auth via cliente
+      // 1. Tentar criar no Supabase Auth via cliente efêmero (não substitui a sessão do administrador logado)
       let userId: string | null = null;
-      const { data: authData, error: authErr } = await supabase.auth.signUp({
-        email: cleanEmail,
-        password: payload.password,
-        options: {
-          data: { full_name: payload.name.trim() }
-        }
-      });
+      const ephemeralClient = createEphemeralAuthClient();
+      const { data: authData, error: authErr } = ephemeralClient
+        ? await ephemeralClient.auth.signUp({
+            email: cleanEmail,
+            password: payload.password,
+            options: {
+              data: { full_name: payload.name.trim() }
+            }
+          })
+        : { data: null, error: new Error('Supabase não configurado') };
 
       if (!authErr && authData?.user?.id) {
         userId = authData.user.id;

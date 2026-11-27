@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { realtimeManager } from '../lib/realtimeManager';
+import { fetchWithAuth } from '../lib/fetchWithAuth';
 import toast, { Toaster } from 'react-hot-toast';
 
 export interface Metric {
@@ -20,6 +21,19 @@ export interface Metric {
 export const fetchMetrics = async (empresaId: string) => {
   if (!empresaId) return [];
   try {
+    const res = await fetchWithAuth(`/api/metrics?empresa_id=${encodeURIComponent(empresaId)}`);
+    if (res.ok) {
+      const apiData = await res.json();
+      if (Array.isArray(apiData)) {
+        return apiData.map((m: any) => ({
+          ...m,
+          sigla: m.sigla || '---',
+          descricao: m.descricao || m.description || '',
+          observacoes: m.observacoes || ''
+        }));
+      }
+    }
+
     const { data, error } = await supabase
       .from('metrics')
       .select('*')

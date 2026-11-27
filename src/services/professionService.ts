@@ -44,7 +44,7 @@ export const professionService = {
 
     // 2. Fallback resiliente para a API serverless segura com service_role
     try {
-      const session = await authService.getSessionSafe() || (await supabase.auth.getSession())?.data?.session;
+      const session = await authService.getSessionSafe();
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (session?.access_token) {
         headers['Authorization'] = `Bearer ${session.access_token}`;
@@ -115,7 +115,7 @@ export const professionService = {
     } catch (err) {
       console.warn('[ProfessionService] Falha na gravação direta, usando fallback serverless seguro:', err);
       try {
-        const session = (await supabase.auth.getSession())?.data?.session;
+        const session = await authService.getSessionSafe();
         const headers: Record<string, string> = { 'Content-Type': 'application/json' };
         if (session?.access_token) {
           headers['Authorization'] = `Bearer ${session.access_token}`;
@@ -158,7 +158,7 @@ export const professionService = {
     } catch (err) {
       console.warn('[ProfessionService] Falha na exclusão direta, usando fallback API segura:', err);
       try {
-        const session = (await supabase.auth.getSession())?.data?.session;
+        const session = await authService.getSessionSafe();
         const headers: Record<string, string> = { 'Content-Type': 'application/json' };
         if (session?.access_token) {
           headers['Authorization'] = `Bearer ${session.access_token}`;

@@ -1,5 +1,4 @@
-import { supabase } from '../lib/supabase';
-import { authService } from './authService';
+import { fetchWithAuth } from '../lib/fetchWithAuth';
 
 export interface Cliente {
   id?: number | string;
@@ -26,50 +25,12 @@ export interface Cliente {
   updated_at?: string;
 }
 
-async function getToken(): Promise<string> {
-  try {
-    const session = await authService.getSessionSafe();
-    if (session?.access_token) return session.access_token;
-  } catch (e) {}
-
-  try {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session?.access_token) return session.access_token;
-  } catch (e) {}
-
-  if (typeof window !== 'undefined') {
-    try {
-      const fb = sessionStorage.getItem('imatec_fallback_session');
-      if (fb) {
-        const parsed = JSON.parse(fb);
-        if (parsed?.access_token) return parsed.access_token;
-      }
-    } catch (e) {}
-
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && (key.startsWith('sb-') || key.includes('auth-token'))) {
-        try {
-          const item = JSON.parse(localStorage.getItem(key) || '{}');
-          if (item?.access_token) return item.access_token;
-          if (item?.currentSession?.access_token) return item.currentSession.access_token;
-        } catch (e) {}
-      }
-    }
-  }
-  return '';
-}
-
 export const clienteService = {
   async getClientes(_empresa_id?: string): Promise<Cliente[]> {
     try {
-      const token = await getToken();
-      const headers: Record<string, string> = {};
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-
       // SEGURANÇA: empresa_id nunca enviado pelo frontend — API usa exclusivamente a sessão JWT
       const url = '/api/secure-clientes';
-      const response = await fetch(url, { headers });
+      const response = await fetchWithAuth(url);
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
         console.warn('[ClienteService] Resposta da API:', response.status, err);
@@ -81,7 +42,6 @@ export const clienteService = {
       return Array.isArray(data) ? data : (data.data || []);
     } catch (err: any) {
       console.error('[ClienteService] Erro ao listar clientes:', err);
-      // Fallback seguro de cache com chave isolada por empresa
       try {
         if (_empresa_id) {
           const cached = localStorage.getItem(`clientes_backup_${_empresa_id}`);
@@ -98,13 +58,9 @@ export const clienteService = {
    */
   async checkNIFDuplicate(nif: string, excludeId?: string | number): Promise<{ exists: boolean; cliente?: any }> {
     try {
-      const token = await getToken();
-      const headers: Record<string, string> = {};
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-
       const params = new URLSearchParams({ nif });
       if (excludeId) params.set('excludeId', String(excludeId));
-      const response = await fetch(`/api/secure-clientes/check-nif?${params}`, { headers });
+      const response = await fetchWithAuth(`/api/secure-clientes/check-nif?${params}`);
       if (!response.ok) return { exists: false };
       return await response.json();
     } catch {
@@ -114,9 +70,7 @@ export const clienteService = {
 
   async createCliente(cliente: Omit<Cliente, 'id'>): Promise<Cliente> {
     try {
-      const token = await getToken();
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
 
       // ── Verificação antecipada de NIF no frontend ──
       const nif = (cliente.contribuinte || cliente.nif || '').trim();
@@ -137,7 +91,7 @@ export const clienteService = {
       };
 
       console.log('[ClienteService] Criando cliente:', payload.nome);
-      const response = await fetch('/api/secure-clientes', {
+      const response = await fetchWithAuth('/api/secure-clientes', {
         method: 'POST',
         headers,
         body: JSON.stringify(payload)
@@ -157,8 +111,6 @@ export const clienteService = {
 
   async updateCliente(id: number | string, cliente: Partial<Cliente>): Promise<Cliente> {
     try {
-      const token = await getToken();
-
       // ── Verificar conflito de NIF na edição ──
       const nif = (cliente.contribuinte || cliente.nif || '').trim();
       if (nif && nif !== '999999999' && nif !== '0') {
@@ -170,9 +122,8 @@ export const clienteService = {
 
       console.log(`[ClienteService] Atualizando cliente ID: ${id}`);
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const response = await fetch(`/api/secure-clientes/${id}`, {
+      const response = await fetchWithAuth(`/api/secure-clientes/${id}`, {
         method: 'PUT',
         headers,
         body: JSON.stringify(cliente)

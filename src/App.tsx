@@ -1,4 +1,4 @@
-﻿import { emitirDocumentoFiscal } from './services/fiscalEngine';
+import { emitirDocumentoFiscal } from './services/fiscalEngine';
 import { StagingBadge } from './components/StagingBadge';
 import { isProductionEnvironment, isStagingEnvironment } from './lib/envProtection';
 import { CentralHomologacaoModule } from './components/CentralHomologacaoModule';
@@ -253,6 +253,7 @@ import { AgtItemModal, AgtItemData } from './components/AgtItemModal';
 // --- Helpers ---
 
 import { supabase, supabaseStatus } from './lib/supabase';
+import { fetchWithAuth, fetchJson } from './lib/fetchWithAuth';
 import { realtimeManager } from './lib/realtimeManager';
 import { toast } from 'react-hot-toast';
 import { authService } from './services/authService';
@@ -269,61 +270,6 @@ const isValidUUID = (id: any): boolean => {
   if (typeof id !== 'string') return false;
   const regex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   return regex.test(id);
-};
-
-const fetchWithAuth = async (url: string, options?: RequestInit) => {
-  const session = await authService.getSessionSafe();
-  const token = session?.access_token;
-  
-  const headers: Record<string, string> = {};
-  if (options?.headers) {
-    Object.entries(options.headers).forEach(([k, v]) => {
-      headers[k] = v as string;
-    });
-  }
-  
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-
-  return fetch(url, { ...options, headers });
-};
-
-const fetchJson = async (url: string, options?: RequestInit) => {
-  const session = await authService.getSessionSafe();
-  const token = session?.access_token;
-  
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (options?.headers) {
-    Object.entries(options.headers).forEach(([k, v]) => {
-      headers[k] = v as string;
-    });
-  }
-  
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-
-  // Implement automatic timeout for unstable connections
-  const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), 15000); // 15s timeout
-
-  try {
-    const response = await fetch(url, { ...options, headers, signal: controller.signal });
-    clearTimeout(id);
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Failed to fetch ${url} (Status: ${response.status}): ${errorText || response.statusText}`);
-    }
-    return response.json();
-  } catch (err: any) {
-    clearTimeout(id);
-    if (err.name === 'AbortError') {
-      throw new Error(`O servidor demorou demasiado tempo a responder (${url}). Verifique a sua ligação.`);
-    }
-    throw err;
-  }
 };
 
 const CATEGORIES = ['Mercadoria', 'Serviço', 'Matéria-prima', 'ConsumÃ­vel', 'Equipamento', 'Outro'];
@@ -3041,35 +2987,35 @@ const hasModulePermission = (user: any, moduleId: string): boolean => {
 
 const SIDEBAR_MENU_ITEMS = [
   { id: 'dashboard', label: 'Painel de Bordo', icon: LayoutDashboard },
-  { id: 'crm_empresas', label: 'CRM EMPRESAS', icon: ShieldAlert, badge: 'SUPER ADM' },
-  { id: 'crm_negocio', label: 'Gestão CRM Negócio', icon: Briefcase, badge: 'ðŸš€ NOVO' },
+  { id: 'crm_empresas', label: 'CRM Empresas', icon: ShieldAlert, badge: 'SUPER ADM' },
+  { id: 'crm_negocio', label: 'Gestão CRM Negócio', icon: Briefcase, badge: 'NOVO' },
   { id: 'clients', label: 'Clientes', icon: Users },
   { id: 'workplaces', label: 'Locais de Trabalho', icon: Briefcase },
   { id: 'secretary', label: 'Secretaria Beta', icon: Paperclip },
   { id: 'pos', label: 'Ponto de Venda', icon: Monitor, hasChevron: true },
   { id: 'contracts', label: 'Contratos', icon: FileText },
-  { id: 'electronic_invoices', label: 'Faturação ElectrÃ³nica', icon: FileCheck },
-  { id: 'security', label: 'Segurança Gestão privada', icon: ShieldCheck },
+  { id: 'electronic_invoices', label: 'Faturação Electrónica', icon: FileCheck },
+  { id: 'security', label: 'Segurança & Gestão Privada', icon: ShieldCheck },
   { id: 'specialized', label: 'Gestão Especializada', icon: Briefcase, hasChevron: true },
   { id: 'archive', label: 'Arquivo', icon: Archive },
   { id: 'cartas', label: 'Gestão de Cartas', icon: Mail },
   { id: 'invoices', label: 'Vendas', icon: FileText, hasChevron: true },
-  { id: 'drafts', label: 'Rascunhos (Drafts)', icon: FileSignature },
+  { id: 'drafts', label: 'Rascunhos', icon: FileSignature },
   { id: 'suppliers', label: 'Compras', icon: ShoppingBag, hasChevron: true },
-  { id: 'products', label: 'Stocks & InventÃ¡rio', icon: Package, hasChevron: true },
-    { id: 'gestao_financeira', label: 'Gestão Financeira', icon: Coins, badge: 'ðŸ“Š NOVO' },
+  { id: 'products', label: 'Stocks & Inventário', icon: Package, hasChevron: true },
+  { id: 'gestao_financeira', label: 'Gestão Financeira', icon: Coins, badge: 'NOVO' },
   { id: 'financial', label: 'Finanças', icon: CreditCard, hasChevron: true },
   { id: 'accounting', label: 'Contabilidade', icon: Calculator, hasChevron: true },
   { id: 'hr', label: 'Recursos Humanos', icon: Users, hasChevron: true },
   { id: 'reports', label: 'Relatórios', icon: FileSpreadsheet, hasChevron: true },
   { id: 'licencas', label: 'Licenças', icon: Key },
-  { id: 'empresa', label: 'Documento da Empresa', icon: Building2 },
-  { id: 'agrobusiness', label: 'AgronegÃ³cio', icon: TrendingUp },
+  { id: 'empresa', label: 'Dados da Empresa', icon: Building2 },
+  { id: 'agrobusiness', label: 'Agronegócio', icon: TrendingUp },
   { id: 'church', label: 'Gestão de Igreja', icon: Building2 }, 
-  { id: 'stand_automovel', label: 'Stand AutomÃ³vel', icon: Car, badge: 'ðŸš— NOVO' },
-  { id: 'farmacia', label: 'Farmácia', icon: Pill, badge: 'ðŸ’Š NOVO' },
-  { id: 'mini_site', label: 'Mini Site Oficial', icon: Globe, badge: 'ðŸŸ§ NOVO' },
-  { id: 'settings', label: 'DefiniÃ§Ãµes', icon: Settings },
+  { id: 'stand_automovel', label: 'Stand Automóvel', icon: Car, badge: 'NOVO' },
+  { id: 'farmacia', label: 'Farmácia', icon: Pill, badge: 'NOVO' },
+  { id: 'mini_site', label: 'Mini Site Oficial', icon: Globe, badge: 'NOVO' },
+  { id: 'settings', label: 'Definições', icon: Settings },
 ];
 
 const Sidebar = ({ activeTab, setActiveTab, companyData }: { 
@@ -3103,6 +3049,7 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
   useEffect(() => {
     // Try to load user profile picture from media_arquivos
     const loadProfilePic = async () => {
+      if (!user?.id) return;
       try {
         const { data } = await supabase.auth.getUser();
         const supabaseUser = data?.user;
@@ -3277,16 +3224,16 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
                 const isExpiredByDate = expiryDate && expiryDate.getTime() < Date.now();
                 const isLicActive = (isExplicitlyActive || !isSuspendedOrDeactivated) && !isExpiredByDate;
 
-                const desc = isLicActive ? 'LICENÃ‡A ACTIVA' : (companyData?.licenca?.descricao || 'LICENÃ‡A EXPIRADA');
+                const desc = isLicActive ? 'LICENÇA ATIVA' : (companyData?.licenca?.descricao || 'LICENÇA EXPIRADA');
 
                 return (
                   <>
                     <span className={`px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wider rounded flex items-center gap-1 shadow-xs ${
-                      desc === 'LICENÃ‡A ACTIVA'
+                      desc === 'LICENÇA ATIVA'
                         ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40' 
                         : 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
                     }`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${desc === 'LICENÃ‡A ACTIVA' ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`} />
+                      <span className={`w-1.5 h-1.5 rounded-full ${desc === 'LICENÇA ATIVA' ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`} />
                       {desc}
                     </span>
                     {companyData?.plano && (
@@ -17434,11 +17381,7 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
       const fetchConfig = async () => {
         setLoading(true);
         try {
-          const { data } = await supabase.auth.getSession();
-          const session = data?.session;
-          const res = await fetch('/api/config-empresa', {
-            headers: { 'Authorization': `Bearer ${session?.access_token}` }
-          });
+          const res = await fetchWithAuth('/api/config-empresa');
           if (res.ok) {
             const data = await res.json();
             setFormData(prev => ({
@@ -17544,12 +17487,10 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
     try {
       if (!user?.empresa_id) throw new Error("Sessão expirada");
 
-      const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch('/api/config-empresa', {
+      const res = await fetchWithAuth('/api/config-empresa', {
         method: 'POST',
         headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session?.access_token}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           ...formData,
@@ -26487,7 +26428,6 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
   // Saída automÃ¡tica de stock apÃ³s emissão de venda
   const dispatchStockExit = async (savedDoc: any) => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
       const docItems = savedDoc?.items || savedDoc?.itens || [];
       if (!docItems.length) return;
       const empresaId = user?.empresa_id || (user as any)?.company_id;
@@ -26510,11 +26450,10 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
         })),
       };
 
-      await fetch('/api/stock/exit-sale', {
+      await fetchWithAuth('/api/stock/exit-sale', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + (session?.access_token || ''),
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify(payload),
       });
@@ -33873,6 +33812,7 @@ export default function App() {
       setAuthReady(true);
     } else if (user === null) {
       console.log('[App] Utilizador não autenticado.');
+      clearTenantCache();
       setAuthReady(false);
     }
   }, [user]);
@@ -34064,7 +34004,7 @@ export default function App() {
     e.preventDefault();
     try {
       if (!user?.empresa_id) {
-        alert('Utilizador não autenticado.');
+        toast.error('Utilizador não autenticado.');
         return;
       }
       
@@ -34099,9 +34039,10 @@ export default function App() {
       setIsTaskModalOpen(false);
       setEditingAlertId(null);
       setTaskFormData({ name: '', type: 'imposto', description: '', responsible: '', startDate: '', endDate: '', advanceTime: '', obs: '' });
+      toast.success('Tarefa guardada com sucesso!');
     } catch (err: any) {
       console.error('[App] Erro ao guardar tarefa:', err);
-      alert('Erro ao guardar: ' + (err.message || 'Erro desconhecido'));
+      toast.error('Erro ao guardar: ' + (err.message || 'Erro desconhecido'));
     }
   };
 
@@ -34340,14 +34281,26 @@ export default function App() {
       const companyId = explicitId || user?.empresa_id;
       if (!companyId) return;
 
+      let rawData: any[] = [];
       const { data, error } = await supabase
         .from('movimentacoes_stock')
         .select('*')
         .eq('empresa_id', companyId)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      setStockMovements(data?.map(sm => ({
+      if (!error && Array.isArray(data) && data.length > 0) {
+        rawData = data;
+      } else {
+        const res = await fetchWithAuth(`/api/stock/movements?empresa_id=${encodeURIComponent(companyId)}`);
+        if (res.ok) {
+          const apiData = await res.json();
+          if (Array.isArray(apiData)) rawData = apiData;
+        } else if (error) {
+          throw error;
+        }
+      }
+
+      setStockMovements(rawData.map(sm => ({
         ...sm,
         id: sm.id,
         product_id: sm.product_id,
@@ -34362,7 +34315,7 @@ export default function App() {
         description: sm.description,
         reference_id: sm.reference_id,
         created_at: sm.created_at
-      })) || []);
+      })));
     } catch (err) {
       console.error('Erro ao carregar movimentos de stock:', err);
     }
@@ -34441,23 +34394,34 @@ export default function App() {
       const companyId = explicitId || user?.empresa_id;
       if (!companyId) return;
 
+      let safeData: any[] = [];
       const { data, error } = await supabase
         .from('caixas')
         .select('*')
         .eq('empresa_id', companyId);
 
-      if (error) throw error;
-      const safeData = Array.isArray(data) ? data : [];
+      if (!error && Array.isArray(data) && data.length > 0) {
+        safeData = data;
+      } else {
+        const res = await fetchWithAuth(`/api/caixas?empresa_id=${encodeURIComponent(companyId)}`);
+        if (res.ok) {
+          const apiData = await res.json();
+          if (Array.isArray(apiData)) safeData = apiData;
+        } else if (error) {
+          throw error;
+        }
+      }
+
       const visible = safeData.filter((c: any) => c.is_deleted !== true);
       setCaixas(visible.map(c => ({
         ...c,
         id: c.id,
-        name: c.nome_caixa,
+        name: c.nome_caixa || c.name,
         account: c.account,
-        currentBalance: Number(c.current_balance || 0),
-        initialBalance: Number(c.valor_inicial || 0),
+        currentBalance: Number(c.current_balance ?? c.saldo_actual ?? 0),
+        initialBalance: Number(c.valor_inicial ?? 0),
         responsible: c.responsavel,
-         obs: c.observacao,
+        obs: c.observacao,
         user: c.utilizador_id,
         status: c.status || 'aberto',
         moeda: c.moeda || 'AOA'
@@ -34479,21 +34443,28 @@ export default function App() {
         .order('created_at', { ascending: false })
         .limit(200);
 
-      if (error) {
-        if (error.code === 'PGRST205') {
-          const fallback = await supabase
-            .from('caixa_movements')
-            .select('*')
-            .eq('empresa_id', companyId)
-            .order('created_at', { ascending: false })
-            .limit(200);
-          data = fallback.data || [];
-        } else {
+      if (error && error.code === 'PGRST205') {
+        const fallback = await supabase
+          .from('caixa_movements')
+          .select('*')
+          .eq('empresa_id', companyId)
+          .order('created_at', { ascending: false })
+          .limit(200);
+        data = fallback.data || [];
+        error = fallback.error;
+      }
+
+      let safeMovements: any[] = !error && Array.isArray(data) ? data : [];
+      if (error || safeMovements.length === 0) {
+        const res = await fetchWithAuth(`/api/caixa-movements?empresa_id=${encodeURIComponent(companyId)}`);
+        if (res.ok) {
+          const apiData = await res.json();
+          if (Array.isArray(apiData)) safeMovements = apiData;
+        } else if (error) {
           throw error;
         }
       }
 
-      const safeMovements = Array.isArray(data) ? data : [];
       setCaixaMovements(safeMovements.map(m => ({
         ...m,
         id: m.id,
@@ -34654,7 +34625,7 @@ export default function App() {
       }
 
       console.log(`[App] Buscando Fornecedores para ${companyId} via fornecedorService...`);
-      const data = await fornecedorService.getFornecedores();
+      const data = await fornecedorService.getFornecedores(companyId);
       const safeList = Array.isArray(data) ? data : [];
 
       setSuppliers(safeList.map((s: any) => ({
@@ -34698,9 +34669,10 @@ export default function App() {
       const companyId = explicitId || user?.empresa_id;
       if (!companyId) return;
 
-      // BLINDAGEM DE EXERCÃCIO: filtro ESTRITO por ano â€” NÃƒO incluir registos com ano=null
+      // BLINDAGEM DE EXERCÍCIO: filtro ESTRITO por ano — NÃO incluir registos com ano=null
       const ano = Number(explicitYear || fiscalYear || new Date().getFullYear());
-      let query = supabase
+      let safePurchases: any[] = [];
+      const query = supabase
         .from('compras')
         .select('*')
         .eq('empresa_id', companyId)
@@ -34708,8 +34680,18 @@ export default function App() {
 
       const { data, error } = await query.order('created_at', { ascending: false });
 
-      if (error) throw error;
-      const safePurchases = Array.isArray(data) ? data : [];
+      if (!error && Array.isArray(data) && data.length > 0) {
+        safePurchases = data;
+      } else {
+        const res = await fetchWithAuth(`/api/purchases?empresa_id=${encodeURIComponent(companyId)}&ano=${ano}`);
+        if (res.ok) {
+          const apiData = await res.json();
+          if (Array.isArray(apiData)) safePurchases = apiData;
+        } else if (error) {
+          throw error;
+        }
+      }
+
       setPurchases(safePurchases.map(p => ({
         ...p,
         id: p.id,
@@ -34897,11 +34879,7 @@ export default function App() {
 
       // Dados da Empresa (Blinda o UI com dados reais do Tenant)
       try {
-        const { data } = await supabase.auth.getSession();
-        const currentSession = data?.session;
-        const res = await fetch(`/api/config-empresa`, {
-          headers: { 'Authorization': `Bearer ${currentSession?.access_token}` }
-        });
+        const res = await fetchWithAuth(`/api/config-empresa`);
         
         if (res.ok) {
           const fullCompData = await res.json();
@@ -34988,25 +34966,46 @@ export default function App() {
       await doLoadAlerts(targetCompanyId);
 
       
-      const [{ data: sfData }, { data: sfUsersData }] = await Promise.all([
+      const [{ data: sfData, error: sfError }, { data: sfUsersData }] = await Promise.all([
         supabase.from('series_fiscais').select('*').eq('empresa_id', targetCompanyId),
         supabase.from('series_fiscais_usuarios').select('*').eq('empresa_id', targetCompanyId)
       ]);
-      const fsDataFormatted = (sfData || []).map(s => {
-        const seriesUsers = (sfUsersData || [])
-          .filter((su: any) => String(su.serie_id).toLowerCase() === String(s.id).toLowerCase() && su.activo)
-          .map((su: any) => String(su.usuario_id).toLowerCase());
-        return {
-          id: s.id, 
-          reference: s.serie, 
-          description: s.descricao, 
-          type: s.tipo, 
-          is_active: s.ativo, 
-          user_id: s.utilizador_id, 
-          name: s.descricao,
-          user_ids: seriesUsers
-        };
-      });
+      let fsDataFormatted: any[] = [];
+      if (!sfError && Array.isArray(sfData) && sfData.length > 0) {
+        fsDataFormatted = sfData.map(s => {
+          const seriesUsers = (sfUsersData || [])
+            .filter((su: any) => String(su.serie_id).toLowerCase() === String(s.id).toLowerCase() && su.activo)
+            .map((su: any) => String(su.usuario_id).toLowerCase());
+          return {
+            id: s.id,
+            reference: s.serie,
+            description: s.descricao,
+            type: s.tipo,
+            is_active: s.ativo,
+            user_id: s.utilizador_id,
+            name: s.descricao,
+            user_ids: seriesUsers
+          };
+        });
+      } else {
+        try {
+          const apiFs = await fetchJson(`/api/fiscal-series?empresa_id=${encodeURIComponent(targetCompanyId)}`);
+          if (Array.isArray(apiFs)) {
+            fsDataFormatted = apiFs.map((s: any) => ({
+              id: s.id,
+              reference: s.reference ?? s.serie,
+              description: s.description ?? s.descricao,
+              type: s.type ?? s.tipo,
+              is_active: s.is_active ?? s.ativo ?? true,
+              user_id: s.user_id ?? s.utilizador_id,
+              name: s.name ?? s.description ?? s.descricao,
+              user_ids: Array.isArray(s.user_ids) ? s.user_ids : []
+            }));
+          }
+        } catch (fsErr) {
+          console.warn('[fetchData] Fallback /api/fiscal-series falhou:', fsErr);
+        }
+      }
 
       const results = await Promise.allSettled([
         fetchJson(`/api/stats?empresa_id=${targetCompanyId}&year=${fiscalYear}`),
@@ -35096,7 +35095,7 @@ export default function App() {
   const handleAddWorkSite = async (site: Omit<WorkSite, 'id'>) => {
     try {
       if (!user?.empresa_id) {
-        alert('Sessão expirada. Por favor, faça login novamente.');
+        toast.error('Sessão expirada. Por favor, faça login novamente.');
         return;
       }
 
@@ -35119,10 +35118,10 @@ export default function App() {
       await localTrabalhoService.createLocalTrabalho(payload);
       
       await loadLocaisTrabalho();
-      alert('Local de trabalho guardado com sucesso!');
+      toast.success('Local de trabalho guardado com sucesso!');
     } catch (err: any) {
       console.error('[App] Erro ao adicionar Local:', err);
-      alert('Erro ao guardar: ' + (err.message || 'Erro desconhecido'));
+      toast.error('Erro ao guardar: ' + (err.message || 'Erro desconhecido'));
     }
   };
 
@@ -35572,11 +35571,11 @@ export default function App() {
     if (authReady) {
       // Update the active year ref so race-condition guard in doLoadDocumentosEmitidos works correctly.
       // fetchData() already calls doLoadDocumentosEmitidos and doLoadCompras internally via
-      // Promise.allSettled â€” do NOT call them again here to avoid double network load.
+      // Promise.allSettled — do NOT call them again here to avoid double network load.
       activeFetchDocYearRef.current = String(fiscalYear);
       fetchData();
     }
-  }, [authReady, fiscalYear]);
+  }, [authReady, user?.empresa_id, fiscalYear]);
 
   // Se a rota for um Mini Site público (?site=slug ou #/site/slug), renderiza sem exigir login administrativo
   if (isPublicMiniSite()) {
@@ -36787,8 +36786,8 @@ const UserActivityTracker = () => {
     const reportHeartbeat = async (isLogout = false) => {
       if (!sessionIdRef.current || !user) return;
       try {
-        // Guard: verify active session token before sending â€” prevents 401 on logout cleanup
-        const { data: { session: activeSession } } = await supabase.auth.getSession();
+        // Guard: verify active session token before sending — prevents 401 on logout cleanup
+        const activeSession = await authService.getSessionSafe();
         if (!activeSession?.access_token) return;
         await fetchWithAuth('/api/user-activities/heartbeat', {
           method: 'POST',

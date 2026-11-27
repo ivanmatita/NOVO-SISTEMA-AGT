@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { User, AuthContextType } from '../types';
 import { authService } from '../services/authService';
+import { clearTenantCache } from '../lib/tenantDataLoader';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -8,74 +9,104 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const userRef = useRef<User | null>(null);
+
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
 
   useEffect(() => {
     let mounted = true;
+    let lastHandledSessionId: string | null = null;
+    let initialLoadResolved = false;
 
     const initAuth = async () => {
       try {
-        const currentUser = await authService.getCurrentUser();
+        const session = await authService.getSessionSafe();
+        lastHandledSessionId = session?.access_token || null;
+        const currentUser = session ? await authService.getCurrentUser() : null;
         if (mounted) {
+          userRef.current = currentUser;
           setUser(currentUser);
         }
       } catch (err) {
         console.error('Erro ao inicializar autenticação:', err);
         if (mounted) {
+          userRef.current = null;
           setUser(null);
         }
       } finally {
+        initialLoadResolved = true;
         if (mounted) {
           setLoading(false);
         }
       }
     };
 
-    initAuth();
-
-    // Listener global para mudanças de estado de autenticação
-    let lastHandledSessionId: string | null = null;
-
     const { data: { subscription } } = authService.onAuthStateChange(async (event, session) => {
       console.log('Evento Auth Detectado:', event);
       if (!mounted) return;
 
+      if (event === 'SIGNED_OUT' || !session) {
+        lastHandledSessionId = null;
+        if (event === 'SIGNED_OUT') {
+          clearTenantCache();
+        }
+        if (event === 'SIGNED_OUT' || initialLoadResolved) {
+          userRef.current = null;
+          setUser(null);
+        }
+        return;
+      }
+
+      // Evita que INITIAL_SESSION dispare consultas concorrentes antes da hidratação inicial coordenada por initAuth
+      if (event === 'INITIAL_SESSION' && !initialLoadResolved) {
+        return;
+      }
+
       const sessionId = session?.access_token || null;
-      if (sessionId === lastHandledSessionId) return;
+      if (event === 'INITIAL_SESSION' && sessionId === lastHandledSessionId) {
+        return;
+      }
+      if (sessionId === lastHandledSessionId && userRef.current?.id === session?.user?.id && userRef.current?.empresa_id) {
+        return;
+      }
       lastHandledSessionId = sessionId;
 
       try {
-        if (session) {
-          // For TOKEN_REFRESHED, if the user ID hasn't changed we only need to
-          // update the session cache — no need to re-fetch the full profile,
-          // which would trigger re-renders, Realtime restarts and multiple fetchData calls.
-          if (event === 'TOKEN_REFRESHED') {
-            const currentUserId = session.user?.id;
-            // Read current user from context state via a closure variable set below
-            // We use a module-level ref trick: if inFlightUserPromise is null, the
-            // previous getCurrentUser already resolved. Check if the resulting user
-            // has the same ID to skip the redundant re-fetch.
-            const cachedUser = await authService.getSessionSafe();
-            if (cachedUser?.user?.id === currentUserId) {
-              // Session token rotated but same user – no profile re-fetch needed.
-              return;
-            }
-          }
-          const curr = await authService.getCurrentUser();
-          if (mounted) {
-            setUser(curr);
-          }
-        } else {
-          setUser(null);
+        if (event === 'TOKEN_REFRESHED' && userRef.current?.id === session.user?.id && userRef.current?.empresa_id) {
+          return;
+        }
+        const curr = await authService.getCurrentUser();
+        if (mounted && curr) {
+          userRef.current = curr;
+          setUser(curr);
         }
       } catch (err) {
         console.error('[AuthContext] Erro ao processar mudança de estado de autenticação:', err);
-        if (mounted) setUser(null);
+        if (mounted && !userRef.current) {
+          setUser(null);
+        }
       }
     });
+
+    initAuth();
+
+    const handleAccountBlocked = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (mounted) {
+        clearTenantCache();
+        userRef.current = null;
+        setUser(null);
+        setError(typeof detail === 'string' ? detail : 'O seu acesso foi bloqueado. Contacte o administrador.');
+      }
+    };
+    window.addEventListener('auth_account_blocked', handleAccountBlocked);
 
     return () => {
       mounted = false;
       subscription.unsubscribe();
+      window.removeEventListener('auth_account_blocked', handleAccountBlocked);
     };
   }, []);
 

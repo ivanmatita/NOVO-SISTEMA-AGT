@@ -35,6 +35,7 @@ import {
 } from 'recharts';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from '../lib/supabase';
+import { fetchWithAuth } from '../lib/fetchWithAuth';
 import toast from 'react-hot-toast';
 
 interface LicencasModuleProps {
@@ -103,14 +104,9 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
       ]).catch(() => ({ data: null, error: null })) as any;
 
       // Fallback or API check via backend (com dados do config-empresa)
-      const { data: { session } } = await supabase.auth.getSession();
       const [apiLicRes, configEmpRes] = await Promise.all([
-        fetch('/api/licencas', {
-          headers: { 'Authorization': `Bearer ${session?.access_token || ''}` }
-        }).then(r => r.ok ? r.json() : []).catch(() => []),
-        fetch('/api/config-empresa', {
-          headers: { 'Authorization': `Bearer ${session?.access_token || ''}` }
-        }).then(r => r.ok ? r.json() : null).catch(() => null)
+        fetchWithAuth('/api/licencas').then(r => r.ok ? r.json() : []).catch(() => []),
+        fetchWithAuth('/api/config-empresa').then(r => r.ok ? r.json() : null).catch(() => null)
       ]);
 
       let mergedList = (supaLicencas && supaLicencas.length > 0) ? supaLicencas : apiLicRes;
@@ -159,9 +155,8 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
       // Fallback: se nenhum comprovativo for encontrado em historico_licencas, buscar também na API crm
       if (rawProofs.length === 0 && empresaId) {
         try {
-          const crmCompRes = await fetch(`/api/crm/comprovativos?empresa_id=${empresaId}`, {
-            headers: { 'Authorization': `Bearer ${session?.access_token || ''}` }
-          }).then(r => r.ok ? r.json() : []).catch(() => []);
+          const crmCompRes = await fetchWithAuth(`/api/crm/comprovativos?empresa_id=${empresaId}`)
+            .then(r => r.ok ? r.json() : []).catch(() => []);
           if (Array.isArray(crmCompRes) && crmCompRes.length > 0) {
             setComprovativos(crmCompRes);
           } else {
@@ -1050,12 +1045,10 @@ const SubmitPaymentProofModal = ({ empresaId, onClose, onSuccess }: { empresaId?
 
       // 2. Chamar endpoint do CRM para sincronizar em media_arquivos e licencas_empresas
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        await fetch('/api/crm/comprovativos', {
+        await fetchWithAuth('/api/crm/comprovativos', {
           method: 'POST',
           headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session?.access_token || ''}`
+            'Content-Type': 'application/json'
           },
           body: JSON.stringify({
             empresa_id: targetEmpresaId,
@@ -1292,12 +1285,10 @@ const ApplyLicenseModal = ({ onClose, onSuccess }: { onClose: () => void, onSucc
   const handleApply = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch('/api/licencas/solicitar', {
+      const res = await fetchWithAuth('/api/licencas/solicitar', {
         method: 'POST',
         headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session?.access_token || ''}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify(formData)
       });
@@ -1400,23 +1391,20 @@ const AdminActionModal = ({ license, onClose, onSuccess }: { license: any, onClo
     if (confirm(`Tem certeza que deseja ${acao} esta licença?`)) {
       setSubmitting(true);
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        const res = await fetch('/api/licencas/acao', {
+        const res = await fetchWithAuth('/api/licencas/acao', {
           method: 'POST',
           headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session?.access_token || ''}`
+            'Content-Type': 'application/json'
           },
           body: JSON.stringify({ id: license.id, acao, motivo })
         });
         
         // Sincronização segura via API de Licenciamento CRM
         if (acao === 'activar' && license.empresa_id) {
-          await fetch(`/api/crm/companies/${license.empresa_id}/activate-license`, {
+          await fetchWithAuth(`/api/crm/companies/${license.empresa_id}/activate-license`, {
             method: 'POST',
             headers: { 
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${session?.access_token || ''}`
+              'Content-Type': 'application/json'
             },
             body: JSON.stringify({ duracao_dias: 30, plano: license.tipo_licenca || 'Profissional' })
           }).catch(console.warn);

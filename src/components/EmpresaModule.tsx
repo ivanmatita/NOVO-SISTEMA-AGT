@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { fetchWithAuth } from '../lib/fetchWithAuth';
 import { useAuth } from '../contexts/AuthContext';
 import { Building2, Save, Upload, ShieldCheck } from 'lucide-react';
 import { SecretariaDigitalManager } from './SecretariaDigitalManager';
@@ -34,10 +34,7 @@ export const EmpresaModule = ({ onUpdate }: { onUpdate: () => void }) => {
   const loadCompanyData = async () => {
     setLoading(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch('/api/config-empresa', {
-        headers: { 'Authorization': `Bearer ${session?.access_token}` }
-      });
+      const res = await fetchWithAuth('/api/config-empresa');
       
       if (res.ok) {
         const data = await res.json();
@@ -65,12 +62,10 @@ export const EmpresaModule = ({ onUpdate }: { onUpdate: () => void }) => {
     e.preventDefault();
     setLoading(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch('/api/config-empresa', {
+      const res = await fetchWithAuth('/api/config-empresa', {
         method: 'POST',
         headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session?.access_token}` 
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify(formData)
       });

@@ -1,6 +1,5 @@
-import { supabase } from '../lib/supabase';
 import { authService } from './authService';
-import { OperationType, handleSupabaseError } from './dbUtils';
+import { fetchWithAuth } from '../lib/fetchWithAuth';
 
 export interface LocalTrabalho {
   id?: number | string;
@@ -26,22 +25,16 @@ export interface LocalTrabalho {
 }
 
 export const localTrabalhoService = {
-  async getLocaisTrabalho(empresa_id: string): Promise<LocalTrabalho[]> {
+  async getLocaisTrabalho(_empresa_id: string): Promise<LocalTrabalho[]> {
     try {
       const session = await authService.getSessionSafe();
-      const token = session?.access_token;
-
-      if (!token) {
+      if (!session?.access_token) {
         console.warn('[LocalTrabalhoService] Usuário não autenticado ao tentar listar locais.');
         return [];
       }
 
       console.log('[LocalTrabalhoService] Buscando locais de trabalho via API segura...');
-      const response = await fetch('/api/secure-locais-trabalho', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
+      const response = await fetchWithAuth('/api/secure-locais-trabalho');
 
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
@@ -60,18 +53,15 @@ export const localTrabalhoService = {
   async createLocalTrabalho(local: Omit<LocalTrabalho, 'id'>): Promise<LocalTrabalho> {
     try {
       const session = await authService.getSessionSafe();
-      const token = session?.access_token;
-
-      if (!token) {
+      if (!session?.access_token) {
         throw new Error("Sessão inválida ou expirada. Inicie sessão novamente.");
       }
 
       console.log('[LocalTrabalhoService] Criando local de trabalho via API segura:', local.nome);
-      const response = await fetch('/api/secure-locais-trabalho', {
+      const response = await fetchWithAuth('/api/secure-locais-trabalho', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify(local)
       });
@@ -81,29 +71,25 @@ export const localTrabalhoService = {
         throw new Error(errData.error || "Não foi possível registar o local de trabalho.");
       }
 
-      const data = await response.json();
-      return data;
+      return await response.json();
     } catch (err: any) {
       console.error('[LocalTrabalhoService] Falha ao registar local de trabalho:', err);
       throw err;
     }
   },
 
-  async updateLocalTrabalho(id: number | string, local: Partial<LocalTrabalho>, empresa_id: string): Promise<LocalTrabalho> {
+  async updateLocalTrabalho(id: number | string, local: Partial<LocalTrabalho>, _empresa_id: string): Promise<LocalTrabalho> {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-
-      if (!token) {
+      const session = await authService.getSessionSafe();
+      if (!session?.access_token) {
         throw new Error("Sessão inválida ou expirada. Inicie sessão novamente.");
       }
 
       console.log(`[LocalTrabalhoService] Atualizando local de trabalho ID: ${id} via API segura`);
-      const response = await fetch(`/api/secure-locais-trabalho/${id}`, {
+      const response = await fetchWithAuth(`/api/secure-locais-trabalho/${id}`, {
         method: 'PUT',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify(local)
       });
@@ -113,29 +99,23 @@ export const localTrabalhoService = {
         throw new Error(errData.error || "Não foi possível atualizar o local de trabalho.");
       }
 
-      const data = await response.json();
-      return data;
+      return await response.json();
     } catch (err: any) {
       console.error('[LocalTrabalhoService] Falha ao atualizar local de trabalho:', err);
       throw err;
     }
   },
 
-  async deleteLocalTrabalho(id: number | string, empresa_id: string): Promise<void> {
+  async deleteLocalTrabalho(id: number | string, _empresa_id: string): Promise<void> {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-
-      if (!token) {
+      const session = await authService.getSessionSafe();
+      if (!session?.access_token) {
         throw new Error("Sessão inválida ou expirada. Inicie sessão novamente.");
       }
 
       console.log(`[LocalTrabalhoService] Apagando local de trabalho ID: ${id} via API segura`);
-      const response = await fetch(`/api/secure-locais-trabalho/${id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+      const response = await fetchWithAuth(`/api/secure-locais-trabalho/${id}`, {
+        method: 'DELETE'
       });
 
       if (!response.ok) {

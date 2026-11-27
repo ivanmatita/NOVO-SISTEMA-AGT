@@ -12,6 +12,7 @@
  */
 
 import { supabase } from './supabase';
+import { fetchWithAuth } from './fetchWithAuth';
 
 interface CacheEntry<T> {
   data: T;
@@ -155,7 +156,19 @@ export async function loadTenantImpostos(
     'impostos',
     empresaId,
     'all_active',
-    async () => {
+    async (signal) => {
+      try {
+        const apiRes = await fetchWithAuth(`/api/impostos?empresa_id=${encodeURIComponent(empresaId)}`, { signal });
+        if (apiRes.ok) {
+          const apiData = await apiRes.json();
+          if (Array.isArray(apiData)) {
+            return { data: apiData, error: null };
+          }
+        }
+      } catch (err: any) {
+        if (err?.name === 'AbortError') return { data: null, error: err };
+      }
+
       const res = await supabase
         .from('impostos')
         .select('id, nome, taxa, codigo_imposto, tipo_imposto, tipo, ativo, padrao')
@@ -181,7 +194,22 @@ export async function loadTenantProdutos(
     'produtos',
     empresaId,
     `tipo_${tipo}`,
-    async () => {
+    async (signal) => {
+      try {
+        const apiRes = await fetchWithAuth(
+          `/api/products?empresa_id=${encodeURIComponent(empresaId)}&tipo=${encodeURIComponent(tipo)}`,
+          { signal }
+        );
+        if (apiRes.ok) {
+          const apiData = await apiRes.json();
+          if (Array.isArray(apiData)) {
+            return { data: apiData, error: null };
+          }
+        }
+      } catch (err: any) {
+        if (err?.name === 'AbortError') return { data: null, error: err };
+      }
+
       let query = supabase
         .from('produtos')
         .select('id, name, nome, codigo, barcode, unit, unidade, price, preco, preco_venda, cost_price, preco_compra, preco_custo, stock_quantity, stock, stock_atual, estoque_atual, min_stock, stock_minimo, stock_maximo, armazem_id, warehouse_id, categoria, category, descricao, description, referente, tipo, is_active, ativo, origem, producao_id, centro_custo_id, centro_custo_nome, tipo_imposto, rubrica, ordem, posicao, tipo_artigo, data_validade, tipologia')

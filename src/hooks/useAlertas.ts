@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import { authService } from '../services/authService';
 import { realtimeManager } from '../lib/realtimeManager';
 
 export interface AlertaTarefa {
@@ -30,7 +31,7 @@ export const useAlertas = () => {
   const fetchAlertas = useCallback(async () => {
     try {
       setLoading(true);
-      const { data: { session } } = await supabase.auth.getSession();
+      const session = await authService.getSessionSafe();
       const user = session?.user;
       if (!user) return;
 

@@ -10,7 +10,7 @@ export async function authenticateRequest(req) {
   const authHeader = req?.headers?.authorization || req?.headers?.Authorization || '';
   const token = authHeader.replace(/^Bearer\s+/i, '').trim();
 
-  if (!token) {
+  if (!token || token === 'undefined' || token === 'null') {
     return { authenticated: false, user: null, perfil: null, empresa_id: null, isSuperAdmin: false, error: 'UNAUTHENTICATED', message: 'Token de autorizacao nao fornecido' };
   }
 
@@ -31,12 +31,55 @@ export async function authenticateRequest(req) {
     };
   }
 
-  try {
-    const authRes = await fetch(`${config.supabaseUrl}/auth/v1/user`, {
-      headers: { 'apikey': config.anonKey, 'Authorization': `Bearer ${token}` }
-    });
+  const fallbackIsStaging = !config.isStaging;
+  const fallbackUrl = fallbackIsStaging
+    ? 'https://sfnibpxfevhelaikqbiq.supabase.co'
+    : 'https://nawqfidnawokqaheqvar.supabase.co';
+  const fallbackAnonKey = fallbackIsStaging
+    ? 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNmbmlicHhmZXZoZWxhaWtxYmlxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcwNTAyODgsImV4cCI6MjEwMjYyNjI4OH0.AnxqAF-TBY556gp2oPV0I5hfTjozaCMIHaeH7OhifiM'
+    : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5hd3FmaWRuYXdva3FhaGVxdmFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyMTgxNDYsImV4cCI6MjA5Mzc5NDE0Nn0.qFkIexxKcQDWax3pfhcgPMR3ZFIsE-gYWTS62i5Edgs';
+  const fallbackServiceRoleKey = fallbackIsStaging
+    ? 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNmbmlicHhmZXZoZWxhaWtxYmlxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NzA1MDI4OCwiZXhwIjoyMTAyNjI2Mjg4fQ.4wVvNNMK8dUTUXsQ8LklD4OBHa-s02VPlY7H0gC0cbw'
+    : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5hd3FmaWRuYXdva3FhaGVxdmFyIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3ODIxODE0NiwiZXhwIjoyMDkzNzk0MTQ2fQ.ToB7OlAF5FDHEKZMAZLmbvLtHb250qiVFmOUQm1VaOo';
 
-    if (!authRes.ok) {
+  try {
+    let resolvedUrl = config.supabaseUrl;
+    let resolvedAnonKey = config.anonKey;
+    let resolvedServiceKey = config.serviceRoleKey;
+    let hadUpstreamFailure = false;
+
+    let authRes = null;
+    try {
+      authRes = await fetch(`${resolvedUrl}/auth/v1/user`, {
+        headers: { 'apikey': resolvedAnonKey, 'Authorization': `Bearer ${token}` }
+      });
+      if (authRes.status >= 500) hadUpstreamFailure = true;
+    } catch {
+      hadUpstreamFailure = true;
+    }
+
+    if (!authRes || !authRes.ok) {
+      try {
+        const fbAuthRes = await fetch(`${fallbackUrl}/auth/v1/user`, {
+          headers: { 'apikey': fallbackAnonKey, 'Authorization': `Bearer ${token}` }
+        });
+        if (fbAuthRes.ok) {
+          authRes = fbAuthRes;
+          resolvedUrl = fallbackUrl;
+          resolvedAnonKey = fallbackAnonKey;
+          resolvedServiceKey = fallbackServiceRoleKey;
+        } else if (fbAuthRes.status >= 500) {
+          hadUpstreamFailure = true;
+        }
+      } catch {
+        hadUpstreamFailure = true;
+      }
+    }
+
+    if (!authRes || !authRes.ok) {
+      if (hadUpstreamFailure && (!authRes || authRes.status >= 500)) {
+        return { authenticated: false, user: null, perfil: null, empresa_id: null, isSuperAdmin: false, error: 'AUTH_UPSTREAM_UNAVAILABLE', message: 'Servico de autenticacao temporariamente indisponivel' };
+      }
       return { authenticated: false, user: null, perfil: null, empresa_id: null, isSuperAdmin: false, error: 'INVALID_TOKEN', message: 'Sessao invalida ou expirada' };
     }
 
@@ -45,46 +88,51 @@ export async function authenticateRequest(req) {
       return { authenticated: false, user: null, perfil: null, empresa_id: null, isSuperAdmin: false, error: 'USER_NOT_FOUND', message: 'Utilizador nao encontrado' };
     }
 
+    const perfilFilter = user.email
+      ? `id.eq.${user.id},user_id.eq.${user.id},email.eq.${encodeURIComponent(user.email)}`
+      : `id.eq.${user.id},user_id.eq.${user.id}`;
+
     const perfilRes = await fetch(
-      `${config.supabaseUrl}/rest/v1/perfis?or=(id.eq.${user.id},user_id.eq.${user.id})&select=*&limit=1`,
-      { headers: { 'apikey': config.serviceRoleKey, 'Authorization': `Bearer ${config.serviceRoleKey}`, 'Content-Type': 'application/json' } }
+      `${resolvedUrl}/rest/v1/perfis?or=(${perfilFilter})&select=*&limit=1`,
+      { headers: { 'apikey': resolvedServiceKey, 'Authorization': `Bearer ${resolvedServiceKey}`, 'Content-Type': 'application/json' } }
     );
 
     const perfis = await perfilRes.json();
     const perfil = Array.isArray(perfis) && perfis.length > 0 ? perfis[0] : null;
 
     const role = (perfil?.role || user?.app_metadata?.role || user?.user_metadata?.role || 'user').toLowerCase();
-    
-    // Obter empresa_id a partir do perfil ou metadados da conta
-    let empresa_id = perfil?.empresa_id || user?.app_metadata?.empresa_id || user?.user_metadata?.empresa_id;
+
+    // Obter empresa_id a partir do perfil, metadados ou dono da empresa
+    let empresa_id = perfil?.empresa_id || perfil?.company_id || user?.app_metadata?.empresa_id || user?.user_metadata?.empresa_id || null;
     if (!empresa_id) {
+      const empFilter = user.email
+        ? `auth_user_id.eq.${user.id},email.eq.${encodeURIComponent(user.email)}`
+        : `auth_user_id.eq.${user.id}`;
       const empRes = await fetch(
-        `${config.supabaseUrl}/rest/v1/empresas?auth_user_id=eq.${user.id}&select=id&limit=1`,
-        { headers: { 'apikey': config.serviceRoleKey, 'Authorization': `Bearer ${config.serviceRoleKey}` } }
+        `${resolvedUrl}/rest/v1/empresas?or=(${empFilter})&select=id&limit=1`,
+        { headers: { 'apikey': resolvedServiceKey, 'Authorization': `Bearer ${resolvedServiceKey}` } }
       );
       const emps = await empRes.json();
       if (Array.isArray(emps) && emps.length > 0) empresa_id = emps[0].id;
     }
 
     // SEGURANCA MULTI-TENANT & CRM GLOBAL:
-    // Super Admin Global: apenas o email master explícito OU role superadmin/admin_master explícito OU is_super_admin=true no perfil.
-    // NUNCA determinado por empresa_id — nenhuma empresa tem acesso super-admin hardcoded.
     const isMasterEmail = user?.email?.toLowerCase() === 'fffm333atitaifvan7@gmail.com';
     const isExplicitSuperAdmin = ['superadmin', 'admin_master', 'super_admin'].includes(role) || perfil?.is_super_admin === true;
     const isGlobalSuperAdmin = isMasterEmail || isExplicitSuperAdmin;
-    const isSuperAdmin = isGlobalSuperAdmin; // Compatibilidade com código existente
     const isCompanyAdmin = !isGlobalSuperAdmin && (role === 'admin' || role === 'admin_empresa' || role === 'proprietario' || perfil?.is_admin === true || Number(perfil?.level || 0) >= 10);
 
-    return { 
-      authenticated: true, 
-      user, 
-      perfil: perfil || { id: user.id, email: user.email, role, empresa_id }, 
-      empresa_id, 
-      isSuperAdmin: isGlobalSuperAdmin, 
+    return {
+      authenticated: true,
+      user,
+      perfil: perfil ? { ...perfil, empresa_id: empresa_id || perfil.empresa_id, company_id: empresa_id || perfil.company_id } : { id: user.id, email: user.email, role, empresa_id, is_admin: isCompanyAdmin },
+      empresa_id,
+      isSuperAdmin: isGlobalSuperAdmin,
       isGlobalSuperAdmin,
       isCompanyAdmin,
-      token, 
-      error: null 
+      resolvedConfig: { supabaseUrl: resolvedUrl, anonKey: resolvedAnonKey, serviceRoleKey: resolvedServiceKey },
+      token,
+      error: null
     };
   } catch (err) {
     return { authenticated: false, user: null, perfil: null, empresa_id: null, isSuperAdmin: false, isCompanyAdmin: false, error: 'AUTH_EXCEPTION', message: err.message };

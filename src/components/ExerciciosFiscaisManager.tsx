@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { fetchWithAuth } from '../lib/fetchWithAuth';
 import { Calendar, Plus, CheckCircle, AlertTriangle, Lock, Eye, Check } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
@@ -11,12 +11,7 @@ export const ExerciciosFiscaisManager = ({ onFiscalYearChange }: { onFiscalYearC
   const fetchExercises = async () => {
     setLoading(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch('/api/exercicios-fiscais', {
-        headers: { 
-          'Authorization': `Bearer ${session?.access_token}` 
-        }
-      });
+      const res = await fetchWithAuth('/api/exercicios-fiscais');
       if (res.ok) {
         const data = await res.json();
         setExercises(data);
@@ -44,12 +39,10 @@ export const ExerciciosFiscaisManager = ({ onFiscalYearChange }: { onFiscalYearC
 
     setLoading(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch('/api/exercicios-fiscais', {
+      const res = await fetchWithAuth('/api/exercicios-fiscais', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session?.access_token}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({ ano: Number(newYear) })
       });
@@ -73,12 +66,8 @@ export const ExerciciosFiscaisManager = ({ onFiscalYearChange }: { onFiscalYearC
   const handleActivate = async (id: string, year: number) => {
     setLoading(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch(`/api/exercicios-fiscais/${id}/activate`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${session?.access_token}`
-        }
+      const res = await fetchWithAuth(`/api/exercicios-fiscais/${id}/activate`, {
+        method: 'PUT'
       });
 
       if (!res.ok) {
@@ -108,12 +97,8 @@ export const ExerciciosFiscaisManager = ({ onFiscalYearChange }: { onFiscalYearC
 
     setLoading(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch(`/api/exercicios-fiscais/${id}/close`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${session?.access_token}`
-        }
+      const res = await fetchWithAuth(`/api/exercicios-fiscais/${id}/close`, {
+        method: 'PUT'
       });
 
       if (!res.ok) {

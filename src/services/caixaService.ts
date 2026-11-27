@@ -1,5 +1,36 @@
 import { supabase } from '../lib/supabase';
+import { fetchWithAuth } from '../lib/fetchWithAuth';
 import { Caixa, CaixaMovement } from '../types';
+
+function mapCaixaRow(item: any): Caixa {
+  return {
+    id: item.id,
+    name: item.nome_caixa || item.name,
+    account: item.account,
+    responsible: item.responsavel || item.responsible,
+    user: item.utilizador_id || item.user,
+    initialBalance: Number(item.valor_inicial ?? item.initialBalance ?? 0),
+    currentBalance: Number(item.current_balance ?? item.saldo_actual ?? item.currentBalance ?? 0),
+    obs: item.observacao || item.obs || '',
+    status: (item.status || 'aberto') as 'aberto' | 'fechado',
+    empresa_id: item.empresa_id,
+    moeda: item.moeda || 'AOA'
+  } as any;
+}
+
+function mapMovementRow(m: any): CaixaMovement {
+  return {
+    id: m.id,
+    caixaId: m.caixa_id || m.caixaId,
+    targetCaixaId: m.target_caixa_id || m.targetCaixaId,
+    type: (m.type || m.tipo || 'entrada') as any,
+    amount: Number(m.amount ?? m.valor ?? 0),
+    description: m.description || m.descricao || '',
+    date: m.date || m.data,
+    moeda: m.moeda,
+    empresa_id: m.empresa_id
+  };
+}
 
 export const caixaService = {
   async fetchCaixas(empresaId: string): Promise<Caixa[]> {
@@ -11,22 +42,19 @@ export const caixaService = {
         .eq('empresa_id', empresaId)
         .order('nome_caixa', { ascending: true });
 
-      if (error) throw error;
+      if (!error && Array.isArray(data) && data.length > 0) {
+        return data.filter(item => item.is_deleted !== true).map(mapCaixaRow);
+      }
 
-      const visible = (data || []).filter(item => item.is_deleted !== true);
-      return visible.map(item => ({
-        id: item.id,
-        name: item.nome_caixa,
-        account: item.account,
-        responsible: item.responsavel,
-        user: item.utilizador_id,
-        initialBalance: Number(item.valor_inicial || 0),
-        currentBalance: Number(item.current_balance || 0),
-        obs: item.observacao || '',
-        status: item.status as 'aberto' | 'fechado',
-        empresa_id: item.empresa_id,
-        moeda: item.moeda
-      })) as any;
+      const apiRes = await fetchWithAuth(`/api/caixas?empresa_id=${encodeURIComponent(empresaId)}`);
+      if (apiRes.ok) {
+        const apiData = await apiRes.json();
+        if (Array.isArray(apiData)) {
+          return apiData.filter((item: any) => item.is_deleted !== true).map(mapCaixaRow);
+        }
+      }
+      if (error) throw error;
+      return [];
     } catch (e) {
       console.error('Erro ao buscar caixas:', e);
       return [];
@@ -48,19 +76,22 @@ export const caixaService = {
       }
 
       const { data, error } = await query;
-      if (error) throw error;
+      if (!error && Array.isArray(data) && data.length > 0) {
+        return data.map(mapMovementRow);
+      }
 
-      return (data || []).map(m => ({
-        id: m.id,
-        caixaId: m.caixa_id,
-        targetCaixaId: m.target_caixa_id,
-        type: m.type as any,
-        amount: Number(m.amount),
-        description: m.description || '',
-        date: m.date,
-        moeda: m.moeda,
-        empresa_id: m.empresa_id
-      }));
+      const apiRes = await fetchWithAuth(`/api/caixa-movements?empresa_id=${encodeURIComponent(empresaId)}`);
+      if (apiRes.ok) {
+        const apiData = await apiRes.json();
+        if (Array.isArray(apiData)) {
+          const filtered = caixaId
+            ? apiData.filter((m: any) => String(m.caixa_id) === String(caixaId) || String(m.target_caixa_id) === String(caixaId))
+            : apiData;
+          return filtered.map(mapMovementRow);
+        }
+      }
+      if (error) throw error;
+      return [];
     } catch (e) {
       console.error('Erro ao buscar movimentos de caixa:', e);
       return [];

@@ -3342,7 +3342,7 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
             const hasSub = SIDEBAR_SUBMENUS[item.id] && SIDEBAR_SUBMENUS[item.id].length > 0;
             const isExpanded = expandedMenu === item.id;
             return (
-              <div key={item.id} className="mb-0.5">
+              <div key={item.id} className="mb-0.5 relative">
                 <button
                   onClick={() => {
                     setActiveTab(item.id);
@@ -3377,7 +3377,11 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
                 </button>
 
                 {hasSub && isExpanded && (
-                  <div className="pl-6 pr-1 py-1 space-y-1 bg-[#0d162d] border-l-2 border-[#1a4da6]/40 my-0.5">
+                  <div className="absolute left-full top-0 ml-3 w-72 bg-[#0a0e1c] border border-white/15 rounded-xl shadow-2xl py-3 px-2 z-50 backdrop-blur-md space-y-1">
+                    <div className="px-3 py-1.5 border-b border-white/10 mb-1 flex items-center justify-between">
+                      <span className="text-[11px] font-black text-blue-400 uppercase tracking-wider">{item.label}</span>
+                      <button onClick={() => setExpandedMenu(null)} className="text-zinc-400 hover:text-white text-xs font-bold">&times;</button>
+                    </div>
                     {SIDEBAR_SUBMENUS[item.id].map(sub => {
                       const SubIcon = sub.icon;
                       return (
@@ -3385,12 +3389,13 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
                           key={sub.id}
                           onClick={() => {
                             setActiveTab(item.id);
+                            setExpandedMenu(null);
                             window.dispatchEvent(new CustomEvent('sidebar_subtab_select', { detail: { moduleId: item.id, subTabId: sub.id } }));
                           }}
-                          className="w-full flex items-center justify-between px-2.5 py-2 text-xs font-medium text-zinc-400 hover:text-white hover:bg-white/5 transition-colors group"
+                          className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-zinc-300 hover:text-white hover:bg-[#1a4da6] rounded-lg transition-all group"
                         >
                           <span className="truncate pr-2">{sub.label}</span>
-                          <SubIcon size={14} className="text-zinc-400 group-hover:text-white shrink-0" />
+                          <SubIcon size={16} className="text-zinc-400 group-hover:text-white shrink-0" />
                         </button>
                       );
                     })}

@@ -78,6 +78,7 @@ export const ClienteContaCorrenteModal: React.FC<ClienteContaCorrenteModalProps>
   const [dataInicio, setDataInicio] = useState<string>('2022-01-01');
   const [dataFim, setDataFim] = useState<string>(() => new Date().toISOString().split('T')[0]);
   const [filtroDescricao, setFiltroDescricao] = useState<string>('');
+  const [locaisTrabalho, setLocaisTrabalho] = useState<any[]>([]);
   const [rawMovimentos, setRawMovimentos] = useState<any[]>([]);
   const printRef = useRef<HTMLDivElement>(null);
 
@@ -107,53 +108,35 @@ export const ClienteContaCorrenteModal: React.FC<ClienteContaCorrenteModalProps>
     return `CC-${clienteCodigo} ${cleanName || 'CLIENTE'} ${yymmdd}`;
   }, [clienteCodigo, clienteNome]);
 
-  // Carregar dados reais do Supabase (documentos_emitidos)
+  // Carregar dados reais do Supabase (documentos_emitidos) e locais_trabalho
   const fetchMovimentos = async () => {
     if (!cliente) return;
     setLoading(true);
     try {
       const empresaId = empresaIdProp || companyData?.id || localStorage.getItem('empresa_id');
 
-      // Colunas reais que existem na tabela documentos_emitidos
-      let query = supabase
+      // Buscar locais de trabalho da BD
+      let { data: locais } = await supabase.from('locais_trabalho').select('*');
+      if (empresaId) {
+        const { data: empLocais } = await supabase.from('locais_trabalho').select('*').eq('empresa_id', empresaId);
+        if (empLocais && empLocais.length > 0) locais = empLocais;
+      }
+      setLocaisTrabalho(locais || []);
+
+      // Buscar documentos emitidos com fallback robusto
+      let docs: any[] = [];
+      let { data: qDocs } = await supabase
         .from('documentos_emitidos')
-        .select(`
-          id, 
-          numero_documento, 
-          documento_formatado, 
-          numero_fiscal, 
-          tipo_documento, 
-          cliente_nome, 
-          cliente_id, 
-          cliente_nif, 
-          client_nif, 
-          data_emissao, 
-          created_at, 
-          total, 
-          valor_total, 
-          imposto, 
-          estado, 
-          status, 
-          numero_documento_origem, 
-          documento_origem_numero, 
-          detalhes, 
-          empresa_id
-        `)
+        .select('*')
         .order('data_emissao', { ascending: true })
         .limit(1000);
 
-      if (empresaId) {
-        query = query.eq('empresa_id', empresaId);
-      }
-
-      let { data: docs, error } = await query;
-
-      if (error) {
-        console.warn('[ContaCorrente] Erro na query inicial, tentando fallback sem empresa_id:', error.message);
+      if (qDocs && qDocs.length > 0) {
+        docs = qDocs;
+      } else {
         const fbRes = await supabase
           .from('documentos_emitidos')
-          .select('id, numero_documento, documento_formatado, numero_fiscal, tipo_documento, cliente_nome, cliente_id, cliente_nif, client_nif, data_emissao, created_at, total, valor_total, imposto, estado, status, numero_documento_origem, documento_origem_numero, detalhes')
-          .order('data_emissao', { ascending: true })
+          .select('*')
           .limit(1000);
         docs = fbRes.data || [];
       }
@@ -172,7 +155,7 @@ export const ClienteContaCorrenteModal: React.FC<ClienteContaCorrenteModalProps>
       const targetId = String(cliente?.id || '');
 
       // Filtragem robusta que encontra os documentos reais do cliente na base de dados
-      const matchedDocs = (docs || []).filter((d: any) => {
+      let matchedDocs = (docs || []).filter((d: any) => {
         // 1. Por cliente_id direto
         if (targetId && d.cliente_id && String(d.cliente_id) === targetId) {
           return true;
@@ -188,9 +171,8 @@ export const ClienteContaCorrenteModal: React.FC<ClienteContaCorrenteModalProps>
         const docName = normalize(d.cliente_nome || d.detalhes?.client_name);
         if (docName && targetName) {
           if (docName === targetName) return true;
-          // Se um contém o outro com mais de 4 caracteres
-          if (targetName.length >= 4 && docName.includes(targetName)) return true;
-          if (docName.length >= 4 && targetName.includes(docName)) return true;
+          if (targetName.length >= 3 && docName.includes(targetName)) return true;
+          if (docName.length >= 3 && targetName.includes(docName)) return true;
         }
 
         return false;
@@ -249,15 +231,17 @@ export const ClienteContaCorrenteModal: React.FC<ClienteContaCorrenteModalProps>
       const docNum = d.numero_documento || d.documento_formatado || d.numero_fiscal || `${tp} #${d.id}`;
       const docOrigem = d.numero_documento_origem || d.documento_origem_numero || d.detalhes?.documento_origem_id || '—';
 
+      const wsId = d.local_trabalho_id || d.work_site_id || d.detalhes?.local_trabalho_id || d.detalhes?.work_site_id;
+      const foundLoc = wsId ? (locaisTrabalho || []).find((l: any) => String(l.id) === String(wsId)) : null;
+      const localTrabDesc = foundLoc?.nome || foundLoc?.title || foundLoc?.descricao || d.work_site_title || d.local_trabalho || d.work_site_name || d.work_site || d.detalhes?.work_site_title || d.detalhes?.local_trabalho || d.detalhes?.file_interno;
+      const resolvedSiteName = (localTrabDesc && localTrabDesc !== 'Obra Generica' && localTrabDesc !== 'Obra Genérica') ? String(localTrabDesc).trim() : 'Principal / Sede';
+
       return {
         id: String(d.id),
         dataValor: dataFmt,
         dataDocumento: dataFmt,
-        fileInterno: (() => {
-          const ws = d.work_site_title || d.local_trabalho || d.work_site_name || d.work_site || d.detalhes?.work_site_title || d.detalhes?.local_trabalho || d.detalhes?.file_interno;
-          return (ws && ws !== 'Obra Generica' && ws !== 'Obra Genérica') ? String(ws).trim() : 'Obra Genérica';
-        })(),
-        fileCliente: d.detalhes?.file_cliente || '—',
+        fileInterno: resolvedSiteName,
+        fileCliente: resolvedSiteName,
         urn: '',
         endService: '',
         docNumero: docNum,
@@ -269,7 +253,7 @@ export const ClienteContaCorrenteModal: React.FC<ClienteContaCorrenteModalProps>
         saldo: runningSaldo
       };
     });
-  }, [rawMovimentos, cliente?.saldo_inicial]);
+  }, [rawMovimentos, cliente?.saldo_inicial, locaisTrabalho]);
 
   // Filtrar movimentos por intervalo de datas e pesquisa textual
   const movimentosFiltrados = useMemo(() => {

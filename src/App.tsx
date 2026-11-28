@@ -657,31 +657,29 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack, employ
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-0 border border-zinc-200 divide-x divide-zinc-200">
-        <div className="p-8 bg-zinc-50/50">
-          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Facturado</p>
-          <p className="text-xl font-black text-[#003366]">{formatCurrency(totalInvoiced)}</p>
-          <div className="flex items-center gap-2 mt-2">
-            <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5">PAGO: {formatCurrency(totalPaid)}</span>
-          </div>
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <div className="bg-white p-4 rounded-xl border border-zinc-200 shadow-2xs">
+          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Faturado</p>
+          <p className="text-base font-black text-[#003366]">{formatCurrency(totalInvoiced)}</p>
+          <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded mt-1 inline-block">Pago: {formatCurrency(totalPaid)}</span>
         </div>
-        <div className="p-8 bg-zinc-50/50">
-          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Anulados</p>
-          <p className="text-xl font-black text-red-400">{formatCurrency(totalVoided)}</p>
-          <p className="text-[9px] text-zinc-400 font-bold mt-1 uppercase tracking-tighter">S/ Impacto Financeiro</p>
+        <div className="bg-white p-4 rounded-xl border border-zinc-200 shadow-2xs">
+          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Anulados</p>
+          <p className="text-base font-black text-rose-500">{formatCurrency(totalVoided)}</p>
+          <span className="text-[9px] font-bold text-zinc-400 mt-1 inline-block uppercase">S/ Impacto</span>
         </div>
-        <div className="p-8">
-          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Débito (Custos)</p>
-          <p className="text-xl font-black text-red-600">{formatCurrency(actualDebit)}</p>
+        <div className="bg-white p-4 rounded-xl border border-zinc-200 shadow-2xs">
+          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Débito (Custos)</p>
+          <p className="text-base font-black text-rose-600">{formatCurrency(actualDebit)}</p>
         </div>
-        <div className="p-8">
-          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Crédito</p>
-          <p className="text-xl font-black text-emerald-600">{formatCurrency(actualCredit)}</p>
+        <div className="bg-white p-4 rounded-xl border border-zinc-200 shadow-2xs">
+          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Crédito</p>
+          <p className="text-base font-black text-emerald-600">{formatCurrency(actualCredit)}</p>
         </div>
-        <div className="p-8 bg-[#003366] text-white">
-          <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-2">Saldo Obra</p>
-          <p className="text-xl font-black">{formatCurrency(actualBalance)}</p>
-          <p className="text-[9px] text-white/40 mt-1 font-bold italic uppercase tracking-tighter">Pendente: {formatCurrency(totalPending)}</p>
+        <div className="bg-[#003366] text-white p-4 rounded-xl shadow-2xs">
+          <p className="text-[10px] font-bold text-white/70 uppercase tracking-wider mb-1">Saldo Obra</p>
+          <p className="text-base font-black">{formatCurrency(actualBalance)}</p>
+          <span className="text-[9px] text-white/60 mt-1 block">Pendente: {formatCurrency(totalPending)}</span>
         </div>
       </div>
 
@@ -26018,56 +26016,57 @@ const InvoiceList = ({
 
         {activeSubTab === 'adesao' && (
           <div className="space-y-6">
-            <div className="flex justify-between items-center">
-              <div className="space-y-1">
-                <h3 className="text-xl font-bold text-zinc-800">Locais de Trabalho</h3>
-                <p className="text-zinc-400 text-xs">Gestão de obras e locais de prestação de serviços.</p>
+            <div className="flex justify-between items-center bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
+              <div className="space-y-0.5">
+                <h3 className="text-lg font-black text-slate-900">Locais de Trabalho</h3>
+                <p className="text-slate-500 text-xs">Gestão de obras e locais de prestação de serviços.</p>
               </div>
               <button 
                 onClick={() => { setSelectedWorkSite(null); setShowWorkSiteForm(true); }}
-                className="bg-[#003366] hover:bg-[#002244] text-white font-bold px-6 py-2.5 rounded-none flex items-center gap-2 transition-all shadow-sm text-sm"
+                className="bg-[#003366] hover:bg-[#002244] text-white font-bold px-4 py-2 rounded-xl flex items-center gap-2 transition-all shadow-xs text-xs cursor-pointer"
               >
-                <Plus size={18} />
+                <Plus size={16} />
                 Adicionar local de trabalho
               </button>
             </div>
 
-            <div className="bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm">
+            <div className="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-xs">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="bg-[#334155] text-white text-[11px] uppercase tracking-wider font-bold">
-                    <th className="px-6 py-4">CÃ³d / TÃ­tulo</th>
-                    <th className="px-6 py-4">Cliente</th>
-                    <th className="px-6 py-4">PerÃ­odo</th>
-                    <th className="px-6 py-4">Localização</th>
-                    <th className="px-6 py-4 text-center">Efectivos</th>
-                    <th className="px-6 py-4 text-right">Ações</th>
+                  <tr className="bg-slate-50 text-slate-500 text-[10px] uppercase tracking-wider font-black border-b border-slate-100">
+                    <th className="py-3.5 px-4">Cód / Título</th>
+                    <th className="py-3.5 px-4">Cliente</th>
+                    <th className="py-3.5 px-4">Período</th>
+                    <th className="py-3.5 px-4">Localização</th>
+                    <th className="py-3.5 px-4 text-center">Efectivos</th>
+                    <th className="py-3.5 px-4 text-right">Ações</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-zinc-100">
+                <tbody className="divide-y divide-slate-100 text-xs font-medium text-slate-700">
                   {workSites?.map((site) => (
-                    <tr key={site.id} className="hover:bg-zinc-50 transition-colors group text-xs text-zinc-600">
-                      <td className="px-6 py-4">
+                    <tr key={site.id} className="hover:bg-slate-50/80 transition-colors group">
+                      <td className="py-3 px-4">
                         <div className="font-bold text-[#003366]">{site.code}</div>
-                        <div className="text-zinc-500">{site.title}</div>
+                        <div className="text-[10px] text-slate-400">{site.title}</div>
                       </td>
-                      <td className="px-6 py-4 font-medium text-zinc-800">{site.client_name}</td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
+                      <td className="py-3 px-4 font-bold text-slate-800">{site.client_name}</td>
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-1.5 text-slate-600">
                           <span>{new Date(site.start_date).toLocaleDateString('pt-PT')}</span>
-                          <ChevronRight size={12} className="text-zinc-300" />
+                          <ChevronRight size={12} className="text-slate-300" />
                           <span>{new Date(site.end_date).toLocaleDateString('pt-PT')}</span>
                         </div>
                       </td>
-                      <td className="px-6 py-4">{site.location}</td>
-                      <td className="px-6 py-4 text-center">
-                        <div className="font-bold text-zinc-800">{site.total_staff}</div>
-                        <div className="text-[10px] text-zinc-400">{site.staff_per_day}/dia</div>
+                      <td className="py-3 px-4 text-slate-600">{site.location}</td>
+                      <td className="py-3 px-4 text-center">
+                        <div className="font-bold text-slate-900">{site.total_staff}</div>
+                        <div className="text-[10px] text-slate-400">{site.staff_per_day}/dia</div>
                       </td>
-                      <td className="px-6 py-4 text-right">
+                      <td className="py-3 px-4 text-right">
                         <button 
                           onClick={() => handleActionClick(site)}
-                          className="text-zinc-300 hover:text-zinc-500"
+                          className="p-1.5 text-slate-400 hover:text-[#003366] hover:bg-slate-100 rounded-lg transition-colors cursor-pointer inline-flex items-center justify-center"
+                          title="Ações do Local de Trabalho"
                         >
                           <MoreHorizontal size={16} />
                         </button>
@@ -26077,13 +26076,13 @@ const InvoiceList = ({
                 </tbody>
               </table>
               {workSites.length === 0 && (
-                <div className="p-20 text-center space-y-4">
-                  <div className="text-zinc-200 flex justify-center">
-                    <Layers size={80} strokeWidth={1} />
+                <div className="p-16 text-center space-y-3">
+                  <div className="text-slate-300 flex justify-center">
+                    <Layers size={64} strokeWidth={1} />
                   </div>
                   <div className="space-y-1">
-                    <h4 className="font-bold text-zinc-700">Nenhum local de trabalho registado</h4>
-                    <p className="text-zinc-400 text-sm">Clique em "Adicionar local de trabalho" para começar.</p>
+                    <h4 className="font-bold text-slate-700 text-sm">Nenhum local de trabalho registado</h4>
+                    <p className="text-slate-400 text-xs">Clique em "Adicionar local de trabalho" para começar.</p>
                   </div>
                 </div>
               )}
@@ -29674,13 +29673,14 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                   (p.supplier_name || '').toLowerCase().includes((searchTerm || '').toLowerCase()) || 
                   (p.purchase_number || '').toLowerCase().includes((searchTerm || '').toLowerCase())
                 ).length === 0 ? (
-                <tr><td colSpan={10} className="text-center py-20 text-zinc-300 italic uppercase font-black tracking-[0.2em]">Sem movimentos registados no perÃ­odo</td></tr>
+                <tr><td colSpan={10} className="text-center py-20 text-zinc-300 italic uppercase font-black tracking-[0.2em]">Sem movimentos registados no período</td></tr>
               ) : (
                     purchases
                       .filter(p => 
                         (p.supplier_name || '').toLowerCase().includes((searchTerm || '').toLowerCase()) || 
                         (p.purchase_number || '').toLowerCase().includes((searchTerm || '').toLowerCase())
                       )
+                      .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime())
                       .map((p, index) => (
                         <tr key={p.id || index} className="hover:bg-zinc-50 border-b border-zinc-50 group">
                           <td className="py-3 px-4 text-zinc-400 font-mono italic">{index + 1}</td>

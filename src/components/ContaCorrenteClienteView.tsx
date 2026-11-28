@@ -255,7 +255,7 @@ export const ContaCorrenteClienteView: React.FC<ContaCorrenteClienteViewProps> =
         data_documento: dataDoc,
         date_iso: String(dataDoc).slice(0, 10),
         file_interno: fileInterno,
-        file_cliente: fileInterno,
+        file_cliente: d.detalhes?.file_cliente || wsFound?.code || client?.codigo || '-----',
         urn: d.detalhes?.urn || '',
         end_service: d.detalhes?.end_service || '',
         doc_numero: d.numero_documento || d.invoice_number || `DOC-${d.id}`,

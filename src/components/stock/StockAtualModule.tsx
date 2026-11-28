@@ -68,7 +68,7 @@ export const StockAtualModule: React.FC<StockAtualModuleProps> = ({
     const file = e.target.files?.[0];
     if (!file || !uploadingProdId) return;
 
-    const toastId = toast.loading('A carregar imagem do produto...');
+    const toastId = toast.loading('A carregar e a guardar imagem no banco de dados...');
     try {
       const empresaId = user?.empresa_id || (user as any)?.company_id || 'geral';
       const fileExt = file.name.split('.').pop() || 'png';
@@ -100,18 +100,29 @@ export const StockAtualModule: React.FC<StockAtualModuleProps> = ({
         publicUrl = data.publicUrl;
       }
 
-      const { error: updateErr } = await supabase
+      let query = supabase
         .from('produtos')
-        .update({ image_url: publicUrl, image: publicUrl, imagem_url: publicUrl })
+        .update({ 
+          image_url: publicUrl, 
+          image_path: filePath,
+          image: publicUrl, 
+          imagem_url: publicUrl 
+        })
         .eq('id', uploadingProdId);
+
+      if (user?.empresa_id) {
+        query = query.eq('empresa_id', user.empresa_id);
+      }
+
+      const { error: updateErr } = await query;
 
       if (updateErr) throw updateErr;
 
-      toast.success('Imagem do produto atualizada com sucesso!', { id: toastId });
-      onRefresh();
+      toast.success('Imagem do produto guardada e sincronizada com sucesso no banco de dados!', { id: toastId });
+      if (onRefresh) onRefresh();
     } catch (err: any) {
-      console.error('[StockAtual] Erro ao carregar imagem:', err);
-      toast.error('Erro ao guardar imagem do produto: ' + (err.message || ''), { id: toastId });
+      console.error('[StockAtual] Erro ao carregar/guardar imagem:', err);
+      toast.error('Erro ao guardar imagem no banco de dados: ' + (err.message || ''), { id: toastId });
     } finally {
       setUploadingProdId(null);
     }

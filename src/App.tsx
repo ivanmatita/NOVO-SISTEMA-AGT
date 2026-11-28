@@ -657,29 +657,31 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack, employ
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        <div className="bg-white p-4 rounded-xl border border-zinc-200 shadow-2xs">
-          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Faturado</p>
-          <p className="text-base font-black text-[#003366]">{formatCurrency(totalInvoiced)}</p>
-          <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded mt-1 inline-block">Pago: {formatCurrency(totalPaid)}</span>
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-0 border border-zinc-200 divide-x divide-zinc-200">
+        <div className="p-8 bg-zinc-50/50">
+          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Facturado</p>
+          <p className="text-xl font-black text-[#003366]">{formatCurrency(totalInvoiced)}</p>
+          <div className="flex items-center gap-2 mt-2">
+            <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5">PAGO: {formatCurrency(totalPaid)}</span>
+          </div>
         </div>
-        <div className="bg-white p-4 rounded-xl border border-zinc-200 shadow-2xs">
-          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Anulados</p>
-          <p className="text-base font-black text-rose-500">{formatCurrency(totalVoided)}</p>
-          <span className="text-[9px] font-bold text-zinc-400 mt-1 inline-block uppercase">S/ Impacto</span>
+        <div className="p-8 bg-zinc-50/50">
+          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Anulados</p>
+          <p className="text-xl font-black text-red-400">{formatCurrency(totalVoided)}</p>
+          <p className="text-[9px] text-zinc-400 font-bold mt-1 uppercase tracking-tighter">S/ Impacto Financeiro</p>
         </div>
-        <div className="bg-white p-4 rounded-xl border border-zinc-200 shadow-2xs">
-          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Débito (Custos)</p>
-          <p className="text-base font-black text-rose-600">{formatCurrency(actualDebit)}</p>
+        <div className="p-8">
+          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Débito (Custos)</p>
+          <p className="text-xl font-black text-red-600">{formatCurrency(actualDebit)}</p>
         </div>
-        <div className="bg-white p-4 rounded-xl border border-zinc-200 shadow-2xs">
-          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Crédito</p>
-          <p className="text-base font-black text-emerald-600">{formatCurrency(actualCredit)}</p>
+        <div className="p-8">
+          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Crédito</p>
+          <p className="text-xl font-black text-emerald-600">{formatCurrency(actualCredit)}</p>
         </div>
-        <div className="bg-[#003366] text-white p-4 rounded-xl shadow-2xs">
-          <p className="text-[10px] font-bold text-white/70 uppercase tracking-wider mb-1">Saldo Obra</p>
-          <p className="text-base font-black">{formatCurrency(actualBalance)}</p>
-          <span className="text-[9px] text-white/60 mt-1 block">Pendente: {formatCurrency(totalPending)}</span>
+        <div className="p-8 bg-[#003366] text-white">
+          <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-2">Saldo Obra</p>
+          <p className="text-xl font-black">{formatCurrency(actualBalance)}</p>
+          <p className="text-[9px] text-white/40 mt-1 font-bold italic uppercase tracking-tighter">Pendente: {formatCurrency(totalPending)}</p>
         </div>
       </div>
 
@@ -3019,91 +3021,66 @@ const SIDEBAR_MENU_ITEMS = [
 const SIDEBAR_SUBMENUS: Record<string, Array<{ id: string; label: string; icon: any }>> = {
   invoices: [
     { id: 'emitidos', label: 'Documentos de Venda', icon: FileText },
+    { id: 'recibos', label: 'Recibos Emitidos', icon: Receipt },
     { id: 'recebidos', label: 'Documentos Recebidos', icon: FileDown },
-    { id: 'recibos', label: 'Recibos Emitidos (RC)', icon: Receipt },
-    { id: 'series', label: 'Séries Fiscais', icon: Key },
+    { id: 'fiscal-series', label: 'Séries Fiscais', icon: KeyRound },
     { id: 'sales_report', label: 'Relatório de Vendas', icon: BarChart3 },
-    { id: 'agt-list-invoices', label: 'Consulta AGT', icon: FileSearch }
+    { id: 'agt-list-invoices', label: 'Faturação Eletrónica', icon: Cloud }
   ],
   suppliers: [
-    { id: 'historico', label: 'Histórico de Compras', icon: History },
+    { id: 'historico', label: 'Histórico de Compras', icon: ShoppingCart },
     { id: 'pendentes', label: 'Compras Pendentes', icon: Clock },
-    { id: 'fornecedores', label: 'Gestão de Fornecedores', icon: Users },
+    { id: 'fornecedores', label: 'Fornecedores', icon: Users },
     { id: 'lista_documentos', label: 'Lista de Documentos', icon: FileText },
-    { id: 'antiguidades', label: 'Antiguidades de Saldos', icon: Layers },
-    { id: 'movimentos', label: 'Movimentos de Compras', icon: FileSpreadsheet },
-    { id: 'relatorio_compras', label: 'Relatório de Compras', icon: BarChart2 }
+    { id: 'antiguidades', label: 'Antiguidades de Saldos', icon: History },
+    { id: 'movimentos', label: 'Movimentos', icon: Activity },
+    { id: 'relatorio_compras', label: 'Relatório de Compras', icon: FileSpreadsheet }
   ],
   products: [
-    { id: 'stock', label: 'Stock Atual', icon: Package },
-    { id: 'gestao-artigos', label: 'Gestão de Artigos', icon: Tag },
-    { id: 'gestao-saidas', label: 'Saídas de Stock', icon: ArrowUpRight },
-    { id: 'requisicao-material', label: 'Requisição de Material', icon: ClipboardList },
-    { id: 'valorizacao-stock', label: 'Valorização de Stock', icon: Coins },
-    { id: 'producao', label: 'Produção', icon: Cpu },
-    { id: 'warehouse', label: 'Armazéns', icon: Home },
-    { id: 'reports', label: 'Relatórios', icon: FileText }
+    { id: 'atual', label: 'Stock Atual', icon: Package },
+    { id: 'entradas', label: 'Entradas de Stock', icon: ArrowDownCircle },
+    { id: 'saidas', label: 'Saídas & Consumo', icon: ArrowUpRight },
+    { id: 'requisicao', label: 'Requisição de Material', icon: ClipboardList },
+    { id: 'producao', label: 'Produção & Fabrico', icon: Cpu },
+    { id: 'valorizacao', label: 'Valorização de Stock', icon: Coins },
+    { id: 'relatorios', label: 'Relatórios de Stock', icon: FileBarChart },
+    { id: 'artigos', label: 'Gestão de Artigos', icon: Tag }
   ],
   financial: [
-    { id: 'caixa', label: 'Caixa & Tesouraria', icon: Wallet },
-    { id: 'irt_inss_map', label: 'Mapas IRT / INSS', icon: Percent },
-    { id: 'profit-loss-report', label: 'Demonstração de Resultados', icon: BarChart3 },
-    { id: 'sales-reports', label: 'Relatórios de Vendas', icon: FileBarChart },
-    { id: 'cost-revenue', label: 'Custos & Proveitos', icon: TrendingUp },
-    { id: 'annual-movement', label: 'Movimentos Anuais', icon: Calendar },
-    { id: 'supplier-maps', label: 'Mapas de Fornecedores', icon: Truck },
-    { id: 'other-movements', label: 'Outros Movimentos', icon: Layers },
-    { id: 'retencao-fonte', label: 'Retenção na Fonte', icon: FileSignature }
+    { id: 'caixa', label: 'Caixas & Tesouraria', icon: Wallet },
+    { id: 'banco', label: 'Extratos Bancários', icon: Building2 },
+    { id: 'despesas', label: 'Despesas', icon: Receipt }
   ],
   accounting: [
-    { id: 'migracao', label: 'Migração de Movimentos', icon: RotateCcw },
-    { id: 'apuramento', label: 'Apuramento de Resultados', icon: CheckCircle },
-    { id: 'ivm', label: 'Imposto IVA', icon: FileText },
-    { id: 'ip', label: 'Imposto de Selo', icon: FileCheck },
-    { id: 'tax-calc-report', label: 'Relatório de Impostos', icon: FileBarChart },
-    { id: 'cash-flow', label: 'Fluxo de Caixa', icon: Wallet },
-    { id: 'amortizacao', label: 'Mapa de Amortização', icon: Clock },
-    { id: 'demonstracao', label: 'Demonstração de Resultados', icon: BarChart2 },
-    { id: 'pagamentos-impostos', label: 'Pagamentos de Impostos', icon: Coins },
-    { id: 'contas-pagar', label: 'Contas a Pagar', icon: Receipt },
-    { id: 'vat-settlement', label: 'Apuramento IVA', icon: Scale },
-    { id: 'diarios', label: 'Gestão de Diários', icon: BookOpen },
-    { id: 'accounting-maps', label: 'Mapas Contabilísticos', icon: Map },
-    { id: 'balancete-razao', label: 'Balancete e Razão', icon: Table },
-    { id: 'balanco', label: 'Balanço', icon: FileSpreadsheet },
-    { id: 'pgc', label: 'Plano Geral de Contabilidade', icon: Book },
-    { id: 'classify', label: 'Classificar Movimentos', icon: Shuffle }
+    { id: 'plano', label: 'Plano Geral de Contas', icon: BookOpen },
+    { id: 'diario', label: 'Diário Geral', icon: FileText },
+    { id: 'razao', label: 'Razão', icon: Book },
+    { id: 'balancete', label: 'Balancete', icon: BarChart2 },
+    { id: 'apuramento', label: 'Apuramento de Resultados', icon: Calculator }
   ],
   hr: [
     { id: 'colaboradores', label: 'Colaboradores', icon: Users },
-    { id: 'assiduidade', label: 'Assiduidade & Ponto', icon: Clock },
-    { id: 'contratos', label: 'Contratos', icon: FileText },
-    { id: 'processamentos', label: 'Processamento Salarial', icon: Calculator },
-    { id: 'pagamentos', label: 'Pagamentos & Recibos', icon: Wallet },
-    { id: 'demitidos', label: 'Demitidos', icon: UserMinus }
+    { id: 'contratos', label: 'Contratos', icon: FileSignature },
+    { id: 'assiduidade', label: 'Assiduidade & Picagem', icon: Clock },
+    { id: 'processamento', label: 'Processamento Salarial', icon: Calculator },
+    { id: 'pagamentos', label: 'Pagamentos & Recibos', icon: Wallet }
   ],
   reports: [
-    { id: 'purchases', label: 'Relatório de Compras', icon: ShoppingBag },
-    { id: 'sales', label: 'Relatório de Vendas', icon: TrendingUp },
-    { id: 'stock', label: 'Relatório de Stocks', icon: Package },
-    { id: 'inventory', label: 'Relatório de Inventário', icon: ClipboardList },
-    { id: 'cashflow', label: 'Relatório de Caixa', icon: Wallet }
+    { id: 'vendas', label: 'Relatório de Vendas', icon: BarChart3 },
+    { id: 'compras', label: 'Relatório de Compras', icon: ShoppingCart },
+    { id: 'stock', label: 'Relatório de Stock', icon: Package },
+    { id: 'financeiro', label: 'Relatório Financeiro', icon: TrendingUp }
   ],
   pos: [
-    { id: 'sessions', label: 'Sessões de Caixa', icon: Clock },
-    { id: 'movements', label: 'Movimentos', icon: FileSpreadsheet },
-    { id: 'reports', label: 'Relatórios POS', icon: BarChart3 },
-    { id: 'reconciliation', label: 'Reconciliação', icon: RefreshCw }
+    { id: 'terminal', label: 'Terminal POS', icon: Monitor },
+    { id: 'config', label: 'Configurações POS', icon: Settings }
   ],
   specialized: [
-    { id: 'church', label: 'Gestão de Igreja', icon: Building2 },
-    { id: 'agrobusiness', label: 'Agronegócio', icon: TrendingUp },
-    { id: 'school', label: 'Gestão Escolar', icon: GraduationCap },
-    { id: 'restaurant', label: 'Restaurante & Bar', icon: Utensils },
+    { id: 'escola', label: 'Gestão Escolar', icon: GraduationCap },
     { id: 'hotel', label: 'Hotelaria', icon: Bed },
-    { id: 'fleet', label: 'Gestão de Frotas', icon: Car },
-    { id: 'stand', label: 'Stand Automóvel', icon: Car },
-    { id: 'pharmacy', label: 'Farmácia', icon: Pill }
+    { id: 'igreja', label: 'Igreja', icon: Building2 },
+    { id: 'frotas', label: 'Gestão de Frotas', icon: Car },
+    { id: 'farmacia', label: 'Farmácia', icon: Pill }
   ]
 };
 
@@ -3116,7 +3093,7 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
 
   const [profileImg, setProfileImg] = useState<string | null>(null);
   const [companyLogo, setCompanyLogo] = useState<string | null>(null);
-  const [openSubMenuId, setOpenSubMenuId] = useState<string | null>(null);
+  const [expandedMenu, setExpandedMenu] = useState<string | null>(null);
 
   // Check if user is a main administrator with full access
   const isGlobalAdmin = user?.is_admin || user?.level === 10 || user?.role === 'admin' || user?.role === 'admin_empresa' || user?.role === 'super_admin' || user?.role === 'proprietario';
@@ -3149,39 +3126,38 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
           .from('perfis')
           .select('empresa_id')
           .eq('id', supabaseUser.id)
-          .limit(1);
+          .single();
           
-        const prof = Array.isArray(profile) ? profile[0] : profile;
-        if (prof?.empresa_id) {
+        if (profile?.empresa_id) {
           // Fetch avatar
           const { data: avatarData } = await supabase
             .from('media_arquivos')
             .select('url_publica')
-            .eq('empresa_id', prof.empresa_id)
+            .eq('empresa_id', profile.empresa_id)
             .eq('utilizador_id', supabaseUser.id)
             .eq('tipo', 'avatar')
             .eq('ativo', true)
             .order('created_at', { ascending: false })
-            .limit(1);
+            .limit(1)
+            .maybeSingle();
             
-          const av = Array.isArray(avatarData) ? avatarData[0] : avatarData;
-          if (av?.url_publica) {
-            setProfileImg(av.url_publica);
+          if (avatarData?.url_publica) {
+            setProfileImg(avatarData.url_publica);
           }
 
           // Fetch menu logo
           const { data: logoData } = await supabase
             .from('media_arquivos')
             .select('url_publica')
-            .eq('empresa_id', prof.empresa_id)
+            .eq('empresa_id', profile.empresa_id)
             .eq('tipo', 'menu_logo')
             .eq('ativo', true)
             .order('created_at', { ascending: false })
-            .limit(1);
+            .limit(1)
+            .maybeSingle();
             
-          const lg = Array.isArray(logoData) ? logoData[0] : logoData;
-          if (lg?.url_publica) {
-            setCompanyLogo(lg.url_publica);
+          if (logoData?.url_publica) {
+            setCompanyLogo(logoData.url_publica);
           }
         }
         
@@ -3220,10 +3196,9 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
           .from('perfis')
           .select('empresa_id')
           .eq('id', supabaseUser.id)
-          .limit(1);
+          .single();
           
-        const prof = Array.isArray(profile) ? profile[0] : profile;
-        const empresaId = prof?.empresa_id;
+        const empresaId = profile?.empresa_id;
         if (!empresaId) return;
         
         const fileExt = file.name.split('.').pop();
@@ -3342,17 +3317,18 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
         </div>
       </div>
       
-      <div className="flex-1 px-3 py-4 space-y-1 pb-8 relative">
+      <div className="flex-1 px-3 py-4 space-y-1 pb-8">
         <h3 className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-3 px-2">Menu Principal</h3>
         <nav className="space-y-1">
           {SIDEBAR_MENU_ITEMS.filter(item => {
             if (item.id === 'crm_empresas') {
               const currentNif = String(companyData?.nif || user?.empresa_nif || '').replace(/\D/g, '').trim();
               const isMaster = user?.email?.toLowerCase() === 'fffm333atitaifvan7@gmail.com' ||
-                               user?.role === 'superadmin' || user?.role === 'super_admin' || (user as any)?.is_super_admin === true;
+                                user?.role === 'superadmin' || user?.role === 'super_admin' || (user as any)?.is_super_admin === true;
               const isOwnerImatec = (currentNif === '5002123665' || user?.empresa_id === '2ebafa88-9a6e-4243-b127-b146410815eb') && 
                                     (user?.is_admin === true || user?.role === 'admin' || user?.role === 'proprietario' || (user?.level !== undefined && Number(user.level) >= 10));
               const isSuper = isMaster || isOwnerImatec;
+              // Em staging: qualquer admin pode ver CRM Empresas para testes
               const isStagingAdmin = isStagingEnvironment() && (
                 user?.is_admin === true || user?.role === 'admin' ||
                 user?.role === 'admin_empresa' || user?.role === 'proprietario' ||
@@ -3360,22 +3336,23 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
               );
               return isSuper || isStagingAdmin;
             }
+            // Ã rea selecionada = aparece no menu. Ã rea NÃƒO selecionada = NÃƒO aparece no menu!
             return hasModulePermission(user, item.id);
           }).map((item) => {
-            const submenus = SIDEBAR_SUBMENUS[item.id];
-            const isOpen = openSubMenuId === item.id;
+            const hasSub = SIDEBAR_SUBMENUS[item.id] && SIDEBAR_SUBMENUS[item.id].length > 0;
+            const isExpanded = expandedMenu === item.id;
             return (
-              <div key={item.id} className="relative group/menu">
+              <div key={item.id} className="mb-0.5">
                 <button
                   onClick={() => {
                     setActiveTab(item.id);
-                    if (submenus && submenus.length > 0) {
-                      setOpenSubMenuId(isOpen ? null : item.id);
+                    if (hasSub) {
+                      setExpandedMenu(isExpanded ? null : item.id);
                     } else {
-                      setOpenSubMenuId(null);
+                      setExpandedMenu(null);
                     }
                   }}
-                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-none transition-all duration-200 mb-0.5 relative ${
+                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-none transition-all duration-200 relative group ${
                     activeTab === item.id 
                       ? 'bg-[#1a4da6] text-white font-semibold shadow-md border-l-4 border-white' 
                       : 'bg-[#123375] text-zinc-300 hover:bg-[#1a4da6] hover:text-white'
@@ -3390,28 +3367,30 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
                       </span>
                     )}
                   </div>
-                  {submenus && submenus.length > 0 && (
-                    <ChevronRight size={14} className={`transition-transform ${isOpen ? 'rotate-90 text-white' : activeTab === item.id ? 'text-white/70' : 'text-zinc-500'}`} />
-                  )}
+                  {hasSub ? (
+                    <div className="flex items-center gap-1.5">
+                      {isExpanded ? <ChevronDown size={14} className="text-white/70" /> : <ChevronRight size={14} className="text-zinc-500" />}
+                    </div>
+                  ) : item.hasChevron ? (
+                    <ChevronRight size={14} className={activeTab === item.id ? 'text-white/70' : 'text-zinc-500'} />
+                  ) : null}
                 </button>
 
-                {/* Sub-menus expanded inline right below the clicked menu button inside the sidebar flow */}
-                {isOpen && submenus && submenus.length > 0 && (
-                  <div className="bg-[#070a14] py-1.5 px-2 space-y-1 border-y border-white/10 my-0.5">
-                    {submenus.map((sub) => {
+                {hasSub && isExpanded && (
+                  <div className="pl-6 pr-1 py-1 space-y-1 bg-[#0d162d] border-l-2 border-[#1a4da6]/40 my-0.5">
+                    {SIDEBAR_SUBMENUS[item.id].map(sub => {
                       const SubIcon = sub.icon;
                       return (
                         <button
                           key={sub.id}
                           onClick={() => {
                             setActiveTab(item.id);
-                            window.dispatchEvent(new CustomEvent('sidebarSubTabSelect', { detail: { tab: item.id, subTab: sub.id } }));
-                            setOpenSubMenuId(null);
+                            window.dispatchEvent(new CustomEvent('sidebar_subtab_select', { detail: { moduleId: item.id, subTabId: sub.id } }));
                           }}
-                          className="w-full flex items-center gap-3 px-3 py-2 text-xs font-medium text-zinc-300 hover:bg-[#1a4da6] hover:text-white rounded transition-colors text-left pl-6"
+                          className="w-full flex items-center justify-between px-2.5 py-2 text-xs font-medium text-zinc-400 hover:text-white hover:bg-white/5 transition-colors group"
                         >
-                          <SubIcon size={14} className="text-blue-400 shrink-0" />
-                          <span className="truncate">{sub.label}</span>
+                          <span className="truncate pr-2">{sub.label}</span>
+                          <SubIcon size={14} className="text-zinc-400 group-hover:text-white shrink-0" />
                         </button>
                       );
                     })}
@@ -26141,57 +26120,56 @@ const InvoiceList = ({
 
         {activeSubTab === 'adesao' && (
           <div className="space-y-6">
-            <div className="flex justify-between items-center bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
-              <div className="space-y-0.5">
-                <h3 className="text-lg font-black text-slate-900">Locais de Trabalho</h3>
-                <p className="text-slate-500 text-xs">Gestão de obras e locais de prestação de serviços.</p>
+            <div className="flex justify-between items-center">
+              <div className="space-y-1">
+                <h3 className="text-xl font-bold text-zinc-800">Locais de Trabalho</h3>
+                <p className="text-zinc-400 text-xs">Gestão de obras e locais de prestação de serviços.</p>
               </div>
               <button 
                 onClick={() => { setSelectedWorkSite(null); setShowWorkSiteForm(true); }}
-                className="bg-[#003366] hover:bg-[#002244] text-white font-bold px-4 py-2 rounded-xl flex items-center gap-2 transition-all shadow-xs text-xs cursor-pointer"
+                className="bg-[#003366] hover:bg-[#002244] text-white font-bold px-6 py-2.5 rounded-none flex items-center gap-2 transition-all shadow-sm text-sm"
               >
-                <Plus size={16} />
+                <Plus size={18} />
                 Adicionar local de trabalho
               </button>
             </div>
 
-            <div className="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-xs">
+            <div className="bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="bg-slate-50 text-slate-500 text-[10px] uppercase tracking-wider font-black border-b border-slate-100">
-                    <th className="py-3.5 px-4">Cód / Título</th>
-                    <th className="py-3.5 px-4">Cliente</th>
-                    <th className="py-3.5 px-4">Período</th>
-                    <th className="py-3.5 px-4">Localização</th>
-                    <th className="py-3.5 px-4 text-center">Efectivos</th>
-                    <th className="py-3.5 px-4 text-right">Ações</th>
+                  <tr className="bg-[#334155] text-white text-[11px] uppercase tracking-wider font-bold">
+                    <th className="px-6 py-4">CÃ³d / TÃ­tulo</th>
+                    <th className="px-6 py-4">Cliente</th>
+                    <th className="px-6 py-4">PerÃ­odo</th>
+                    <th className="px-6 py-4">Localização</th>
+                    <th className="px-6 py-4 text-center">Efectivos</th>
+                    <th className="px-6 py-4 text-right">Ações</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 text-xs font-medium text-slate-700">
+                <tbody className="divide-y divide-zinc-100">
                   {workSites?.map((site) => (
-                    <tr key={site.id} className="hover:bg-slate-50/80 transition-colors group">
-                      <td className="py-3 px-4">
+                    <tr key={site.id} className="hover:bg-zinc-50 transition-colors group text-xs text-zinc-600">
+                      <td className="px-6 py-4">
                         <div className="font-bold text-[#003366]">{site.code}</div>
-                        <div className="text-[10px] text-slate-400">{site.title}</div>
+                        <div className="text-zinc-500">{site.title}</div>
                       </td>
-                      <td className="py-3 px-4 font-bold text-slate-800">{site.client_name}</td>
-                      <td className="py-3 px-4">
-                        <div className="flex items-center gap-1.5 text-slate-600">
+                      <td className="px-6 py-4 font-medium text-zinc-800">{site.client_name}</td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
                           <span>{new Date(site.start_date).toLocaleDateString('pt-PT')}</span>
-                          <ChevronRight size={12} className="text-slate-300" />
+                          <ChevronRight size={12} className="text-zinc-300" />
                           <span>{new Date(site.end_date).toLocaleDateString('pt-PT')}</span>
                         </div>
                       </td>
-                      <td className="py-3 px-4 text-slate-600">{site.location}</td>
-                      <td className="py-3 px-4 text-center">
-                        <div className="font-bold text-slate-900">{site.total_staff}</div>
-                        <div className="text-[10px] text-slate-400">{site.staff_per_day}/dia</div>
+                      <td className="px-6 py-4">{site.location}</td>
+                      <td className="px-6 py-4 text-center">
+                        <div className="font-bold text-zinc-800">{site.total_staff}</div>
+                        <div className="text-[10px] text-zinc-400">{site.staff_per_day}/dia</div>
                       </td>
-                      <td className="py-3 px-4 text-right">
+                      <td className="px-6 py-4 text-right">
                         <button 
                           onClick={() => handleActionClick(site)}
-                          className="p-1.5 text-slate-400 hover:text-[#003366] hover:bg-slate-100 rounded-lg transition-colors cursor-pointer inline-flex items-center justify-center"
-                          title="Ações do Local de Trabalho"
+                          className="text-zinc-300 hover:text-zinc-500"
                         >
                           <MoreHorizontal size={16} />
                         </button>
@@ -26201,13 +26179,13 @@ const InvoiceList = ({
                 </tbody>
               </table>
               {workSites.length === 0 && (
-                <div className="p-16 text-center space-y-3">
-                  <div className="text-slate-300 flex justify-center">
-                    <Layers size={64} strokeWidth={1} />
+                <div className="p-20 text-center space-y-4">
+                  <div className="text-zinc-200 flex justify-center">
+                    <Layers size={80} strokeWidth={1} />
                   </div>
                   <div className="space-y-1">
-                    <h4 className="font-bold text-slate-700 text-sm">Nenhum local de trabalho registado</h4>
-                    <p className="text-slate-400 text-xs">Clique em "Adicionar local de trabalho" para começar.</p>
+                    <h4 className="font-bold text-zinc-700">Nenhum local de trabalho registado</h4>
+                    <p className="text-zinc-400 text-sm">Clique em "Adicionar local de trabalho" para começar.</p>
                   </div>
                 </div>
               )}
@@ -29798,14 +29776,13 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                   (p.supplier_name || '').toLowerCase().includes((searchTerm || '').toLowerCase()) || 
                   (p.purchase_number || '').toLowerCase().includes((searchTerm || '').toLowerCase())
                 ).length === 0 ? (
-                <tr><td colSpan={10} className="text-center py-20 text-zinc-300 italic uppercase font-black tracking-[0.2em]">Sem movimentos registados no período</td></tr>
+                <tr><td colSpan={10} className="text-center py-20 text-zinc-300 italic uppercase font-black tracking-[0.2em]">Sem movimentos registados no perÃ­odo</td></tr>
               ) : (
                     purchases
                       .filter(p => 
                         (p.supplier_name || '').toLowerCase().includes((searchTerm || '').toLowerCase()) || 
                         (p.purchase_number || '').toLowerCase().includes((searchTerm || '').toLowerCase())
                       )
-                      .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime())
                       .map((p, index) => (
                         <tr key={p.id || index} className="hover:bg-zinc-50 border-b border-zinc-50 group">
                           <td className="py-3 px-4 text-zinc-400 font-mono italic">{index + 1}</td>

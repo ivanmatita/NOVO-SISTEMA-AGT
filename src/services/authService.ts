@@ -777,10 +777,10 @@ export const authService = {
         .from('perfis')
         .select('*')
         .or(`id.eq.${session?.user?.id},user_id.eq.${session?.user?.id}`)
-        .limit(1);
+        .maybeSingle();
 
       const pt1 = createTimeout(30000);
-      let { data: perfilData, error } = await Promise.race([
+      let { data: perfil, error } = await Promise.race([
         perfilQuery.then(res => {
           pt1.clear();
           return res;
@@ -791,8 +791,6 @@ export const authService = {
         pt1.promise
       ]) as any;
       
-      let perfil = Array.isArray(perfilData) ? perfilData[0] : perfilData;
-
       if (perfil && !perfil.empresa_id && perfil.company_id) {
         perfil.empresa_id = perfil.company_id;
       }
@@ -828,8 +826,8 @@ export const authService = {
           .from('empresas')
           .select('*')
           .eq('id', parsedCompanyId)
-          .limit(1);
-        const { data: compData } = await Promise.race([
+          .maybeSingle();
+        const { data } = await Promise.race([
           companyQuery.then(res => {
             pt2.clear();
             return res;
@@ -839,7 +837,7 @@ export const authService = {
           }),
           pt2.promise
         ]) as any;
-        empresa = Array.isArray(compData) ? compData[0] : compData;
+        empresa = data;
       }
 
       if (!perfil || !empresa) {
@@ -851,9 +849,9 @@ export const authService = {
           .from('empresas')
           .select('*')
           .or(`id.eq.${session?.user?.id},auth_user_id.eq.${session?.user?.id}`)
-          .limit(1);
+          .maybeSingle();
           
-        const { data: legacyData, error: legacyError } = await Promise.race([
+        const { data: legacyEmpresa, error: legacyError } = await Promise.race([
           legacyQuery.then(res => {
             pt3.clear();
             return res;
@@ -863,8 +861,6 @@ export const authService = {
           }),
           pt3.promise
         ]) as any;
-
-        const legacyEmpresa = Array.isArray(legacyData) ? legacyData[0] : legacyData;
 
         if (legacyError) console.error('[AuthService] Erro no fallback legacy query:', legacyError);
 
@@ -885,12 +881,10 @@ export const authService = {
         }
 
         // Tentativa 2: Buscar QUALQUER perfil deste utilizador (caso o lookup anterior tenha falhado)
-        const { data: profileList } = await supabase.from('perfis').select('empresa_id, role, permission_areas, is_admin, level, nome, username').eq('id', session?.user?.id).limit(1);
-        const profileOnly = Array.isArray(profileList) ? profileList[0] : profileList;
+        const { data: profileOnly } = await supabase.from('perfis').select('empresa_id, role, permission_areas, is_admin, level').eq('id', session?.user?.id).maybeSingle();
         const fallbackCompanyId = profileOnly?.empresa_id;
         if (fallbackCompanyId) {
-           const { data: companyList } = await supabase.from('empresas').select('*').eq('id', fallbackCompanyId).limit(1);
-           const companyOnly = Array.isArray(companyList) ? companyList[0] : companyList;
+           const { data: companyOnly } = await supabase.from('empresas').select('*').eq('id', fallbackCompanyId).maybeSingle();
            if (companyOnly) {
               return {
                 id: session?.user?.id,

@@ -24,7 +24,6 @@ import CalculosImpostoModule from './components/accounting/CalculosImpostoModule
 import GestaoFinanceiraModule from './components/GestaoFinanceiraModule';
 import { PurchaseDocumentScannerModal } from './components/purchases/PurchaseDocumentScannerModal';
 import { GestaoComprasList, CompraDoc } from './components/purchases/GestaoComprasList';
-import { ListaOrdenadaDocModule } from './components/purchases/ListaOrdenadaDocModule';
 import { GestaoComprasForm } from './components/purchases/GestaoComprasForm';
 import { StockAtualModule } from './components/stock/StockAtualModule';
 import { StockProductPicker } from './components/stock/StockProductPicker';
@@ -657,32 +656,32 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack, employ
         </div>
       </div>
 
-      {/* Summary Cards — Compactos e Leves */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-0 border border-zinc-200 divide-x divide-zinc-200 text-xs">
-        <div className="p-4 bg-zinc-50/50">
-          <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Facturado</p>
-          <p className="text-base font-black text-[#003366]">{formatCurrency(totalInvoiced)}</p>
-          <div className="flex items-center gap-1 mt-1">
-            <span className="text-[8px] font-bold text-emerald-600 bg-emerald-50 px-1 py-0.2">PAGO: {formatCurrency(totalPaid)}</span>
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-0 border border-zinc-200 divide-x divide-zinc-200">
+        <div className="p-8 bg-zinc-50/50">
+          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Facturado</p>
+          <p className="text-xl font-black text-[#003366]">{formatCurrency(totalInvoiced)}</p>
+          <div className="flex items-center gap-2 mt-2">
+            <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5">PAGO: {formatCurrency(totalPaid)}</span>
           </div>
         </div>
-        <div className="p-4 bg-zinc-50/50">
-          <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Anulados</p>
-          <p className="text-base font-black text-red-400">{formatCurrency(totalVoided)}</p>
-          <p className="text-[8px] text-zinc-400 font-bold mt-0.5 uppercase tracking-tighter">S/ Impacto</p>
+        <div className="p-8 bg-zinc-50/50">
+          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Anulados</p>
+          <p className="text-xl font-black text-red-400">{formatCurrency(totalVoided)}</p>
+          <p className="text-[9px] text-zinc-400 font-bold mt-1 uppercase tracking-tighter">S/ Impacto Financeiro</p>
         </div>
-        <div className="p-4">
-          <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Débito (Custos)</p>
-          <p className="text-base font-black text-red-600">{formatCurrency(actualDebit)}</p>
+        <div className="p-8">
+          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Débito (Custos)</p>
+          <p className="text-xl font-black text-red-600">{formatCurrency(actualDebit)}</p>
         </div>
-        <div className="p-4">
-          <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Crédito</p>
-          <p className="text-base font-black text-emerald-600">{formatCurrency(actualCredit)}</p>
+        <div className="p-8">
+          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Crédito</p>
+          <p className="text-xl font-black text-emerald-600">{formatCurrency(actualCredit)}</p>
         </div>
-        <div className="p-4 bg-[#003366] text-white">
-          <p className="text-[9px] font-bold text-white/60 uppercase tracking-widest mb-1">Saldo Obra</p>
-          <p className="text-base font-black">{formatCurrency(actualBalance)}</p>
-          <p className="text-[8px] text-white/40 mt-0.5 font-bold uppercase tracking-tighter">Pendente: {formatCurrency(totalPending)}</p>
+        <div className="p-8 bg-[#003366] text-white">
+          <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-2">Saldo Obra</p>
+          <p className="text-xl font-black">{formatCurrency(actualBalance)}</p>
+          <p className="text-[9px] text-white/40 mt-1 font-bold italic uppercase tracking-tighter">Pendente: {formatCurrency(totalPending)}</p>
         </div>
       </div>
 
@@ -29258,9 +29257,8 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
     { id: 'historico', label: 'Gestão de Compras', icon: History },
     { id: 'pendentes', label: 'Compras Pendentes', icon: Clock },
     { id: 'fornecedores', label: 'Fornecedores', icon: Users },
-    { id: 'lista_ordenada', label: 'Lista Ordenada de Doc', icon: FileText },
     { id: 'lista_documentos', label: 'Lista de Documentos Compras', icon: FileText },
-    { id: 'antiguidades', label: 'Antiguidades de Dívidas', icon: FileClock },
+    { id: 'antiguidades', label: 'Antiguidades de DÃ­vidas', icon: FileClock },
     { id: 'movimentos', label: 'Contas Correntes Fornecedores', icon: ArrowRightLeft },
     { id: 'relatorio_compras', label: 'Relatório da Gestão de Compras', icon: FileSpreadsheet },
   ];
@@ -29301,35 +29299,6 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
           </button>
         ))}
       </div>
-
-      {activeSubTab === 'lista_ordenada' && (
-        <ListaOrdenadaDocModule
-          purchases={purchases}
-          suppliers={suppliers}
-          companyData={companyData}
-          fiscalYear={fiscalYear}
-          onRefresh={() => fetchPurchases()}
-          onViewPurchase={(doc) => {
-            supabase
-              .from('compras')
-              .select('*')
-              .eq('id', doc.id)
-              .single()
-              .then(({ data, error }) => {
-                if (error || !data) {
-                  toast.error('Erro ao carregar dados detalhados.');
-                  return;
-                }
-                const normalized = {
-                  ...data,
-                  supplier_name: data.fornecedor_nome || data.supplier_name || 'Fornecedor',
-                  items: typeof data.itens === 'string' ? JSON.parse(data.itens) : (data.itens || data.items || [])
-                };
-                setShowReportModal(normalized);
-              });
-          }}
-        />
-      )}
 
       {activeSubTab === 'historico' && (
         <GestaoComprasList

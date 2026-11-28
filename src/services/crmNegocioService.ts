@@ -88,13 +88,6 @@ export const crmNegocioService = {
     }
   },
 
-  async deleteCliente(_id: string, _empresaId?: string) {
-    throw new Error(
-      'A eliminação física de clientes está estritamente bloqueada por conformidade fiscal e integridade de dados. ' +
-      'Para desativar um cliente, utilize a opção de arquivar/inativar.'
-    );
-  },
-
   // === OPORTUNIDADES / NEGÓCIOS ===
   async getOportunidades(empresaId: string) {
     try {

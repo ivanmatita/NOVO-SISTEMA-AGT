@@ -250,25 +250,7 @@ export const CRMClientesModule: React.FC<CRMClientesModuleProps> = ({ user, comp
     }
   };
 
-  const handleArchiveClient = async (cliente: any) => {
-    try {
-      await crmNegocioService.updateCliente(cliente.id, { ativo: false });
-      toast.success('Cliente arquivado com sucesso.');
-      loadData();
-    } catch (err) {
-      toast.error('Erro ao arquivar cliente.');
-    }
-  };
 
-  const handleRestoreClient = async (cliente: any) => {
-    try {
-      await crmNegocioService.updateCliente(cliente.id, { ativo: true });
-      toast.success('Cliente restaurado com sucesso.');
-      loadData();
-    } catch (err) {
-      toast.error('Erro ao restaurar cliente.');
-    }
-  };
 
   const filteredClientes = clientes.filter(c => 
     c.nome?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -450,79 +432,64 @@ export const CRMClientesModule: React.FC<CRMClientesModuleProps> = ({ user, comp
             </div>
           </div>
 
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="bg-slate-100 text-[10px] font-black uppercase tracking-wider text-slate-600 border-b border-slate-200">
-                    <th className="p-4">Cliente / Razão Social</th>
-                    <th className="p-4">NIF / Contribuinte</th>
-                    <th className="p-4">Contacto</th>
-                    <th className="p-4">Localização</th>
-                    <th className="p-4">Categoria</th>
-                    <th className="p-4">Estado</th>
-                    <th className="p-4 text-center">Ações</th>
+                  <tr className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500 border-b border-slate-100">
+                    <th className="py-3.5 px-4">Cliente / Razão Social</th>
+                    <th className="py-3.5 px-4">NIF / Contribuinte</th>
+                    <th className="py-3.5 px-4">Contacto</th>
+                    <th className="py-3.5 px-4">Localização</th>
+                    <th className="py-3.5 px-4">Categoria</th>
+                    <th className="py-3.5 px-4">Estado</th>
+                    <th className="py-3.5 px-4 text-center">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs font-medium text-slate-700">
                   {filteredClientes.map((c) => (
-                    <tr key={c.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="p-4">
+                    <tr key={c.id} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="py-3 px-4">
                         <div className="font-bold text-slate-900">{c.nome}</div>
                         <div className="text-[10px] text-slate-400">{c.email || 'Sem email'}</div>
                       </td>
-                      <td className="p-4 font-mono font-bold text-slate-600">{c.nif || c.contribuinte || 'N/D'}</td>
-                      <td className="p-4">
-                        <div className="flex items-center gap-1.5"><Phone size={12} className="text-slate-400" /> {c.telefone || 'N/D'}</div>
+                      <td className="py-3 px-4 font-mono font-bold text-slate-600">{c.nif || c.contribuinte || 'N/D'}</td>
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-1.5 text-slate-600"><Phone size={12} className="text-slate-400" /> {c.telefone || 'N/D'}</div>
                       </td>
-                      <td className="p-4">
-                        <div className="flex items-center gap-1.5"><MapPin size={12} className="text-slate-400" /> {c.municipio || c.provincia || 'Luanda'}</div>
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-1.5 text-slate-600"><MapPin size={12} className="text-slate-400" /> {c.municipio || c.provincia || 'Luanda'}</div>
                       </td>
-                      <td className="p-4"><span className="bg-blue-50 text-[#003366] px-2.5 py-1 rounded-md text-[10px] font-bold">{c.tipo_cliente || 'Normal'}</span></td>
-                      <td className="p-4">
-                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${c.ativo !== false ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}`}>
-                          {c.ativo !== false ? 'Ativo' : 'Inativo'}
+                      <td className="py-3 px-4"><span className="bg-blue-50 text-[#003366] px-2.5 py-1 rounded-md text-[10px] font-bold">{c.tipo_cliente || 'Normal'}</span></td>
+                      <td className="py-3 px-4">
+                        <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          Ativo
                         </span>
                       </td>
-                      <td className="p-3 text-center flex items-center justify-center gap-1.5 flex-wrap">
-                        <button 
-                          onClick={() => { setContaCorrenteCliente(c); setActiveTab('conta_corrente'); }}
-                          className="w-7 h-7 flex items-center justify-center bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white rounded-none border border-emerald-300 transition-colors cursor-pointer"
-                          title="Extrato de Conta Corrente (Abrir Página)"
-                        >
-                          <Receipt size={14} />
-                        </button>
-                        <button 
-                          onClick={() => { setSelectedCliente(c); setActiveTab('perfil'); }} 
-                          className="w-7 h-7 flex items-center justify-center bg-blue-50 text-[#003366] hover:bg-[#003366] hover:text-white rounded-none border border-blue-200 transition-colors cursor-pointer" 
-                          title="Ver Perfil"
-                        >
-                          <Eye size={14} />
-                        </button>
-                        <button 
-                          onClick={() => handleOpenEditClient(c)} 
-                          className="w-7 h-7 flex items-center justify-center bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-none border border-slate-300 transition-colors cursor-pointer" 
-                          title="Editar"
-                        >
-                          <Edit size={14} />
-                        </button>
-                        {c.ativo !== false ? (
+                      <td className="py-3 px-4 text-center">
+                        <div className="flex items-center justify-center gap-1.5">
                           <button 
-                            onClick={() => handleArchiveClient(c)} 
-                            className="w-7 h-7 flex items-center justify-center bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-none border border-rose-200 transition-colors cursor-pointer" 
-                            title="Arquivar / Desativar (Apagar clientes nunca é permitido)"
+                            onClick={() => { setContaCorrenteCliente(c); setActiveTab('conta_corrente'); }}
+                            className="px-2.5 py-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white rounded-lg border border-emerald-200 transition-all text-[11px] font-bold flex items-center gap-1 cursor-pointer shadow-2xs"
+                            title="Conta Corrente"
                           >
-                            <Trash2 size={14} />
+                            <Receipt size={13} /> Extrato
                           </button>
-                        ) : (
                           <button 
-                            onClick={() => handleRestoreClient(c)} 
-                            className="w-7 h-7 flex items-center justify-center bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-none border border-emerald-200 transition-colors cursor-pointer" 
-                            title="Restaurar"
+                            onClick={() => { setSelectedCliente(c); setActiveTab('perfil'); }} 
+                            className="px-2.5 py-1 bg-blue-50 text-[#003366] hover:bg-[#003366] hover:text-white rounded-lg border border-blue-200 transition-all text-[11px] font-bold flex items-center gap-1 cursor-pointer shadow-2xs"
+                            title="Ver Perfil"
                           >
-                            <RefreshCw size={14} />
+                            <Eye size={13} /> Perfil
                           </button>
-                        )}
+                          <button 
+                            onClick={() => handleOpenEditClient(c)} 
+                            className="px-2.5 py-1 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-lg border border-slate-200 transition-all text-[11px] font-bold flex items-center gap-1 cursor-pointer shadow-2xs" 
+                            title="Editar Dados"
+                          >
+                            <Edit size={13} /> Editar
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}

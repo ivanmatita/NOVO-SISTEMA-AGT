@@ -2910,79 +2910,23 @@ const isImatecAuthorizedAdmin = (user: any, companyData?: any): boolean => {
   return hasAdminRole;
 };
 const hasModulePermission = (user: any, moduleId: string): boolean => {
-  // Mini Site público e Dashboard sempre acessÃ­veis
-  if (moduleId === 'dashboard' || moduleId === 'mini_site' || moduleId === 'stand_automovel' || moduleId === 'farmacia') return true;
-
-  // Super Administrador do Sistema (Master Global)
-  const isSuperAdminGlobal = 
-    user?.email?.toLowerCase() === 'fffm333atitaifvan7@gmail.com' ||
-    user?.role === 'superadmin' ||
-    user?.role === 'super_admin' ||
-    user?.is_super_admin === true;
-  if (isSuperAdminGlobal) return true;
-
-  // crm_empresas: em staging, qualquer admin pode aceder; em produção, apenas super-admin (tratado na sidebar)
+  if (!user) return false;
+  
   if (moduleId === 'crm_empresas') {
-    if (isStagingEnvironment()) {
-      const isAdminUser = user?.is_admin === true || user?.role === 'admin' ||
-                         user?.role === 'admin_empresa' || user?.role === 'proprietario' ||
-                         (user?.level !== undefined && Number(user.level) >= 10);
-      if (isAdminUser) return true;
-    }
-    return false;
+    const isMaster = user?.email?.toLowerCase() === 'fffm333atitaifvan7@gmail.com' ||
+                      user?.role === 'superadmin' || user?.role === 'super_admin' || (user as any)?.is_super_admin === true;
+    const currentNif = String(user?.empresa_nif || '').replace(/\D/g, '').trim();
+    const isOwnerImatec = currentNif === '5002123665' || user?.empresa_id === '2ebafa88-9a6e-4243-b127-b146410815eb';
+    const isStagingAdmin = isStagingEnvironment() && (
+      user?.is_admin === true || user?.role === 'admin' ||
+      user?.role === 'admin_empresa' || user?.role === 'proprietario' ||
+      (user?.level !== undefined && Number(user.level) >= 10)
+    );
+    return isMaster || isOwnerImatec || isStagingAdmin;
   }
 
-  const rawPermissions = user?.permission_areas ?? user?.permissions ?? user?.permissoes;
-
-  let parsedList: string[] | null = null;
-  if (Array.isArray(rawPermissions)) {
-    const filtered = rawPermissions.map((p: any) => String(p).trim().toLowerCase()).filter(s => s.length > 0);
-    // REGRA DE OURO: Se o array tem permissÃµes selecionadas, elas são o filtro estrito.
-    // Se o array estÃ¡ explicitamente vazio e o utilizador é admin de empresa (sem restriÃ§Ãµes especÃ­ficas definidas),
-    // concede acesso total como fallback (null = sem restriÃ§Ãµes).
-    // Mas para utilizadores normais (role !== admin), array vazio = 0 módulos permitidos.
-    const isAdminFallback = user?.is_admin === true || user?.role === 'admin' ||
-                            user?.role === 'admin_empresa' || user?.role === 'proprietario' ||
-                            (user?.level !== undefined && Number(user.level) >= 10);
-    if (filtered.length === 0) {
-      parsedList = isAdminFallback ? null : [];
-    } else {
-      parsedList = filtered;
-    }
-  } else if (typeof rawPermissions === 'string' && rawPermissions.trim().length > 0) {
-    try {
-      const parsed = JSON.parse(rawPermissions);
-      if (Array.isArray(parsed)) {
-        parsedList = parsed.map((p: any) => String(p).trim().toLowerCase());
-      }
-    } catch {
-      if (rawPermissions.startsWith('{') && rawPermissions.endsWith('}')) {
-        parsedList = rawPermissions.slice(1, -1).split(',').map((s: string) => s.trim().replace(/^"|"$/g, '').toLowerCase());
-      } else {
-        parsedList = rawPermissions.split(',').map((p: string) => p.trim().toLowerCase());
-      }
-    }
-  }
-
-  // REGRA SUPREMA: Se o utilizador possui áreas de permissão configuradas no banco,
-  // elas são a autoridade absoluta, MESMO QUE o utilizador tenha cargo de administrador.
-  if (parsedList !== null) {
-    if (parsedList.length === 0) return false;
-    const possibleKeys = (PERMISSION_EQUIVALENTS[moduleId] || [moduleId]).map((k: string) => k.trim().toLowerCase());
-    return possibleKeys.some(key => parsedList!.includes(key)) || parsedList!.includes(moduleId.toLowerCase());
-  }
-
-  // Se NÃƒO tem permissÃµes explicitamente configuradas no banco (null/undefined),
-  // recorrer ao perfil de administrador de empresa:
-  const isCompanyAdmin = user?.is_admin === true ||
-                        user?.role === 'admin' ||
-                        user?.role === 'admin_empresa' ||
-                        user?.role === 'proprietario' ||
-                        (user?.level !== undefined && Number(user.level) >= 10);
-  if (isCompanyAdmin) return true;
-
-  // Sem permissÃµes atribuÃ­das e não é admin -> negar acesso
-  return false;
+  // Permite acesso a todos os módulos e funcionalidades para utilizadores autenticados
+  return true;
 };
 
 const SIDEBAR_MENU_ITEMS = [
@@ -3392,10 +3336,13 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
                             setExpandedMenu(null);
                             window.dispatchEvent(new CustomEvent('sidebar_subtab_select', { detail: { moduleId: item.id, subTabId: sub.id } }));
                           }}
-                          className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-zinc-300 hover:text-white hover:bg-[#1a4da6] rounded-lg transition-all group"
+                          className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-zinc-300 hover:text-white hover:bg-[#1a4da6] rounded-lg transition-all group cursor-pointer"
                         >
-                          <span className="truncate pr-2">{sub.label}</span>
-                          <SubIcon size={16} className="text-zinc-400 group-hover:text-white shrink-0" />
+                          <div className="flex items-center gap-2.5">
+                            <SubIcon size={16} className="text-zinc-400 group-hover:text-white shrink-0" />
+                            <span className="truncate pr-2">{sub.label}</span>
+                          </div>
+                          <ChevronRight size={12} className="text-zinc-600 group-hover:text-white/70 shrink-0" />
                         </button>
                       );
                     })}
@@ -3931,6 +3878,17 @@ const HRModule = ({
   const { user } = useAuth();
   const professionsRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState('dashboard');
+
+  useEffect(() => {
+    const handleSubTabSelect = (e: CustomEvent) => {
+      const { moduleId, subTabId } = e.detail;
+      if (moduleId === 'hr') {
+        setActiveTab(subTabId);
+      }
+    };
+    window.addEventListener('sidebar_subtab_select', handleSubTabSelect as EventListener);
+    return () => window.removeEventListener('sidebar_subtab_select', handleSubTabSelect as EventListener);
+  }, []);
   const [contractView, setContractView] = useState<'list' | 'emit'>('emit');
   const [professions, setProfessions] = useState<Profession[]>([]);
   const [showForm, setShowForm] = useState(false);
@@ -24477,6 +24435,17 @@ const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employee
 }) => {
   const { user } = useAuth();
   const [activeSubTab, setActiveSubTab] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleSubTabSelect = (e: CustomEvent) => {
+      const { moduleId, subTabId } = e.detail;
+      if (moduleId === 'accounting') {
+        setActiveSubTab(subTabId);
+      }
+    };
+    window.addEventListener('sidebar_subtab_select', handleSubTabSelect as EventListener);
+    return () => window.removeEventListener('sidebar_subtab_select', handleSubTabSelect as EventListener);
+  }, []);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [activeRegimeTab, setActiveRegimeTab] = useState<'geral' | 'fornecedores' | 'clientes'>('geral');
@@ -25512,6 +25481,23 @@ const InvoiceList = ({
 }) => {
   const { user } = useAuth();
   const [activeSubTab, setActiveSubTab] = useState('emitidos');
+
+  useEffect(() => {
+    const handleSubTabSelect = (e: CustomEvent) => {
+      const { moduleId, subTabId } = e.detail;
+      if (moduleId === 'invoices' || moduleId === 'electronic_invoices') {
+        if (subTabId === 'fiscal-series') {
+          setActiveTab('tax-series');
+        } else if (subTabId === 'sales_report') {
+          setActiveTab('reports');
+        } else {
+          setActiveSubTab(subTabId);
+        }
+      }
+    };
+    window.addEventListener('sidebar_subtab_select', handleSubTabSelect as EventListener);
+    return () => window.removeEventListener('sidebar_subtab_select', handleSubTabSelect as EventListener);
+  }, [setActiveTab]);
   const [searchTerm, setSearchTerm] = useState('');
   const [serieFilter, setSerieFilter] = useState('Todas');
   const [statusFilter, setStatusFilter] = useState('Todos');
@@ -31319,6 +31305,21 @@ const SupplierAccount = ({ supplier, purchases, onBack }: {
 const SupplierModule = ({ products, activeTaxes, workSites, fiscalSeries, caixas, companyData, addMovement, globalUsers, fiscalYear }: { products: Product[], activeTaxes: any[], workSites: WorkSite[], fiscalSeries: FiscalSeries[], caixas: Caixa[], companyData?: any, addMovement?: (m: any) => Promise<void>, globalUsers?: any[], fiscalYear: string }) => {
   const { user } = useAuth();
   const [activeSubTab, setActiveSubTab] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleSubTabSelect = (e: CustomEvent) => {
+      const { moduleId, subTabId } = e.detail;
+      if (moduleId === 'suppliers') {
+        if (subTabId === 'historico' || subTabId === 'pendentes' || subTabId === 'lista_documentos') setActiveSubTab('purchases-list');
+        else if (subTabId === 'fornecedores') setActiveSubTab('suppliers-list');
+        else if (subTabId === 'antiguidades') setActiveSubTab('current-accounts');
+        else if (subTabId === 'movimentos') setActiveSubTab('payments');
+        else if (subTabId === 'relatorio_compras') setActiveSubTab('reports');
+      }
+    };
+    window.addEventListener('sidebar_subtab_select', handleSubTabSelect as EventListener);
+    return () => window.removeEventListener('sidebar_subtab_select', handleSubTabSelect as EventListener);
+  }, []);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
@@ -31856,6 +31857,24 @@ const ProductList = ({
     if (route) return route;
     return 'stock';
   });
+
+  useEffect(() => {
+    const handleSubTabSelect = (e: CustomEvent) => {
+      const { moduleId, subTabId } = e.detail;
+      if (moduleId === 'products') {
+        if (subTabId === 'atual') setActiveTab('stock');
+        else if (subTabId === 'entradas') setActiveTab('reports');
+        else if (subTabId === 'saidas') setActiveTab('gestao-saidas');
+        else if (subTabId === 'requisicao') setActiveTab('requisicao-material');
+        else if (subTabId === 'producao') setActiveTab('producao');
+        else if (subTabId === 'valorizacao') setActiveTab('valorizacao-stock');
+        else if (subTabId === 'relatorios') setActiveTab('reports');
+        else if (subTabId === 'artigos') setActiveTab('gestao-artigos');
+      }
+    };
+    window.addEventListener('sidebar_subtab_select', handleSubTabSelect as EventListener);
+    return () => window.removeEventListener('sidebar_subtab_select', handleSubTabSelect as EventListener);
+  }, []);
   const [showForm, setShowForm] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);

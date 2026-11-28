@@ -1,5 +1,18 @@
 import { supabase } from '../lib/supabase';
 import { authService } from './authService';
+import { v5 as uuidv5 } from 'uuid';
+
+const NAMESPACE_UUID = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
+
+function ensureValidUUID(id: string | number): string {
+  if (!id) return uuidv5('default-collab', NAMESPACE_UUID);
+  const strId = String(id);
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (uuidRegex.test(strId)) {
+    return strId;
+  }
+  return uuidv5(strId, NAMESPACE_UUID);
+}
 
 async function getAuthHeaders(includeJson = false): Promise<Record<string, string>> {
   const headers: Record<string, string> = {};
@@ -76,8 +89,7 @@ export const attendanceService = {
 
   async saveAttendanceMap(empresa_id: string, colaborador_id: string | number, mes_referencia: string, mapa: any) {
     if (!empresa_id || !colaborador_id || !mes_referencia) return;
-    const numericColabId = typeof colaborador_id === 'number' ? colaborador_id : parseInt(String(colaborador_id), 10);
-    const safeColabId = isNaN(numericColabId) ? colaborador_id : numericColabId;
+    const safeColabId = ensureValidUUID(colaborador_id);
 
     try {
       const { data, error } = await supabase
@@ -129,8 +141,7 @@ export const attendanceService = {
 
   async setAttendanceProcessed(empresa_id: string, colaborador_id: string | number, mes_referencia: string, is_processed: boolean) {
     if (!empresa_id || !colaborador_id || !mes_referencia) return;
-    const numericColabId = typeof colaborador_id === 'number' ? colaborador_id : parseInt(String(colaborador_id), 10);
-    const safeColabId = isNaN(numericColabId) ? colaborador_id : numericColabId;
+    const safeColabId = ensureValidUUID(colaborador_id);
 
     try {
       const { data, error } = await supabase
@@ -182,8 +193,7 @@ export const attendanceService = {
 
   async clearAttendance(empresa_id: string, colaborador_id: string | number, mes_referencia: string) {
     if (!empresa_id || !colaborador_id || !mes_referencia) return;
-    const numericColabId = typeof colaborador_id === 'number' ? colaborador_id : parseInt(String(colaborador_id), 10);
-    const safeColabId = isNaN(numericColabId) ? colaborador_id : numericColabId;
+    const safeColabId = ensureValidUUID(colaborador_id);
 
     try {
        const { error } = await supabase

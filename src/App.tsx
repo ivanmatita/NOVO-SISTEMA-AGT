@@ -3016,6 +3016,97 @@ const SIDEBAR_MENU_ITEMS = [
   { id: 'settings', label: 'Definições', icon: Settings },
 ];
 
+const SIDEBAR_SUBMENUS: Record<string, Array<{ id: string; label: string; icon: any }>> = {
+  invoices: [
+    { id: 'emitidos', label: 'Documentos de Venda', icon: FileText },
+    { id: 'recebidos', label: 'Documentos Recebidos', icon: FileDown },
+    { id: 'recibos', label: 'Recibos Emitidos (RC)', icon: Receipt },
+    { id: 'series', label: 'Séries Fiscais', icon: Key },
+    { id: 'sales_report', label: 'Relatório de Vendas', icon: BarChart3 },
+    { id: 'agt-list-invoices', label: 'Consulta AGT', icon: FileSearch }
+  ],
+  suppliers: [
+    { id: 'historico', label: 'Histórico de Compras', icon: History },
+    { id: 'pendentes', label: 'Compras Pendentes', icon: Clock },
+    { id: 'fornecedores', label: 'Gestão de Fornecedores', icon: Users },
+    { id: 'lista_documentos', label: 'Lista de Documentos', icon: FileText },
+    { id: 'antiguidades', label: 'Antiguidades de Saldos', icon: Layers },
+    { id: 'movimentos', label: 'Movimentos de Compras', icon: FileSpreadsheet },
+    { id: 'relatorio_compras', label: 'Relatório de Compras', icon: BarChart2 }
+  ],
+  products: [
+    { id: 'stock', label: 'Stock Atual', icon: Package },
+    { id: 'gestao-artigos', label: 'Gestão de Artigos', icon: Tag },
+    { id: 'gestao-saidas', label: 'Saídas de Stock', icon: ArrowUpRight },
+    { id: 'requisicao-material', label: 'Requisição de Material', icon: ClipboardList },
+    { id: 'valorizacao-stock', label: 'Valorização de Stock', icon: Coins },
+    { id: 'producao', label: 'Produção', icon: Cpu },
+    { id: 'warehouse', label: 'Armazéns', icon: Home },
+    { id: 'reports', label: 'Relatórios', icon: FileText }
+  ],
+  financial: [
+    { id: 'caixa', label: 'Caixa & Tesouraria', icon: Wallet },
+    { id: 'irt_inss_map', label: 'Mapas IRT / INSS', icon: Percent },
+    { id: 'profit-loss-report', label: 'Demonstração de Resultados', icon: BarChart3 },
+    { id: 'sales-reports', label: 'Relatórios de Vendas', icon: FileBarChart },
+    { id: 'cost-revenue', label: 'Custos & Proveitos', icon: TrendingUp },
+    { id: 'annual-movement', label: 'Movimentos Anuais', icon: Calendar },
+    { id: 'supplier-maps', label: 'Mapas de Fornecedores', icon: Truck },
+    { id: 'other-movements', label: 'Outros Movimentos', icon: Layers },
+    { id: 'retencao-fonte', label: 'Retenção na Fonte', icon: FileSignature }
+  ],
+  accounting: [
+    { id: 'migracao', label: 'Migração de Movimentos', icon: RotateCcw },
+    { id: 'apuramento', label: 'Apuramento de Resultados', icon: CheckCircle },
+    { id: 'ivm', label: 'Imposto IVA', icon: FileText },
+    { id: 'ip', label: 'Imposto de Selo', icon: FileCheck },
+    { id: 'tax-calc-report', label: 'Relatório de Impostos', icon: FileBarChart },
+    { id: 'cash-flow', label: 'Fluxo de Caixa', icon: Wallet },
+    { id: 'amortizacao', label: 'Mapa de Amortização', icon: Clock },
+    { id: 'demonstracao', label: 'Demonstração de Resultados', icon: BarChart2 },
+    { id: 'pagamentos-impostos', label: 'Pagamentos de Impostos', icon: Coins },
+    { id: 'contas-pagar', label: 'Contas a Pagar', icon: Receipt },
+    { id: 'vat-settlement', label: 'Apuramento IVA', icon: Scale },
+    { id: 'diarios', label: 'Gestão de Diários', icon: BookOpen },
+    { id: 'accounting-maps', label: 'Mapas Contabilísticos', icon: Map },
+    { id: 'balancete-razao', label: 'Balancete e Razão', icon: Table },
+    { id: 'balanco', label: 'Balanço', icon: FileSpreadsheet },
+    { id: 'pgc', label: 'Plano Geral de Contabilidade', icon: Book },
+    { id: 'classify', label: 'Classificar Movimentos', icon: Shuffle }
+  ],
+  hr: [
+    { id: 'colaboradores', label: 'Colaboradores', icon: Users },
+    { id: 'assiduidade', label: 'Assiduidade & Ponto', icon: Clock },
+    { id: 'contratos', label: 'Contratos', icon: FileText },
+    { id: 'processamentos', label: 'Processamento Salarial', icon: Calculator },
+    { id: 'pagamentos', label: 'Pagamentos & Recibos', icon: Wallet },
+    { id: 'demitidos', label: 'Demitidos', icon: UserMinus }
+  ],
+  reports: [
+    { id: 'purchases', label: 'Relatório de Compras', icon: ShoppingBag },
+    { id: 'sales', label: 'Relatório de Vendas', icon: TrendingUp },
+    { id: 'stock', label: 'Relatório de Stocks', icon: Package },
+    { id: 'inventory', label: 'Relatório de Inventário', icon: ClipboardList },
+    { id: 'cashflow', label: 'Relatório de Caixa', icon: Wallet }
+  ],
+  pos: [
+    { id: 'sessions', label: 'Sessões de Caixa', icon: Clock },
+    { id: 'movements', label: 'Movimentos', icon: FileSpreadsheet },
+    { id: 'reports', label: 'Relatórios POS', icon: BarChart3 },
+    { id: 'reconciliation', label: 'Reconciliação', icon: RefreshCw }
+  ],
+  specialized: [
+    { id: 'church', label: 'Gestão de Igreja', icon: Building2 },
+    { id: 'agrobusiness', label: 'Agronegócio', icon: TrendingUp },
+    { id: 'school', label: 'Gestão Escolar', icon: GraduationCap },
+    { id: 'restaurant', label: 'Restaurante & Bar', icon: Utensils },
+    { id: 'hotel', label: 'Hotelaria', icon: Bed },
+    { id: 'fleet', label: 'Gestão de Frotas', icon: Car },
+    { id: 'stand', label: 'Stand Automóvel', icon: Car },
+    { id: 'pharmacy', label: 'Farmácia', icon: Pill }
+  ]
+};
+
 const Sidebar = ({ activeTab, setActiveTab, companyData }: { 
   activeTab: string, 
   setActiveTab: (t: string) => void,
@@ -3025,6 +3116,7 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
 
   const [profileImg, setProfileImg] = useState<string | null>(null);
   const [companyLogo, setCompanyLogo] = useState<string | null>(null);
+  const [openSubMenuId, setOpenSubMenuId] = useState<string | null>(null);
 
   // Check if user is a main administrator with full access
   const isGlobalAdmin = user?.is_admin || user?.level === 10 || user?.role === 'admin' || user?.role === 'admin_empresa' || user?.role === 'super_admin' || user?.role === 'proprietario';
@@ -3057,38 +3149,39 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
           .from('perfis')
           .select('empresa_id')
           .eq('id', supabaseUser.id)
-          .single();
+          .limit(1);
           
-        if (profile?.empresa_id) {
+        const prof = Array.isArray(profile) ? profile[0] : profile;
+        if (prof?.empresa_id) {
           // Fetch avatar
           const { data: avatarData } = await supabase
             .from('media_arquivos')
             .select('url_publica')
-            .eq('empresa_id', profile.empresa_id)
+            .eq('empresa_id', prof.empresa_id)
             .eq('utilizador_id', supabaseUser.id)
             .eq('tipo', 'avatar')
             .eq('ativo', true)
             .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
+            .limit(1);
             
-          if (avatarData?.url_publica) {
-            setProfileImg(avatarData.url_publica);
+          const av = Array.isArray(avatarData) ? avatarData[0] : avatarData;
+          if (av?.url_publica) {
+            setProfileImg(av.url_publica);
           }
 
           // Fetch menu logo
           const { data: logoData } = await supabase
             .from('media_arquivos')
             .select('url_publica')
-            .eq('empresa_id', profile.empresa_id)
+            .eq('empresa_id', prof.empresa_id)
             .eq('tipo', 'menu_logo')
             .eq('ativo', true)
             .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
+            .limit(1);
             
-          if (logoData?.url_publica) {
-            setCompanyLogo(logoData.url_publica);
+          const lg = Array.isArray(logoData) ? logoData[0] : logoData;
+          if (lg?.url_publica) {
+            setCompanyLogo(lg.url_publica);
           }
         }
         
@@ -3127,9 +3220,10 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
           .from('perfis')
           .select('empresa_id')
           .eq('id', supabaseUser.id)
-          .single();
+          .limit(1);
           
-        const empresaId = profile?.empresa_id;
+        const prof = Array.isArray(profile) ? profile[0] : profile;
+        const empresaId = prof?.empresa_id;
         if (!empresaId) return;
         
         const fileExt = file.name.split('.').pop();
@@ -3248,7 +3342,7 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
         </div>
       </div>
       
-      <div className="flex-1 px-3 py-4 space-y-1 pb-8">
+      <div className="flex-1 px-3 py-4 space-y-1 pb-8 relative">
         <h3 className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-3 px-2">Menu Principal</h3>
         <nav className="space-y-1">
           {SIDEBAR_MENU_ITEMS.filter(item => {
@@ -3259,7 +3353,6 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
               const isOwnerImatec = (currentNif === '5002123665' || user?.empresa_id === '2ebafa88-9a6e-4243-b127-b146410815eb') && 
                                     (user?.is_admin === true || user?.role === 'admin' || user?.role === 'proprietario' || (user?.level !== undefined && Number(user.level) >= 10));
               const isSuper = isMaster || isOwnerImatec;
-              // Em staging: qualquer admin pode ver CRM Empresas para testes
               const isStagingAdmin = isStagingEnvironment() && (
                 user?.is_admin === true || user?.role === 'admin' ||
                 user?.role === 'admin_empresa' || user?.role === 'proprietario' ||
@@ -3267,32 +3360,64 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
               );
               return isSuper || isStagingAdmin;
             }
-            // Ãrea selecionada = aparece no menu. Ãrea NÃƒO selecionada = NÃƒO aparece no menu!
             return hasModulePermission(user, item.id);
           }).map((item) => {
+            const submenus = SIDEBAR_SUBMENUS[item.id];
+            const isOpen = openSubMenuId === item.id;
             return (
-              <button
-                key={item.id}
-                onClick={() => setActiveTab(item.id)}
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-none transition-all duration-200 mb-0.5 relative group ${
-                  activeTab === item.id 
-                    ? 'bg-[#1a4da6] text-white font-semibold shadow-md border-l-4 border-white' 
-                    : 'bg-[#123375] text-zinc-300 hover:bg-[#1a4da6] hover:text-white'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <item.icon size={18} className={activeTab === item.id ? 'text-white' : 'text-zinc-400'} />
-                  <span className="text-sm">{item.label}</span>
-                  {item.badge && (
-                    <span className="ml-2 text-[8px] font-black bg-[#1a4da6] text-white px-1.5 py-0.5 rounded-full uppercase tracking-tighter">
-                      {item.badge}
-                    </span>
+              <div key={item.id} className="relative group/menu">
+                <button
+                  onClick={() => {
+                    setActiveTab(item.id);
+                    if (submenus && submenus.length > 0) {
+                      setOpenSubMenuId(isOpen ? null : item.id);
+                    } else {
+                      setOpenSubMenuId(null);
+                    }
+                  }}
+                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-none transition-all duration-200 mb-0.5 relative ${
+                    activeTab === item.id 
+                      ? 'bg-[#1a4da6] text-white font-semibold shadow-md border-l-4 border-white' 
+                      : 'bg-[#123375] text-zinc-300 hover:bg-[#1a4da6] hover:text-white'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <item.icon size={18} className={activeTab === item.id ? 'text-white' : 'text-zinc-400'} />
+                    <span className="text-sm">{item.label}</span>
+                    {item.badge && (
+                      <span className="ml-2 text-[8px] font-black bg-[#1a4da6] text-white px-1.5 py-0.5 rounded-full uppercase tracking-tighter">
+                        {item.badge}
+                      </span>
+                    )}
+                  </div>
+                  {submenus && submenus.length > 0 && (
+                    <ChevronRight size={14} className={`transition-transform ${isOpen ? 'rotate-90 text-white' : activeTab === item.id ? 'text-white/70' : 'text-zinc-500'}`} />
                   )}
-                </div>
-                {item.hasChevron && (
-                  <ChevronRight size={14} className={activeTab === item.id ? 'text-white/70' : 'text-zinc-500'} />
+                </button>
+
+                {/* Sub-menus expanded inline right below the clicked menu button inside the sidebar flow */}
+                {isOpen && submenus && submenus.length > 0 && (
+                  <div className="bg-[#070a14] py-1.5 px-2 space-y-1 border-y border-white/10 my-0.5">
+                    {submenus.map((sub) => {
+                      const SubIcon = sub.icon;
+                      return (
+                        <button
+                          key={sub.id}
+                          onClick={() => {
+                            setActiveTab(item.id);
+                            window.dispatchEvent(new CustomEvent('sidebarSubTabSelect', { detail: { tab: item.id, subTab: sub.id } }));
+                            setOpenSubMenuId(null);
+                          }}
+                          className="w-full flex items-center gap-3 px-3 py-2 text-xs font-medium text-zinc-300 hover:bg-[#1a4da6] hover:text-white rounded transition-colors text-left pl-6"
+                        >
+                          <SubIcon size={14} className="text-blue-400 shrink-0" />
+                          <span className="truncate">{sub.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 )}
-              </button>
+              </div>
             );
           })}
         </nav>
